@@ -1,4 +1,4 @@
-// Copyright (c) Magistrala
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package encoder
@@ -13,7 +13,7 @@ func EncodeSenML(bn, n, sv string) ([]byte, error) {
 	ts := float64(time.Now().UnixNano()) / float64(time.Second)
 	s := senml.Pack{
 		Records: []senml.Record{
-			senml.Record{
+			{
 				BaseName:    bn,
 				Name:        n,
 				Time:        ts,
