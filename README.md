@@ -102,9 +102,9 @@ Environment:
 | MG_AGENT_EDGEX_URL | Edgex base url | http://localhost:48090/api/v1/ |
 | MG_AGENT_MQTT_URL | MQTT broker url | localhost:1883 |
 | MG_AGENT_HTTP_PORT | Agent http port | 9999 |
-| MG_AGENT_BOOTSTRAP_URL | Mainflux bootstrap url | http://localhost:9013/things/bootstrap |
-| MG_AGENT_BOOTSTRAP_ID | Mainflux bootstrap id | |
-| MG_AGENT_BOOTSTRAP_KEY | Mainflux bootstrap key | |
+| MG_AGENT_BOOTSTRAP_URL | Magistrala bootstrap url | http://localhost:9013/things/bootstrap |
+| MG_AGENT_BOOTSTRAP_ID | Magistrala bootstrap id | |
+| MG_AGENT_BOOTSTRAP_KEY | Magistrala bootstrap key | |
 | MG_AGENT_BOOTSTRAP_RETRIES | Number of retries for bootstrap procedure | 5 |
 | MG_AGENT_BOOTSTRAP_SKIP_TLS | Skip TLS verification for bootstrap | true |
 | MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS | Number of seconds between retries | 10 |
@@ -112,8 +112,8 @@ Environment:
 | MG_AGENT_DATA_CHANNEL | Channel for data sending | |
 | MG_AGENT_ENCRYPTION | Encryption | false |
 | MG_AGENT_BROKER_URL | Broker url | nats://localhost:4222 |
-| MG_AGENT_MQTT_USERNAME | MQTT username, Mainflux thing id | |
-| MG_AGENT_MQTT_PASSWORD | MQTT password, Mainflux thing key | |
+| MG_AGENT_MQTT_USERNAME | MQTT username, Magistrala thing id | |
+| MG_AGENT_MQTT_PASSWORD | MQTT password, Magistrala thing key | |
 | MG_AGENT_MQTT_SKIP_TLS | Skip TLS verification for MQTT | true |
 | MG_AGENT_MQTT_MTLS | Use MTLS for MQTT | false |
 | MG_AGENT_MQTT_CA | Location for CA certificate for MTLS | ca.crt |
@@ -124,7 +124,7 @@ Environment:
 | MG_AGENT_HEARTBEAT_INTERVAL | Interval in which heartbeat from service is expected | 30s |
 | MG_AGENT_TERMINAL_SESSION_TIMEOUT | Timeout for terminal session | 30s |
 
-Here `thing` is a Mainflux thing, and control channel from `channels` is used with `req` and `res` subtopic
+Here `thing` is a Magistrala thing, and control channel from `channels` is used with `req` and `res` subtopic
 (i.e. app needs to PUB/SUB on `/channels/<control_channel_id>/messages/req` and `/channels/<control_channel_id>/messages/res`).
 
 ## Sending commands to other services
