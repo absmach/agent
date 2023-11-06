@@ -1,3 +1,6 @@
+// Copyright (c) Magistrala
+// SPDX-License-Identifier: Apache-2.0
+
 package terminal
 
 import (
@@ -11,9 +14,9 @@ import (
 
 	"github.com/creack/pty"
 
-	"github.com/mainflux/agent/pkg/encoder"
-	"github.com/mainflux/mainflux/logger"
-	"github.com/mainflux/mainflux/pkg/errors"
+	"github.com/absmach/agent/pkg/encoder"
+	"github.com/absmach/magistrala/logger"
+	"github.com/absmach/magistrala/pkg/errors"
 )
 
 const (

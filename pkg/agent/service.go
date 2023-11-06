@@ -1,4 +1,4 @@
-// Copyright (c) Mainflux
+// Copyright (c) Magistrala
 // SPDX-License-Identifier: Apache-2.0
 
 package agent
@@ -13,15 +13,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/absmach/agent/pkg/edgex"
+	"github.com/absmach/agent/pkg/encoder"
+	"github.com/absmach/agent/pkg/terminal"
 	paho "github.com/eclipse/paho.mqtt.golang"
-	"github.com/mainflux/agent/pkg/edgex"
-	"github.com/mainflux/agent/pkg/encoder"
-	"github.com/mainflux/agent/pkg/terminal"
 
+	log "github.com/absmach/magistrala/logger"
+	"github.com/absmach/magistrala/pkg/errors"
+	"github.com/absmach/magistrala/pkg/messaging"
 	exp "github.com/mainflux/export/pkg/config"
-	log "github.com/mainflux/mainflux/logger"
-	"github.com/mainflux/mainflux/pkg/errors"
-	"github.com/mainflux/mainflux/pkg/messaging"
 )
 
 const (
@@ -127,7 +127,7 @@ func (ag *agent) handle(ctx context.Context, pub messaging.Publisher, logger log
 		tok := strings.Split(sub, ".")
 		if len(tok) < 3 {
 			ag.logger.Error(fmt.Sprintf("Failed: Subject has incorrect length %s", sub))
-			return fmt.Errorf("Failed: Subject has incorrect length %s", sub)
+			return fmt.Errorf("failed: Subject has incorrect length %s", sub)
 		}
 		svcname := tok[1]
 		svctype := tok[2]
@@ -171,7 +171,14 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, ec edgex.Client, brok
 		ag.logger.Error(fmt.Sprintf("invalid heartbeat interval %d", cfg.Heartbeat.Interval))
 	}
 
-	err := ag.broker.Subscribe(ctx, pubSubID, Hearbeat, ag.handle(ctx, ag.broker, logger, cfg.Heartbeat))
+	subConfig := messaging.SubscriberConfig{
+		ID:             pubSubID,
+		Topic:          Hearbeat,
+		Handler:        ag.handle(ctx, ag.broker, logger, cfg.Heartbeat),
+		DeliveryPolicy: messaging.DeliverAllPolicy,
+	}
+
+	err := ag.broker.Subscribe(ctx, subConfig)
 
 	if err != nil {
 		return ag, errors.Wrap(errNatsSubscribing, err)

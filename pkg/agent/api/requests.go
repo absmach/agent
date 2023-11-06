@@ -1,10 +1,10 @@
-// Copyright (c) Mainflux
+// Copyright (c) Magistrala
 // SPDX-License-Identifier: Apache-2.0
 
 package api
 
 import (
-	"github.com/mainflux/agent/pkg/agent"
+	"github.com/absmach/agent/pkg/agent"
 )
 
 type pubReq struct {

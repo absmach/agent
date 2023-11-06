@@ -1,4 +1,4 @@
-// Copyright (c) Mainflux
+// Copyright (c) Magistrala
 // SPDX-License-Identifier: Apache-2.0
 
 package conn
@@ -9,9 +9,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mainflux/agent/pkg/agent"
-	"github.com/mainflux/mainflux/logger"
-	"github.com/mainflux/mainflux/pkg/messaging"
+	"github.com/absmach/agent/pkg/agent"
+	"github.com/absmach/magistrala/logger"
+	"github.com/absmach/magistrala/pkg/messaging"
 	"github.com/mainflux/senml"
 	"robpike.io/filter"
 
@@ -83,11 +83,12 @@ func (b *broker) Subscribe(ctx context.Context) error {
 
 // handleNatsMsg triggered when new message is received on MQTT broker.
 func (b *broker) handleNatsMsg(mc mqtt.Client, msg mqtt.Message) {
+	ctx := context.Background()
 	message := messaging.Message{
 		Payload: msg.Payload(),
 	}
 	if topic := extractNatsTopic(msg.Topic()); topic != "" {
-		if err := b.messageBroker.Publish(b.ctx, topic, &message); err != nil {
+		if err := b.messageBroker.Publish(ctx, topic, &message); err != nil {
 			b.logger.Warn(fmt.Sprintf("error publishing message with error: %v", err))
 		}
 	}

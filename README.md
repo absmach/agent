@@ -1,6 +1,6 @@
-# Mainflux IoT Agent
+# Magistrala IoT Agent
 
-![badge](https://github.com/mainflux/agent/workflows/Go/badge.svg)
+![badge](https://github.com/absmach/agent/workflows/Go/badge.svg)
 ![ci][ci]
 ![release][release]
 [![go report card][grc-badge]][grc-url]
@@ -11,15 +11,15 @@
   <img width="30%" height="30%" src="./docs/img/agent.png">
 </p>
 
-Mainflux IoT Agent is a communication, execution and SW management agent for Mainflux system.
+Magistrala IoT Agent is a communication, execution and SW management agent for Magistrala system.
 
 ## Install
 
 Get the code:
 
 ```bash
-go get github.com/mainflux/agent
-cd $GOPATH/github.com/mainflux/agent
+go get github.com/absmach/agent
+cd $GOPATH/github.com/absmach/agent
 ```
 
 Make:
@@ -37,24 +37,24 @@ go install github.com/nats-io/nats-server/v2@latest
 nats-server
 ```
 
-Create gateway configuration with [Provision][provision] service or through [Mainflux UI][mfxui].  
+Create gateway configuration with [Provision][provision] service or through [Mainflux UI][mfxui].
 
 Start Agent with:
 
 ```bash
-MF_AGENT_BOOTSTRAP_ID=<bootstrap_id> \
-MF_AGENT_BOOTSTRAP_KEY=<bootstrap_key> \
-MF_AGENT_BOOTSTRAP_URL=http://localhost:9013/things/bootstrap \
-build/mainflux-agent
+MG_AGENT_BOOTSTRAP_ID=<bootstrap_id> \
+MG_AGENT_BOOTSTRAP_KEY=<bootstrap_key> \
+MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/things/bootstrap \
+build/magistrala-agent
 ```
 
-or,if [Mainflux UI](https://github.com/mainflux/ui) is used,
+or,if [Magistrala UI](https://github.com/absmach/ui) is used,
 
 ```bash
-MF_AGENT_BOOTSTRAP_ID=<bootstrap_id> \
-MF_AGENT_BOOTSTRAP_KEY=<bootstrap_key> \
-MF_AGENT_BOOTSTRAP_URL=http://localhost:9013/bootstrap/things/bootstrap \
-build/mainflux-agent
+MG_AGENT_BOOTSTRAP_ID=<bootstrap_id> \
+MG_AGENT_BOOTSTRAP_KEY=<bootstrap_key> \
+MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/bootstrap/things/bootstrap \
+build/magistrala-agent
 ```
 
 ### Config
@@ -95,34 +95,34 @@ Example configuration:
 ```
 
 Environment:
-| Variable                               | Description                                                   | Default                                |
+| Variable | Description | Default |
 |----------------------------------------|---------------------------------------------------------------|----------------------------------------|
-| MF_AGENT_CONFIG_FILE                   | Location of configuration file                                | config.toml                            |
-| MF_AGENT_LOG_LEVEL                     | Log level                                                     | info                                   |
-| MF_AGENT_EDGEX_URL                     | Edgex base url                                                | http://localhost:48090/api/v1/         |
-| MF_AGENT_MQTT_URL                      | MQTT broker url                                               | localhost:1883                         |
-| MF_AGENT_HTTP_PORT                     | Agent http port                                               | 9999                                   |
-| MF_AGENT_BOOTSTRAP_URL                 | Mainflux bootstrap url                                        | http://localhost:9013/things/bootstrap |
-| MF_AGENT_BOOTSTRAP_ID                  | Mainflux bootstrap id                                         |                                        |
-| MF_AGENT_BOOTSTRAP_KEY                 | Mainflux bootstrap key                                         |                                        |
-| MF_AGENT_BOOTSTRAP_RETRIES             | Number of retries for bootstrap procedure                     | 5                                      |
-| MF_AGENT_BOOTSTRAP_SKIP_TLS            | Skip TLS verification for bootstrap                           | true                                   |
-| MF_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS | Number of seconds between retries                             | 10                                     |
-| MF_AGENT_CONTROL_CHANNEL               | Channel for sending controls, commands                        |                                        |
-| MF_AGENT_DATA_CHANNEL                  | Channel for data sending                                      |                                        |
-| MF_AGENT_ENCRYPTION                    | Encryption                                                    | false                                  |
-| MF_AGENT_BROKER_URL                    | Broker url                                                      | nats://localhost:4222                  |
-| MF_AGENT_MQTT_USERNAME                 | MQTT username, Mainflux thing id                              |                                        |
-| MF_AGENT_MQTT_PASSWORD                 | MQTT password, Mainflux thing key                             |                                        |
-| MF_AGENT_MQTT_SKIP_TLS                 | Skip TLS verification for MQTT                                | true                                   |
-| MF_AGENT_MQTT_MTLS                     | Use MTLS for MQTT                                             | false                                  |
-| MF_AGENT_MQTT_CA                       | Location for CA certificate for MTLS                          | ca.crt                                 |
-| MF_AGENT_MQTT_QOS                      | QoS                                                           | 0                                      |
-| MF_AGENT_MQTT_RETAIN                   | MQTT retain                                                   | false                                  |
-| MF_AGENT_MQTT_CLIENT_CERT              | Location of client certificate for MTLS                       | thing.cert                             |
-| MF_AGENT_MQTT_CLIENT_PK                | Location of client certificate key for MTLS                   | thing.key                              |
-| MF_AGENT_HEARTBEAT_INTERVAL            | Interval in which heartbeat from service is expected          | 30s                                    |
-| MF_AGENT_TERMINAL_SESSION_TIMEOUT      | Timeout for terminal session                                  | 30s                                    |
+| MG_AGENT_CONFIG_FILE | Location of configuration file | config.toml |
+| MG_AGENT_LOG_LEVEL | Log level | info |
+| MG_AGENT_EDGEX_URL | Edgex base url | http://localhost:48090/api/v1/ |
+| MG_AGENT_MQTT_URL | MQTT broker url | localhost:1883 |
+| MG_AGENT_HTTP_PORT | Agent http port | 9999 |
+| MG_AGENT_BOOTSTRAP_URL | Mainflux bootstrap url | http://localhost:9013/things/bootstrap |
+| MG_AGENT_BOOTSTRAP_ID | Mainflux bootstrap id | |
+| MG_AGENT_BOOTSTRAP_KEY | Mainflux bootstrap key | |
+| MG_AGENT_BOOTSTRAP_RETRIES | Number of retries for bootstrap procedure | 5 |
+| MG_AGENT_BOOTSTRAP_SKIP_TLS | Skip TLS verification for bootstrap | true |
+| MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS | Number of seconds between retries | 10 |
+| MG_AGENT_CONTROL_CHANNEL | Channel for sending controls, commands | |
+| MG_AGENT_DATA_CHANNEL | Channel for data sending | |
+| MG_AGENT_ENCRYPTION | Encryption | false |
+| MG_AGENT_BROKER_URL | Broker url | nats://localhost:4222 |
+| MG_AGENT_MQTT_USERNAME | MQTT username, Mainflux thing id | |
+| MG_AGENT_MQTT_PASSWORD | MQTT password, Mainflux thing key | |
+| MG_AGENT_MQTT_SKIP_TLS | Skip TLS verification for MQTT | true |
+| MG_AGENT_MQTT_MTLS | Use MTLS for MQTT | false |
+| MG_AGENT_MQTT_CA | Location for CA certificate for MTLS | ca.crt |
+| MG_AGENT_MQTT_QOS | QoS | 0 |
+| MG_AGENT_MQTT_RETAIN | MQTT retain | false |
+| MG_AGENT_MQTT_CLIENT_CERT | Location of client certificate for MTLS | thing.cert |
+| MG_AGENT_MQTT_CLIENT_PK | Location of client certificate key for MTLS | thing.key |
+| MG_AGENT_HEARTBEAT_INTERVAL | Interval in which heartbeat from service is expected | 30s |
+| MG_AGENT_TERMINAL_SESSION_TIMEOUT | Timeout for terminal session | 30s |
 
 Here `thing` is a Mainflux thing, and control channel from `channels` is used with `req` and `res` subtopic
 (i.e. app needs to PUB/SUB on `/channels/<control_channel_id>/messages/req` and `/channels/<control_channel_id>/messages/res`).
@@ -132,11 +132,11 @@ Here `thing` is a Mainflux thing, and control channel from `channels` is used wi
 You can send commands to other services that are subscribed on the same Broker as Agent.  
 Commands are being sent via MQTT to topic:
 
-* `channels/<control_channel_id>/messages/services/<service_name>/<subtopic>`
+- `channels/<control_channel_id>/messages/services/<service_name>/<subtopic>`
 
 when messages is received Agent forwards them to Broker on subject:
 
-* `commands.<service_name>.<subtopic>`.
+- `commands.<service_name>.<subtopic>`.
 
 Payload is up to the application and service itself.
 
@@ -191,13 +191,13 @@ Or you can send a command via MQTT to Agent and receive response on MQTT topic l
 In one terminal subscribe for result:
 
 ```bash
-mosquitto_sub -u <thing_id> -P <thing_key> -t channels/<control_channel_id>/messages/req -h <mqtt_host> -p 1883  
+mosquitto_sub -u <thing_id> -P <thing_key> -t channels/<control_channel_id>/messages/req -h <mqtt_host> -p 1883
 ```
 
 In another terminal publish request to view the list of services:
 
 ```bash
-mosquitto_pub -u <thing_id> -P <thing_key> -t channels/<control_channel_id>/messages/req -h <mqtt_host> -p 1883  -m  '[{"bn":"1:", "n":"config", "vs":"view"}]'  
+mosquitto_pub -u <thing_id> -P <thing_key> -t channels/<control_channel_id>/messages/req -h <mqtt_host> -p 1883  -m  '[{"bn":"1:", "n":"config", "vs":"view"}]'
 ```
 
 Check the output in terminal where you subscribed for results. You should see something like:
@@ -213,7 +213,6 @@ Check the output in terminal where you subscribed for results. You should see so
 ]
 ```
 
-
 ## How to save config via agent
 
 Agent can be used to send configuration file for the [Export][export] service from cloud to gateway via MQTT.  
@@ -224,8 +223,8 @@ mosquitto_pub -u <thing_id> -P <thing_key> -t channels/<control_channel_id>/mess
 
 ```
 
-* `<config_file_path>` - file path where to save contents
-* `<file_content_base64>` - file content, base64 encoded marshaled toml.
+- `<config_file_path>` - file path where to save contents
+- `<file_content_base64>` - file content, base64 encoded marshaled toml.
 
 Here is an example how to make payload for the command:
 
@@ -244,15 +243,14 @@ RmlsZSA9ICIuLi9jb25maWdzL2NvbmZpZy50b21sIgoKW2V4cF0KICBsb2dfbGV2ZWwgPSAiZGVidWci
 
 [Apache-2.0](LICENSE)
 
-[grc-badge]: https://goreportcard.com/badge/github.com/mainflux/agent
-[grc-url]: https://goreportcard.com/report/github.com/mainflux/agent
+[grc-badge]: https://goreportcard.com/badge/github.com/absmach/agent
+[grc-url]: https://goreportcard.com/report/github.com/absmach/agent
 [docs]: http://mainflux.readthedocs.io
 [gitter]: https://gitter.im/mainflux/mainflux?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
 [gitter-badge]: https://badges.gitter.im/Join%20Chat.svg
 [license]: https://img.shields.io/badge/license-Apache%20v2.0-blue.svg
-
 [export]: https://github.com/mainflux/export
 [provision]: https://github.com/mainflux/mainflux/tree/master/provision
 [mfxui]: https://github.com/mainflux/ui
-[ci]: https://github.com/mainflux/agent/actions/workflows/ci.yml/badge.svg
-[release]: https://github.com/mainflux/agent/actions/workflows/release.yml/badge.svg
+[ci]: https://github.com/absmach/agent/actions/workflows/ci.yml/badge.svg
+[release]: https://github.com/absmach/agent/actions/workflows/release.yml/badge.svg

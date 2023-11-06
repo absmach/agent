@@ -1,4 +1,4 @@
-// Copyright (c) Mainflux
+// Copyright (c) Magistrala
 // SPDX-License-Identifier: Apache-2.0
 
 package api
@@ -7,8 +7,8 @@ import (
 	"context"
 	"strings"
 
+	"github.com/absmach/agent/pkg/agent"
 	"github.com/go-kit/kit/endpoint"
-	"github.com/mainflux/agent/pkg/agent"
 )
 
 func pubEndpoint(svc agent.Service) endpoint.Endpoint {

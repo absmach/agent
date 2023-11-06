@@ -6,7 +6,7 @@ ARG VERSION
 ARG COMMIT
 ARG TIME
 
-WORKDIR /go/src/github.com/mainflux/agent
+WORKDIR /go/src/github.com/absmach/agent
 COPY . .
 RUN apk update \
     && apk add make\

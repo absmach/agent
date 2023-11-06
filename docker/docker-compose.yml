@@ -1,30 +1,29 @@
-# Copyright (c) Mainflux
+# Copyright (c) Magistrala
 # SPDX-License-Identifier: Apache-2.0
 # Do not use docker if using remote terminal
 
 version: "3.7"
 
 networks:
-  docker_mainflux-base-net:
+  docker_magistrala-base-net:
     external: true
 
 volumes:
-  mainflux-agent-volume:
+  magistrala-agent-volume:
 
 services:
-  mainflux-agent:
-    image: mainflux/agent:latest
-    container_name: mainflux-agent
+  magistrala-agent:
+    image: magistrala/agent:latest
+    container_name: magistrala-agent
     restart: on-failure
     environment:
-      MF_AGENT_BOOTSTRAP_ID: ${MF_AGENT_BOOTSTRAP_ID}
-      MF_AGENT_BOOTSTRAP_KEY: ${MF_AGENT_BOOTSTRAP_KEY}
-      MF_AGENT_BOOTSTRAP_URL: ${MF_AGENT_BOOTSTRAP_URL}
+      MG_AGENT_BOOTSTRAP_ID: ${MG_AGENT_BOOTSTRAP_ID}
+      MG_AGENT_BOOTSTRAP_KEY: ${MG_AGENT_BOOTSTRAP_KEY}
+      MG_AGENT_BOOTSTRAP_URL: ${MG_AGENT_BOOTSTRAP_URL}
     ports:
-      - ${MF_AGENT_PORT}:${MF_AGENT_PORT}
+      - ${MG_AGENT_PORT}:${MG_AGENT_PORT}
     networks:
-      - docker_mainflux-base-net
+      - docker_magistrala-base-net
     volumes:
       - ../configs/config.toml:/config.toml
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt
-
