@@ -1,4 +1,4 @@
-# Copyright (c) Mainflux
+# Copyright (c) Abstract Machines
 # SPDX-License-Identifier: Apache-2.0
 
 BUILD_DIR ?= build
@@ -11,19 +11,19 @@ VERSION ?= $(shell git describe --abbrev=0 --tags)
 COMMIT ?= $(shell git rev-parse HEAD)
 TIME ?= $(shell date +%F_%T)
 
-ifneq ($(MF_BROKER_TYPE),)
-    MF_BROKER_TYPE := $(MF_BROKER_TYPE)
+ifneq ($(MG_BROKER_TYPE),)
+    MG_BROKER_TYPE := $(MG_BROKER_TYPE)
 else
-    MF_BROKER_TYPE=nats
+    MG_BROKER_TYPE=nats
 endif
 
 define compile_service
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) GOARM=$(GOARM) \
-	go build -mod=vendor -tags $(MF_BROKER_TYPE) -ldflags "-s -w \
-	-X 'github.com/mainflux/mainflux.BuildTime=$(TIME)' \
-	-X 'github.com/mainflux/mainflux.Version=$(VERSION)' \
-	-X 'github.com/mainflux/mainflux.Commit=$(COMMIT)'" \
-	-o ${BUILD_DIR}/mainflux-$(1) cmd/main.go
+	go build -mod=vendor -tags $(MG_BROKER_TYPE) -ldflags "-s -w \
+	-X 'github.com/absmach/agent.BuildTime=$(TIME)' \
+	-X 'github.com/absmach/agent.Version=$(VERSION)' \
+	-X 'github.com/absmach/agent.Commit=$(COMMIT)'" \
+	-o ${BUILD_DIR}/magistrala-$(1) cmd/main.go
 endef
 
 define make_docker
@@ -37,7 +37,7 @@ define make_docker
 		--build-arg VERSION=$(VERSION) \
 		--build-arg COMMIT=$(COMMIT) \
 		--build-arg TIME=$(TIME) \
-		--tag=mainflux/$(svc) \
+		--tag=magistrala/$(svc) \
 		-f docker/Dockerfile .
 endef
 
@@ -47,7 +47,7 @@ define make_docker_dev
 	docker build \
 		--no-cache \
 		--build-arg SVC=$(svc) \
-		--tag=mainflux/$(svc) \
+		--tag=magistrala/$(svc) \
 		-f docker/Dockerfile.dev ./build
 endef
 
@@ -82,7 +82,7 @@ dockers_dev: $(DOCKERS_DEV)
 
 define docker_push
 	for svc in $(SERVICES); do \
-		docker push mainflux/$$svc:$(1); \
+		docker push magistrala/$$svc:$(1); \
 	done
 endef
 
@@ -97,7 +97,7 @@ release:
 	git checkout $(version)
 	$(MAKE) dockers
 	for svc in $(SERVICES); do \
-		docker tag mainflux/$$svc mainflux/$$svc:$(version); \
+		docker tag magistrala/$$svc magistrala/$$svc:$(version); \
 	done
 	$(call docker_push,$(version))
 

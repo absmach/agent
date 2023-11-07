@@ -1,3 +1,6 @@
+// Copyright (c) Abstract Machines
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -13,77 +16,49 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/absmach/agent/pkg/agent"
+	"github.com/absmach/agent/pkg/agent/api"
+	"github.com/absmach/agent/pkg/bootstrap"
+	"github.com/absmach/agent/pkg/conn"
+	"github.com/absmach/agent/pkg/edgex"
+	"github.com/absmach/magistrala/logger"
+	"github.com/absmach/magistrala/pkg/errors"
+	"github.com/absmach/magistrala/pkg/messaging/brokers"
+	"github.com/caarlos0/env/v9"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	kitprometheus "github.com/go-kit/kit/metrics/prometheus"
-	"github.com/mainflux/agent/pkg/agent"
-	"github.com/mainflux/agent/pkg/agent/api"
-	"github.com/mainflux/agent/pkg/bootstrap"
-	"github.com/mainflux/agent/pkg/conn"
-	"github.com/mainflux/agent/pkg/edgex"
-	"github.com/mainflux/mainflux"
-	"github.com/mainflux/mainflux/logger"
-	"github.com/mainflux/mainflux/pkg/errors"
-	"github.com/mainflux/mainflux/pkg/messaging/brokers"
-	nats "github.com/nats-io/nats.go"
 	stdprometheus "github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 )
 
-const (
-	defHTTPPort                   = "9999"
-	defBootstrapURL               = "http://localhost:9013/things/bootstrap"
-	defBootstrapID                = ""
-	defBootstrapKey               = ""
-	defBootstrapRetries           = "5"
-	defBootstrapSkipTLS           = "false"
-	defBootstrapRetryDelaySeconds = "10"
-	defLogLevel                   = "info"
-	defEdgexURL                   = "http://localhost:48090/api/v1/"
-	defMqttURL                    = "localhost:1883"
-	defCtrlChan                   = ""
-	defDataChan                   = ""
-	defEncryption                 = "false"
-	defMqttUsername               = ""
-	defMqttPassword               = ""
-	defMqttSkipTLSVer             = "true"
-	defMqttMTLS                   = "false"
-	defMqttCA                     = "ca.crt"
-	defMqttQoS                    = "0"
-	defMqttRetain                 = "false"
-	defMqttCert                   = "thing.cert"
-	defMqttPrivKey                = "thing.key"
-	defConfigFile                 = "config.toml"
-	defNatsURL                    = nats.DefaultURL
-	defHeartbeatInterval          = "10s"
-	defTermSessionTimeout         = "60s"
-	envConfigFile                 = "MF_AGENT_CONFIG_FILE"
-	envLogLevel                   = "MF_AGENT_LOG_LEVEL"
-	envEdgexURL                   = "MF_AGENT_EDGEX_URL"
-	envMqttURL                    = "MF_AGENT_MQTT_URL"
-	envHTTPPort                   = "MF_AGENT_HTTP_PORT"
-	envBootstrapURL               = "MF_AGENT_BOOTSTRAP_URL"
-	envBootstrapID                = "MF_AGENT_BOOTSTRAP_ID"
-	envBootstrapKey               = "MF_AGENT_BOOTSTRAP_KEY"
-	envBootstrapRetries           = "MF_AGENT_BOOTSTRAP_RETRIES"
-	envBootstrapSkipTLS           = "MF_AGENT_BOOTSTRAP_SKIP_TLS"
-	envBootstrapRetryDelaySeconds = "MF_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS"
-	envCtrlChan                   = "MF_AGENT_CONTROL_CHANNEL"
-	envDataChan                   = "MF_AGENT_DATA_CHANNEL"
-	envEncryption                 = "MF_AGENT_ENCRYPTION"
-	envNatsURL                    = "MF_AGENT_NATS_URL"
-
-	envMqttUsername       = "MF_AGENT_MQTT_USERNAME"
-	envMqttPassword       = "MF_AGENT_MQTT_PASSWORD"
-	envMqttSkipTLSVer     = "MF_AGENT_MQTT_SKIP_TLS"
-	envMqttMTLS           = "MF_AGENT_MQTT_MTLS"
-	envMqttCA             = "MF_AGENT_MQTT_CA"
-	envMqttQoS            = "MF_AGENT_MQTT_QOS"
-	envMqttRetain         = "MF_AGENT_MQTT_RETAIN"
-	envMqttCert           = "MF_AGENT_MQTT_CLIENT_CERT"
-	envMqttPrivKey        = "MF_AGENT_MQTT_CLIENT_PK"
-	envHeartbeatInterval  = "MF_AGENT_HEARTBEAT_INTERVAL"
-	envTermSessionTimeout = "MF_AGENT_TERMINAL_SESSION_TIMEOUT"
-)
+type config struct {
+	ConfigFile             string `env:"MG_AGENT_CONFIG_FILE" envDefault:"config.toml"`
+	LogLevel               string `env:"MG_AGENT_LOG_LEVEL" envDefault:"info"`
+	EdgexURL               string `env:"MG_AGENT_EDGEX_URL" envDefault:"http://localhost:48090/api/v1/"`
+	MqttURL                string `env:"MG_AGENT_MQTT_URL" envDefault:"localhost:1883"`
+	HTTPPort               string `env:"MG_AGENT_HTTP_PORT" envDefault:"9999"`
+	BootstrapURL           string `env:"MG_AGENT_BOOTSTRAP_URL" envDefault:"http://localhost:9013/things/bootstrap"`
+	BootstrapID            string `env:"MG_AGENT_BOOTSTRAP_ID" envDefault:""`
+	BootstrapKey           string `env:"MG_AGENT_BOOTSTRAP_KEY" envDefault:""`
+	BootstrapRetries       string `env:"MG_AGENT_BOOTSTRAP_RETRIES" envDefault:"5"`
+	BootstrapSkipTLS       string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS" envDefault:"false"`
+	BootstrapRetryDelaySec string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
+	ControlChannel         string `env:"MG_AGENT_CONTROL_CHANNEL" envDefault:""`
+	DataChannel            string `env:"MG_AGENT_DATA_CHANNEL" envDefault:""`
+	Encryption             string `env:"MG_AGENT_ENCRYPTION" envDefault:"false"`
+	NatsURL                string `env:"MG_AGENT_NATS_URL" envDefault:"nats://localhost:4222"`
+	MqttUsername           string `env:"MG_AGENT_MQTT_USERNAME" envDefault:""`
+	MqttPassword           string `env:"MG_AGENT_MQTT_PASSWORD" envDefault:""`
+	MqttSkipTLSVer         string `env:"MG_AGENT_MQTT_SKIP_TLS" envDefault:"true"`
+	MqttMTLS               string `env:"MG_AGENT_MQTT_MTLS" envDefault:"false"`
+	MqttCA                 string `env:"MG_AGENT_MQTT_CA" envDefault:"ca.crt"`
+	MqttQoS                string `env:"MG_AGENT_MQTT_QOS" envDefault:"0"`
+	MqttRetain             string `env:"MG_AGENT_MQTT_RETAIN" envDefault:"false"`
+	MqttCert               string `env:"MG_AGENT_MQTT_CLIENT_CERT" envDefault:"thing.cert"`
+	MqttPrivateKey         string `env:"MG_AGENT_MQTT_CLIENT_CERT" envDefault:"thing.key"`
+	HeartbeatInterval      string `env:"MG_AGENT_HEARTBEAT_INTERVAL" envDefault:"10s"`
+	TermSessionTimeout     string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT" envDefault:"60s"`
+}
 
 var (
 	errFailedToSetupMTLS       = errors.New("Failed to set up mtls certs")
@@ -96,7 +71,12 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 
-	cfg, err := loadEnvConfig()
+	c := config{}
+	if err := env.Parse(&c); err != nil {
+		log.Fatalf("failed to load configuration : %s", err.Error())
+	}
+
+	cfg, err := loadEnvConfig(c)
 	if err != nil {
 		log.Fatalf(fmt.Sprintf("Failed to load config: %s", err))
 	}
@@ -106,12 +86,12 @@ func main() {
 		log.Fatalf(fmt.Sprintf("Failed to create logger: %s", err))
 	}
 
-	cfg, err = loadBootConfig(cfg, logger)
+	cfg, err = loadBootConfig(c, cfg, logger)
 	if err != nil {
 		logger.Error(fmt.Sprintf("Failed to load config: %s", err))
 	}
 
-	pubsub, err := brokers.NewPubSub(cfg.Server.BrokerURL, "", logger)
+	pubsub, err := brokers.NewPubSub(ctx, cfg.Server.BrokerURL, logger)
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Failed to connect to Broker: %s %s", err, cfg.Server.BrokerURL))
 	}
@@ -171,16 +151,16 @@ func main() {
 	}
 }
 
-func loadEnvConfig() (agent.Config, error) {
+func loadEnvConfig(cfg config) (agent.Config, error) {
 	sc := agent.ServerConfig{
-		BrokerURL: mainflux.Env(envNatsURL, defNatsURL),
-		Port:      mainflux.Env(envHTTPPort, defHTTPPort),
+		BrokerURL: cfg.NatsURL,
+		Port:      cfg.HTTPPort,
 	}
 	cc := agent.ChanConfig{
-		Control: mainflux.Env(envCtrlChan, defCtrlChan),
-		Data:    mainflux.Env(envDataChan, defDataChan),
+		Control: cfg.ControlChannel,
+		Data:    cfg.DataChannel,
 	}
-	interval, err := time.ParseDuration(mainflux.Env(envHeartbeatInterval, defHeartbeatInterval))
+	interval, err := time.ParseDuration(cfg.HeartbeatInterval)
 	if err != nil {
 		return agent.Config{}, errors.Wrap(errFailedToConfigHeartbeat, err)
 	}
@@ -188,50 +168,50 @@ func loadEnvConfig() (agent.Config, error) {
 	ch := agent.HeartbeatConfig{
 		Interval: interval,
 	}
-	termSessionTimeout, err := time.ParseDuration(mainflux.Env(envTermSessionTimeout, defTermSessionTimeout))
+	termSessionTimeout, err := time.ParseDuration(cfg.TermSessionTimeout)
 	if err != nil {
 		return agent.Config{}, err
 	}
 	ct := agent.TerminalConfig{
 		SessionTimeout: termSessionTimeout,
 	}
-	ec := agent.EdgexConfig{URL: mainflux.Env(envEdgexURL, defEdgexURL)}
-	lc := agent.LogConfig{Level: mainflux.Env(envLogLevel, defLogLevel)}
+	ec := agent.EdgexConfig{URL: cfg.EdgexURL}
+	lc := agent.LogConfig{Level: cfg.LogLevel}
 
-	mtls, err := strconv.ParseBool(mainflux.Env(envMqttMTLS, defMqttMTLS))
+	mtls, err := strconv.ParseBool(cfg.MqttMTLS)
 	if err != nil {
 		mtls = false
 	}
 
-	skipTLSVer, err := strconv.ParseBool(mainflux.Env(defMqttSkipTLSVer, envMqttSkipTLSVer))
+	skipTLSVer, err := strconv.ParseBool(cfg.MqttSkipTLSVer)
 	if err != nil {
 		skipTLSVer = true
 	}
 
-	qos, err := strconv.Atoi(mainflux.Env(envMqttQoS, defMqttQoS))
+	qos, err := strconv.Atoi(cfg.MqttQoS)
 	if err != nil {
 		qos = 0
 	}
 
-	retain, err := strconv.ParseBool(mainflux.Env(envMqttRetain, defMqttRetain))
+	retain, err := strconv.ParseBool(cfg.MqttRetain)
 	if err != nil {
 		retain = false
 	}
 
 	mc := agent.MQTTConfig{
-		URL:         mainflux.Env(envMqttURL, defMqttURL),
-		Username:    mainflux.Env(envMqttUsername, defMqttUsername),
-		Password:    mainflux.Env(envMqttPassword, defMqttPassword),
+		URL:         cfg.MqttURL,
+		Username:    cfg.MqttUsername,
+		Password:    cfg.MqttPassword,
 		MTLS:        mtls,
-		CAPath:      mainflux.Env(envMqttCA, defMqttCA),
-		CertPath:    mainflux.Env(envMqttCert, defMqttCert),
-		PrivKeyPath: mainflux.Env(envMqttPrivKey, defMqttPrivKey),
+		CAPath:      cfg.MqttCA,
+		CertPath:    cfg.MqttCert,
+		PrivKeyPath: cfg.MqttPrivateKey,
 		SkipTLSVer:  skipTLSVer,
 		QoS:         byte(qos),
 		Retain:      retain,
 	}
 
-	file := mainflux.Env(envConfigFile, defConfigFile)
+	file := cfg.ConfigFile
 	c := agent.NewConfig(sc, cc, ec, lc, mc, ch, ct, file)
 	mc, err = loadCertificate(c.MQTT)
 	if err != nil {
@@ -245,19 +225,19 @@ func loadEnvConfig() (agent.Config, error) {
 	return c, nil
 }
 
-func loadBootConfig(c agent.Config, logger logger.Logger) (agent.Config, error) {
-	file := mainflux.Env(envConfigFile, defConfigFile)
-	skipTLS, err := strconv.ParseBool(mainflux.Env(envBootstrapSkipTLS, defBootstrapSkipTLS))
+func loadBootConfig(cfg config, c agent.Config, logger logger.Logger) (agent.Config, error) {
+	file := cfg.ConfigFile
+	skipTLS, err := strconv.ParseBool(cfg.BootstrapSkipTLS)
 	if err != nil {
 		return agent.Config{}, err
 	}
 	bsConfig := bootstrap.Config{
-		URL:           mainflux.Env(envBootstrapURL, defBootstrapURL),
-		ID:            mainflux.Env(envBootstrapID, defBootstrapID),
-		Key:           mainflux.Env(envBootstrapKey, defBootstrapKey),
-		Retries:       mainflux.Env(envBootstrapRetries, defBootstrapRetries),
-		RetryDelaySec: mainflux.Env(envBootstrapRetryDelaySeconds, defBootstrapRetryDelaySeconds),
-		Encrypt:       mainflux.Env(envEncryption, defEncryption),
+		URL:           cfg.BootstrapURL,
+		ID:            cfg.BootstrapID,
+		Key:           cfg.BootstrapKey,
+		Retries:       cfg.BootstrapRetries,
+		RetryDelaySec: cfg.BootstrapRetryDelaySec,
+		Encrypt:       cfg.Encryption,
 		SkipTLS:       skipTLS,
 	}
 

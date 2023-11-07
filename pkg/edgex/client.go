@@ -1,4 +1,4 @@
-// Copyright (c) Mainflux
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package edgex
@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	log "github.com/mainflux/mainflux/logger"
+	log "github.com/absmach/magistrala/logger"
 
 	model "github.com/edgexfoundry/go-mod-core-contracts/models"
 )

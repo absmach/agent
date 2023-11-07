@@ -1,4 +1,4 @@
-// Copyright (c) Mainflux
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package api
@@ -27,7 +27,7 @@ type mqttConfig struct {
 	QoS      byte   `json:"qos"`
 }
 
-// Config struct of Mainflux Agent.
+// Config struct of Magistrala Agent.
 type agentConfig struct {
 	Server   serverConfig `json:"server"`
 	Channels chanConfig   `json:"channels"`

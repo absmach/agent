@@ -1,4 +1,4 @@
-// Copyright (c) Mainflux
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package agent
@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/mainflux/mainflux/pkg/errors"
+	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/pelletier/go-toml"
 )
 

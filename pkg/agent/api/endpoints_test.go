@@ -1,4 +1,4 @@
-// Copyright (c) Mainflux
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package api_test
@@ -15,13 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/absmach/agent/pkg/agent"
+	"github.com/absmach/agent/pkg/agent/api"
+	"github.com/absmach/agent/pkg/agent/mocks"
 	paho "github.com/eclipse/paho.mqtt.golang"
-	"github.com/mainflux/agent/pkg/agent"
-	"github.com/mainflux/agent/pkg/agent/api"
-	"github.com/mainflux/agent/pkg/agent/mocks"
 
-	"github.com/mainflux/mainflux/logger"
-	"github.com/mainflux/mainflux/pkg/messaging/brokers"
+	"github.com/absmach/magistrala/logger"
+	"github.com/absmach/magistrala/pkg/messaging/brokers"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -62,7 +62,7 @@ func newService(ctx context.Context) (agent.Service, error) {
 		return nil, err
 	}
 
-	pubsub, err := brokers.NewPubSub(brokerAddress, "", logger)
+	pubsub, err := brokers.NewPubSub(ctx, brokerAddress, logger)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to connect to Broker: %s %s", err, brokerAddress)
 	}

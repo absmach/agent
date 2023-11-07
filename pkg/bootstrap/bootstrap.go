@@ -1,4 +1,4 @@
-// Copyright (c) Mainflux
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package bootstrap
@@ -15,12 +15,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/mainflux/agent/pkg/agent"
+	"github.com/absmach/agent/pkg/agent"
 
+	"github.com/absmach/magistrala/bootstrap"
+	log "github.com/absmach/magistrala/logger"
+	errors "github.com/absmach/magistrala/pkg/errors"
 	export "github.com/mainflux/export/pkg/config"
-	"github.com/mainflux/mainflux/bootstrap"
-	log "github.com/mainflux/mainflux/logger"
-	errors "github.com/mainflux/mainflux/pkg/errors"
 )
 
 const exportConfigFile = "/configs/export/config.toml"

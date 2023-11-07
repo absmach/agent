@@ -1,3 +1,6 @@
+// Copyright (c) Abstract Machines
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -6,13 +9,15 @@ import (
 	"log"
 	"os"
 
-	mflog "github.com/mainflux/mainflux/logger"
-	"github.com/mainflux/mainflux/pkg/messaging"
-	"github.com/mainflux/mainflux/pkg/messaging/brokers"
+	mflog "github.com/absmach/magistrala/logger"
+	"github.com/absmach/magistrala/pkg/messaging"
+	"github.com/absmach/magistrala/pkg/messaging/brokers"
 	"github.com/nats-io/nats.go"
 )
 
 func main() {
+	ctx := context.Background()
+
 	var urls = flag.String("s", nats.DefaultURL, "The nats server URLs (separated by comma)")
 	var showHelp = flag.Bool("h", false, "Show help message")
 
@@ -36,7 +41,7 @@ func main() {
 		log.Fatalf("failed to init logger: %s", err)
 	}
 
-	ps, err := brokers.NewPublisher(*urls)
+	ps, err := brokers.NewPublisher(ctx, *urls)
 	if err != nil {
 		logger.Error(err.Error())
 		return

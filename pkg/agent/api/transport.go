@@ -1,4 +1,4 @@
-// Copyright (c) Mainflux
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package api
@@ -7,9 +7,9 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/absmach/agent/pkg/agent"
+	"github.com/absmach/magistrala"
 	"github.com/go-zoo/bone"
-	"github.com/mainflux/agent/pkg/agent"
-	"github.com/mainflux/mainflux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"net/http"
@@ -52,7 +52,7 @@ func MakeHandler(svc agent.Service) http.Handler {
 	))
 
 	r.Handle("/metrics", promhttp.Handler())
-	r.GetFunc("/health", mainflux.Health("agent", ""))
+	r.GetFunc("/health", magistrala.Health("agent", ""))
 
 	return r
 }

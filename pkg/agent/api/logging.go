@@ -1,4 +1,4 @@
-// Copyright (c) Mainflux
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package api
@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mainflux/agent/pkg/agent"
-	log "github.com/mainflux/mainflux/logger"
+	"github.com/absmach/agent/pkg/agent"
+	log "github.com/absmach/magistrala/logger"
 )
 
 var _ agent.Service = (*loggingMiddleware)(nil)

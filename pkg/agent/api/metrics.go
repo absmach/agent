@@ -1,4 +1,4 @@
-// Copyright (c) Mainflux
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 //go:build !test
@@ -10,8 +10,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/absmach/agent/pkg/agent"
 	"github.com/go-kit/kit/metrics"
-	"github.com/mainflux/agent/pkg/agent"
 )
 
 var _ agent.Service = (*metricsMiddleware)(nil)
