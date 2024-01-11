@@ -1,15 +1,10 @@
-// Copyright (c) Magistrala
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package errors
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
 // Error specifies an API that must be fullfiled by error type.
@@ -33,6 +28,14 @@ var _ Error = (*customError)(nil)
 type customError struct {
 	msg string
 	err Error
+}
+
+// New returns an Error that formats as the given text.
+func New(text string) Error {
+	return &customError{
+		msg: text,
+		err: nil,
+	}
 }
 
 func (ce *customError) Error() string {
@@ -68,7 +71,7 @@ func (ce *customError) MarshalJSON() ([]byte, error) {
 }
 
 // Contains inspects if e2 error is contained in any layer of e1 error.
-func Contains(e1 error, e2 error) bool {
+func Contains(e1, e2 error) bool {
 	if e1 == nil || e2 == nil {
 		return e2 == e1
 	}
@@ -83,7 +86,7 @@ func Contains(e1 error, e2 error) bool {
 }
 
 // Wrap returns an Error that wrap err with wrapper.
-func Wrap(wrapper error, err error) error {
+func Wrap(wrapper, err error) error {
 	if wrapper == nil || err == nil {
 		return wrapper
 	}
@@ -121,24 +124,5 @@ func cast(err error) Error {
 	return &customError{
 		msg: err.Error(),
 		err: nil,
-	}
-}
-
-// New returns an Error that formats as the given text.
-func New(text string) Error {
-	return &customError{
-		msg: text,
-		err: nil,
-	}
-}
-
-func SignalHandler(ctx context.Context) error {
-	c := make(chan os.Signal, 2)
-	signal.Notify(c, syscall.SIGINT, syscall.SIGABRT)
-	select {
-	case sig := <-c:
-		return fmt.Errorf("%s", sig)
-	case <-ctx.Done():
-		return nil
 	}
 }

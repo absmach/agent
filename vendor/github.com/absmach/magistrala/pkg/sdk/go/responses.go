@@ -1,4 +1,4 @@
-// Copyright (c) Magistrala
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package sdk
@@ -85,4 +85,9 @@ type SubscriptionPage struct {
 
 type identifyThingResp struct {
 	ID string `json:"id,omitempty"`
+}
+
+type DomainsPage struct {
+	Domains []Domain `json:"domains"`
+	pageRes
 }

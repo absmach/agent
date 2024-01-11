@@ -1,4 +1,4 @@
-// Copyright (c) Magistrala
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package errors
@@ -47,6 +47,10 @@ func (ce *sdkError) StatusCode() int {
 
 // NewSDKError returns an SDK Error that formats as the given text.
 func NewSDKError(err error) SDKError {
+	if err == nil {
+		return nil
+	}
+
 	if e, ok := err.(Error); ok {
 		return &sdkError{
 			statusCode: 0,
@@ -67,6 +71,10 @@ func NewSDKError(err error) SDKError {
 
 // NewSDKErrorWithStatus returns an SDK Error setting the status code.
 func NewSDKErrorWithStatus(err error, statusCode int) SDKError {
+	if err == nil {
+		return nil
+	}
+
 	if e, ok := err.(Error); ok {
 		return &sdkError{
 			statusCode: statusCode,
@@ -89,6 +97,10 @@ func NewSDKErrorWithStatus(err error, statusCode int) SDKError {
 // Since multiple status codes can be valid, we can pass multiple status codes to the function.
 // The function then checks for errors in the HTTP response.
 func CheckError(resp *http.Response, expectedStatusCodes ...int) SDKError {
+	if resp == nil {
+		return nil
+	}
+
 	for _, expectedStatusCode := range expectedStatusCodes {
 		if resp.StatusCode == expectedStatusCode {
 			return nil

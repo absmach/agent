@@ -1,4 +1,4 @@
-// Copyright (c) Magistrala
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package clients
@@ -45,11 +45,12 @@ type Client struct {
 	Owner       string      `json:"owner,omitempty"` // nullable
 	Credentials Credentials `json:"credentials,omitempty"`
 	Metadata    Metadata    `json:"metadata,omitempty"`
-	CreatedAt   time.Time   `json:"created_at"`
+	CreatedAt   time.Time   `json:"created_at,omitempty"`
 	UpdatedAt   time.Time   `json:"updated_at,omitempty"`
 	UpdatedBy   string      `json:"updated_by,omitempty"`
-	Status      Status      `json:"status"`         // 1 for enabled, 0 for disabled
-	Role        Role        `json:"role,omitempty"` // 1 for admin, 0 for normal user
+	Status      Status      `json:"status,omitempty"` // 1 for enabled, 0 for disabled
+	Role        Role        `json:"role,omitempty"`   // 1 for admin, 0 for normal user
+	Permissions []string    `json:"permissions,omitempty"`
 }
 
 // ClientsPage contains page related metadata as well as list
@@ -77,6 +78,9 @@ type Repository interface {
 	// RetrieveAll retrieves all clients.
 	RetrieveAll(ctx context.Context, pm Page) (ClientsPage, error)
 
+	// RetrieveAllBasicInfo list all clients only with basic information.
+	RetrieveAllBasicInfo(ctx context.Context, pm Page) (ClientsPage, error)
+
 	// RetrieveAllByIDs retrieves for given client IDs .
 	RetrieveAllByIDs(ctx context.Context, pm Page) (ClientsPage, error)
 
@@ -94,6 +98,9 @@ type Repository interface {
 
 	// UpdateOwner updates owner for client with given id.
 	UpdateOwner(ctx context.Context, client Client) (Client, error)
+
+	// UpdateRole updates role for client with given id.
+	UpdateRole(ctx context.Context, client Client) (Client, error)
 
 	// ChangeStatus changes client status to enabled or disabled
 	ChangeStatus(ctx context.Context, client Client) (Client, error)

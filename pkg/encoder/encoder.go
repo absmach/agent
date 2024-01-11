@@ -6,7 +6,7 @@ package encoder
 import (
 	"time"
 
-	"github.com/mainflux/senml"
+	"github.com/absmach/senml"
 )
 
 func EncodeSenML(bn, n, sv string) ([]byte, error) {

@@ -1,4 +1,4 @@
-// Copyright (c) Magistrala
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package apiutil
@@ -58,16 +58,22 @@ var (
 	ErrEmptyList = errors.New("empty list provided")
 
 	// ErrMalformedPolicy indicates that policies are malformed.
-	ErrMalformedPolicy = errors.New("malfalmormed policy")
+	ErrMalformedPolicy = errors.New("malformed policy")
 
 	// ErrMissingPolicySub indicates that policies are subject.
-	ErrMissingPolicySub = errors.New("malfalmormed policy subject")
+	ErrMissingPolicySub = errors.New("malformed policy subject")
 
 	// ErrMissingPolicyObj indicates missing policies object.
-	ErrMissingPolicyObj = errors.New("malfalmormed policy object")
+	ErrMissingPolicyObj = errors.New("malformed policy object")
 
 	// ErrMalformedPolicyAct indicates missing policies action.
-	ErrMalformedPolicyAct = errors.New("malfalmormed policy action")
+	ErrMalformedPolicyAct = errors.New("malformed policy action")
+
+	// ErrMalformedPolicyRel indicates missing policies relation.
+	ErrMalformedPolicyRel = errors.New("malformed policy relation")
+
+	// ErrMalformedPolicyPer indicates missing policies relation.
+	ErrMalformedPolicyPer = errors.New("malformed policy permission")
 
 	// ErrMissingCertData indicates missing cert data (ttl).
 	ErrMissingCertData = errors.New("missing certificate data")
@@ -114,8 +120,11 @@ var (
 	// ErrMaxLevelExceeded indicates an invalid group level.
 	ErrMaxLevelExceeded = errors.New("invalid group level (should be lower than 5)")
 
-	// ErrBootstrapState indicates an invalid boostrap state.
+	// ErrBootstrapState indicates an invalid bootstrap state.
 	ErrBootstrapState = errors.New("invalid bootstrap state")
+
+	// ErrInvitationState indicates an invalid invitation state.
+	ErrInvitationState = errors.New("invalid invitation state")
 
 	// ErrMissingIdentity indicates missing entity Identity.
 	ErrMissingIdentity = errors.New("missing entity identity")
@@ -152,4 +161,7 @@ var (
 
 	// ErrUnsupportedContentType indicates unacceptable or lack of Content-Type.
 	ErrUnsupportedContentType = errors.New("unsupported content type")
+
+	// ErrRollbackTx indicates failed to rollback transaction.
+	ErrRollbackTx = errors.New("failed to rollback transaction")
 )

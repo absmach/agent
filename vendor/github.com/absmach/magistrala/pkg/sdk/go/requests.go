@@ -1,4 +1,4 @@
-// Copyright (c) Magistrala
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package sdk
@@ -41,11 +41,6 @@ type UserPasswordReq struct {
 type Connection struct {
 	ThingID   string `json:"thing_id,omitempty"`
 	ChannelID string `json:"channel_id,omitempty"`
-}
-
-type tokenReq struct {
-	Identity string `json:"identity"`
-	Secret   string `json:"secret"`
 }
 
 type UsersRelationRequest struct {

@@ -1,6 +1,7 @@
 # Magistrala
-
-[![Build Status](https://mainflux.semaphoreci.com/badges/mainflux/branches/master.svg?style=shields)](https://mainflux.semaphoreci.com/projects/mainflux)
+[![Check License Header](https://github.com/absmach/magistrala/actions/workflows/check-license.yaml/badge.svg?branch=main)](https://github.com/absmach/magistrala/actions/workflows/check-license.yaml)
+[![Check the consistency of generated files](https://github.com/absmach/magistrala/actions/workflows/check-generated-files.yml/badge.svg?branch=main)](https://github.com/absmach/magistrala/actions/workflows/check-generated-files.yml)
+[![Continuous Delivery](https://github.com/absmach/magistrala/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/absmach/magistrala/actions/workflows/build.yml)
 [![go report card][grc-badge]][grc-url]
 [![coverage][cov-badge]][cov-url]
 [![license][license]](LICENSE)
@@ -39,7 +40,7 @@ For more details, check out the [official documentation][docs].
 The following are needed to run Magistrala:
 
 - [Docker](https://docs.docker.com/install/) (version 20.10)
-- [Docker compose](https://docs.docker.com/compose/install/) (version 1.29)
+- [Docker compose](https://docs.docker.com/compose/install/) (version 2.20)
 
 Developing Magistrala will also require:
 
@@ -51,7 +52,7 @@ Developing Magistrala will also require:
 Once the prerequisites are installed, execute the following commands from the project's root:
 
 ```bash
-docker-compose -f docker/docker-compose.yml up
+docker-compose -f docker/docker-compose.yml --env-file docker/.env --profile nats_nats up
 ```
 
 This will bring up the Magistrala docker services and interconnect them. This command can also be executed using the project's included Makefile:
@@ -162,8 +163,6 @@ Data collection is on by default and can be disabled by setting the env variable
 By utilizing Magistrala, you actively contribute to its improvement. Together, we can build a more robust and efficient IoT platform. Thank you for your trust in Magistrala!
 
 [banner]: https://github.com/mainflux/docs/blob/master/docs/img/gopherBanner.jpg
-[ci-badge]: https://semaphoreci.com/api/v1/absmach/magistrala/branches/master/badge.svg
-[ci-url]: https://semaphoreci.com/absmach/magistrala
 [docs]: https://docs.mainflux.io
 [docker]: https://www.docker.com
 [forum]: https://groups.google.com/forum/#!forum/mainflux
@@ -171,7 +170,7 @@ By utilizing Magistrala, you actively contribute to its improvement. Together, w
 [gitter-badge]: https://badges.gitter.im/Join%20Chat.svg
 [grc-badge]: https://goreportcard.com/badge/github.com/absmach/magistrala
 [grc-url]: https://goreportcard.com/report/github.com/absmach/magistrala
-[cov-badge]: https://codecov.io/gh/absmach/magistrala/branch/master/graph/badge.svg
+[cov-badge]: https://codecov.io/gh/absmach/magistrala/graph/badge.svg?token=SEMDAO3L09
 [cov-url]: https://codecov.io/gh/absmach/magistrala
 [license]: https://img.shields.io/badge/license-Apache%20v2.0-blue.svg
 [twitter]: https://twitter.com/mainflux

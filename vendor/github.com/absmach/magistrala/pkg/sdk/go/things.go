@@ -1,4 +1,4 @@
-// Copyright (c) Magistrala
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package sdk
@@ -13,17 +13,18 @@ import (
 )
 
 const (
-	thingsEndpoint     = "things"
-	connectEndpoint    = "connect"
-	disconnectEndpoint = "disconnect"
-	identifyEndpoint   = "identify"
-	shareEndpoint      = "share"
-	unshareEndpoint    = "unshare"
+	permissionsEndpoint = "permissions"
+	thingsEndpoint      = "things"
+	connectEndpoint     = "connect"
+	disconnectEndpoint  = "disconnect"
+	identifyEndpoint    = "identify"
+	shareEndpoint       = "share"
+	unshareEndpoint     = "unshare"
 )
 
 // Thing represents magistrala thing.
 type Thing struct {
-	ID          string                 `json:"id"`
+	ID          string                 `json:"id,omitempty"`
 	Name        string                 `json:"name,omitempty"`
 	Credentials Credentials            `json:"credentials"`
 	Tags        []string               `json:"tags,omitempty"`
@@ -32,6 +33,7 @@ type Thing struct {
 	CreatedAt   time.Time              `json:"created_at,omitempty"`
 	UpdatedAt   time.Time              `json:"updated_at,omitempty"`
 	Status      string                 `json:"status,omitempty"`
+	Permissions []string               `json:"permissions,omitempty"`
 }
 
 func (sdk mgSDK) CreateThing(thing Thing, token string) (Thing, errors.SDKError) {
@@ -130,6 +132,22 @@ func (sdk mgSDK) Thing(id, token string) (Thing, errors.SDKError) {
 	return t, nil
 }
 
+func (sdk mgSDK) ThingPermissions(id, token string) (Thing, errors.SDKError) {
+	url := fmt.Sprintf("%s/%s/%s/%s", sdk.thingsURL, thingsEndpoint, id, permissionsEndpoint)
+
+	_, body, sdkerr := sdk.processRequest(http.MethodGet, url, token, nil, nil, http.StatusOK)
+	if sdkerr != nil {
+		return Thing{}, sdkerr
+	}
+
+	var t Thing
+	if err := json.Unmarshal(body, &t); err != nil {
+		return Thing{}, errors.NewSDKError(err)
+	}
+
+	return t, nil
+}
+
 func (sdk mgSDK) UpdateThing(t Thing, token string) (Thing, errors.SDKError) {
 	data, err := json.Marshal(t)
 	if err != nil {
@@ -188,27 +206,6 @@ func (sdk mgSDK) UpdateThingSecret(id, secret, token string) (Thing, errors.SDKE
 	}
 
 	var t Thing
-	if err = json.Unmarshal(body, &t); err != nil {
-		return Thing{}, errors.NewSDKError(err)
-	}
-
-	return t, nil
-}
-
-func (sdk mgSDK) UpdateThingOwner(t Thing, token string) (Thing, errors.SDKError) {
-	data, err := json.Marshal(t)
-	if err != nil {
-		return Thing{}, errors.NewSDKError(err)
-	}
-
-	url := fmt.Sprintf("%s/%s/%s/owner", sdk.thingsURL, thingsEndpoint, t.ID)
-
-	_, body, sdkerr := sdk.processRequest(http.MethodPatch, url, token, data, nil, http.StatusOK)
-	if sdkerr != nil {
-		return Thing{}, sdkerr
-	}
-
-	t = Thing{}
 	if err = json.Unmarshal(body, &t); err != nil {
 		return Thing{}, errors.NewSDKError(err)
 	}
@@ -296,4 +293,10 @@ func (sdk mgSDK) ListThingUsers(thingID string, pm PageMetadata, token string) (
 	}
 
 	return up, nil
+}
+
+func (sdk mgSDK) DeleteThing(id, token string) errors.SDKError {
+	url := fmt.Sprintf("%s/%s/%s", sdk.thingsURL, thingsEndpoint, id)
+	_, _, sdkerr := sdk.processRequest(http.MethodDelete, url, token, nil, nil, http.StatusNoContent)
+	return sdkerr
 }

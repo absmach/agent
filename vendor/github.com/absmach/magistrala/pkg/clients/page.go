@@ -1,4 +1,4 @@
-// Copyright (c) Magistrala
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package clients
@@ -18,4 +18,6 @@ type Page struct {
 	Status     Status   `json:"status,omitempty"`
 	IDs        []string `json:"ids,omitempty"`
 	Identity   string   `json:"identity,omitempty"`
+	Role       *Role    `json:"-"`
+	ListPerms  bool     `json:"-"`
 }

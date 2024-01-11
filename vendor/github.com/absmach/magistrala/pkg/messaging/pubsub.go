@@ -1,4 +1,4 @@
-// Copyright (c) Magistrala
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package messaging
@@ -55,6 +55,8 @@ type Subscriber interface {
 }
 
 // PubSub  represents aggregation interface for publisher and subscriber.
+//
+//go:generate mockery --name PubSub --filename pubsub.go --quiet --note "Copyright (c) Abstract Machines"
 type PubSub interface {
 	Publisher
 	Subscriber

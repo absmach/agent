@@ -5,7 +5,7 @@ MG_DOCKER_IMAGE_NAME_PREFIX ?= magistrala
 BUILD_DIR = build
 SERVICES = auth users things http coap ws lora influxdb-writer influxdb-reader mongodb-writer \
 	mongodb-reader cassandra-writer cassandra-reader postgres-writer postgres-reader timescale-writer timescale-reader cli \
-	bootstrap opcua twins mqtt provision certs smtp-notifier smpp-notifier
+	bootstrap opcua twins mqtt provision certs smtp-notifier smpp-notifier invitations
 DOCKERS = $(addprefix docker_,$(SERVICES))
 DOCKERS_DEV = $(addprefix docker_dev_,$(SERVICES))
 CGO_ENABLED ?= 0
@@ -14,15 +14,15 @@ VERSION ?= $(shell git describe --abbrev=0 --tags)
 COMMIT ?= $(shell git rev-parse HEAD)
 TIME ?= $(shell date +%F_%T)
 USER_REPO ?= $(shell git remote get-url origin | sed -e 's/.*\/\([^/]*\)\/\([^/]*\).*/\1_\2/' )
-BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD  2>/dev/null || git describe --tags --abbrev=0  2>/dev/null )
 empty:=
 space:= $(empty) $(empty)
 # Docker compose project name should follow this guidelines: https://docs.docker.com/compose/reference/#use--p-to-specify-a-project-name
-DOCKER_PROJECT ?= $(shell echo $(subst $(space),,$(USER_REPO)_$(BRANCH)) | tr -c -s '[:alnum:][=-=]' '_' | tr '[:upper:]' '[:lower:]')
+DOCKER_PROJECT ?= $(shell echo $(subst $(space),,$(USER_REPO)) | tr -c -s '[:alnum:][=-=]' '_' | tr '[:upper:]' '[:lower:]')
 DOCKER_COMPOSE_COMMANDS_SUPPORTED := up down config
 DEFAULT_DOCKER_COMPOSE_COMMAND  := up
 GRPC_MTLS_CERT_FILES_EXISTS = 0
 DOCKER_PROFILE ?= $(MG_MQTT_BROKER_TYPE)_$(MG_MESSAGE_BROKER_TYPE)
+MOCKERY_VERSION=v2.38.0
 ifneq ($(MG_MESSAGE_BROKER_TYPE),)
     MG_MESSAGE_BROKER_TYPE := $(MG_MESSAGE_BROKER_TYPE)
 else
@@ -35,15 +35,15 @@ else
     MG_MQTT_BROKER_TYPE=nats
 endif
 
-ifneq ($(MG_ES_STORE_TYPE),)
-    MG_ES_STORE_TYPE := $(MG_ES_STORE_TYPE)
+ifneq ($(MG_ES_TYPE),)
+    MG_ES_TYPE := $(MG_ES_TYPE)
 else
-    MG_ES_STORE_TYPE=nats
+    MG_ES_TYPE=nats
 endif
 
 define compile_service
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) GOARM=$(GOARM) \
-	go build -tags $(MG_MESSAGE_BROKER_TYPE) --tags $(MG_ES_STORE_TYPE) -ldflags "-s -w \
+	go build -tags $(MG_MESSAGE_BROKER_TYPE) --tags $(MG_ES_TYPE) -ldflags "-s -w \
 	-X 'github.com/absmach/magistrala.BuildTime=$(TIME)' \
 	-X 'github.com/absmach/magistrala.Version=$(VERSION)' \
 	-X 'github.com/absmach/magistrala.Commit=$(COMMIT)'" \
@@ -119,10 +119,22 @@ ifdef pv
 endif
 
 install:
-	cp ${BUILD_DIR}/* $(GOBIN)
+	for file in $(BUILD_DIR)/*; do \
+		cp $$file $(GOBIN)/magistrala-`basename $$file`; \
+	done
 
-test:
-	go test -mod=vendor -v -race -count 1 -tags test $(shell go list ./... | grep -v 'vendor\|cmd')
+mocks:
+	@which mockery > /dev/null || go install github.com/vektra/mockery/v2@$(MOCKERY_VERSION)
+	@unset MOCKERY_VERSION && go generate ./...
+
+
+DIRS = consumers readers postgres internal opcua
+test: mocks
+	mkdir -p coverage
+	@for dir in $(DIRS); do \
+        go test -v --race -count 1 -tags test -coverprofile=coverage/$$dir.out $$(go list ./... | grep $$dir | grep -v 'cmd'); \
+    done
+	go test -v --race -count 1 -tags test -coverprofile=coverage/coverage.out $$(go list ./... | grep -v 'consumers\|readers\|postgres\|internal\|opcua\|cmd')
 
 proto:
 	protoc -I. --go_out=. --go_opt=paths=source_relative pkg/messaging/*.proto
@@ -165,7 +177,7 @@ rundev:
 	cd scripts && ./run.sh
 
 grpc_mtls_certs:
-	$(MAKE) -C docker/ssl users_grpc_certs things_grpc_certs
+	$(MAKE) -C docker/ssl auth_grpc_certs things_grpc_certs
 
 check_tls:
 ifeq ($(GRPC_TLS),true)
@@ -191,7 +203,7 @@ check_certs: check_mtls check_tls
 ifeq ($(GRPC_MTLS_CERT_FILES_EXISTS),0)
 ifeq ($(filter true,$(GRPC_MTLS) $(GRPC_TLS)),true)
 ifeq ($(filter $(DEFAULT_DOCKER_COMPOSE_COMMAND),$(DOCKER_COMPOSE_COMMAND)),$(DEFAULT_DOCKER_COMPOSE_COMMAND))
-	$(MAKE) -C docker/ssl users_grpc_certs things_grpc_certs
+	$(MAKE) -C docker/ssl auth_grpc_certs things_grpc_certs
 endif
 endif
 endif
@@ -231,14 +243,14 @@ else
 endif
 
 run: check_certs change_config
-ifeq ($(MG_ES_STORE_TYPE), redis)
-	sed -i "s/MG_ES_STORE_TYPE=.*/MG_ES_STORE_TYPE=redis/" docker/.env
-	sed -i "s/MG_ES_STORE_URL=.*/MG_ES_STORE_URL=$$\{MG_REDIS_URL}/" docker/.env
+ifeq ($(MG_ES_TYPE), redis)
+	sed -i "s/MG_ES_TYPE=.*/MG_ES_TYPE=redis/" docker/.env
+	sed -i "s/MG_ES_URL=.*/MG_ES_URL=$$\{MG_REDIS_URL}/" docker/.env
 	docker-compose -f docker/docker-compose.yml --profile $(DOCKER_PROFILE) --profile redis -p $(DOCKER_PROJECT) $(DOCKER_COMPOSE_COMMAND) $(args)
 else
-	sed -i "s,MG_ES_STORE_TYPE=.*,MG_ES_STORE_TYPE=$$\{MG_MESSAGE_BROKER_TYPE}," docker/.env
-	sed -i "s,MG_ES_STORE_URL=.*,MG_ES_STORE_URL=$$\{MG_$(shell echo ${MG_MESSAGE_BROKER_TYPE} | tr 'a-z' 'A-Z')_URL\}," docker/.env
-	docker-compose -f docker/docker-compose.yml --profile $(DOCKER_PROFILE) -p $(DOCKER_PROJECT) $(DOCKER_COMPOSE_COMMAND) $(args)
+	sed -i "s,MG_ES_TYPE=.*,MG_ES_TYPE=$$\{MG_MESSAGE_BROKER_TYPE}," docker/.env
+	sed -i "s,MG_ES_URL=.*,MG_ES_URL=$$\{MG_$(shell echo ${MG_MESSAGE_BROKER_TYPE} | tr 'a-z' 'A-Z')_URL\}," docker/.env
+	docker-compose -f docker/docker-compose.yml --env-file docker/.env --profile $(DOCKER_PROFILE) -p $(DOCKER_PROJECT) $(DOCKER_COMPOSE_COMMAND) $(args)
 endif
 
 run_addons: check_certs

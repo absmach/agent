@@ -1,7 +1,9 @@
-// Copyright (c) Magistrala
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package errors
+
+import "errors"
 
 var (
 	// ErrAuthentication indicates failure occurred while authenticating the entity.
@@ -9,6 +11,9 @@ var (
 
 	// ErrAuthorization indicates failure occurred while authorizing the entity.
 	ErrAuthorization = New("failed to perform authorization over the entity")
+
+	// ErrDomainAuthorization indicates failure occurred while authorizing the domain.
+	ErrDomainAuthorization = New("failed to perform authorization over the domain")
 
 	// ErrMalformedEntity indicates a malformed entity specification.
 	ErrMalformedEntity = New("malformed entity specification")
@@ -40,5 +45,12 @@ var (
 	// ErrLogin indicates wrong login credentials.
 	ErrLogin = New("invalid user id or secret")
 
-	ErrUnsupportedContentType = New("invalid content type")
+	// ErrUnsupportedContentType indicates invalid content type.
+	ErrUnsupportedContentType = errors.New("invalid content type")
+
+	// ErrUnidentified indicates unidentified error.
+	ErrUnidentified = errors.New("unidentified error")
+
+	// ErrEmptyPath indicates empty file path.
+	ErrEmptyPath = errors.New("empty file path")
 )

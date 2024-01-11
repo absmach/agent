@@ -12,7 +12,7 @@ github.com/Microsoft/go-winio/pkg/guid
 # github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5
 ## explicit
 github.com/Nvveen/Gotty
-# github.com/absmach/magistrala v0.11.1-0.20231102134813-44408395e6a3
+# github.com/absmach/magistrala v0.0.0-20240110171157-9f573850fc4b
 ## explicit; go 1.21
 github.com/absmach/magistrala
 github.com/absmach/magistrala/bootstrap
@@ -20,6 +20,7 @@ github.com/absmach/magistrala/internal/apiutil
 github.com/absmach/magistrala/logger
 github.com/absmach/magistrala/pkg/clients
 github.com/absmach/magistrala/pkg/errors
+github.com/absmach/magistrala/pkg/errors/service
 github.com/absmach/magistrala/pkg/events
 github.com/absmach/magistrala/pkg/messaging
 github.com/absmach/magistrala/pkg/messaging/brokers
@@ -28,6 +29,9 @@ github.com/absmach/magistrala/pkg/messaging/rabbitmq
 github.com/absmach/magistrala/pkg/sdk/go
 github.com/absmach/magistrala/pkg/transformers
 github.com/absmach/magistrala/pkg/transformers/senml
+# github.com/absmach/senml v1.0.5
+## explicit; go 1.21
+github.com/absmach/senml
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
@@ -136,9 +140,6 @@ github.com/mainflux/export/pkg/config
 # github.com/mainflux/mainflux v0.12.0
 ## explicit; go 1.14
 github.com/mainflux/mainflux/pkg/errors
-# github.com/mainflux/senml v1.5.0
-## explicit; go 1.13
-github.com/mainflux/senml
 # github.com/matttproud/golang_protobuf_extensions/v2 v2.0.0
 ## explicit; go 1.19
 github.com/matttproud/golang_protobuf_extensions/v2/pbutil
@@ -245,8 +246,8 @@ github.com/xeipuuv/gojsonreference
 # github.com/xeipuuv/gojsonschema v1.2.0
 ## explicit
 github.com/xeipuuv/gojsonschema
-# golang.org/x/crypto v0.14.0
-## explicit; go 1.17
+# golang.org/x/crypto v0.17.0
+## explicit; go 1.18
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/curve25519
 golang.org/x/crypto/curve25519/internal/field
@@ -273,14 +274,14 @@ golang.org/x/net/trace
 ## explicit; go 1.17
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.13.0
-## explicit; go 1.17
+# golang.org/x/sys v0.15.0
+## explicit; go 1.18
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/text v0.13.0
-## explicit; go 1.17
+# golang.org/x/text v0.14.0
+## explicit; go 1.18
 golang.org/x/text/cases
 golang.org/x/text/internal
 golang.org/x/text/internal/language

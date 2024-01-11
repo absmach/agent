@@ -1,4 +1,4 @@
-// Copyright (c) Magistrala
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package sdk
@@ -70,27 +70,34 @@ var (
 )
 
 type PageMetadata struct {
-	Total      uint64   `json:"total"`
-	Offset     uint64   `json:"offset"`
-	Limit      uint64   `json:"limit"`
-	Level      uint64   `json:"level,omitempty"`
-	Email      string   `json:"email,omitempty"`
-	Name       string   `json:"name,omitempty"`
-	Type       string   `json:"type,omitempty"`
-	Metadata   Metadata `json:"metadata,omitempty"`
-	Status     string   `json:"status,omitempty"`
-	Action     string   `json:"action,omitempty"`
-	Subject    string   `json:"subject,omitempty"`
-	Object     string   `json:"object,omitempty"`
-	Permission string   `json:"permission,omitempty"`
-	Tag        string   `json:"tag,omitempty"`
-	Owner      string   `json:"owner,omitempty"`
-	SharedBy   string   `json:"shared_by,omitempty"`
-	Visibility string   `json:"visibility,omitempty"`
-	OwnerID    string   `json:"owner_id,omitempty"`
-	Topic      string   `json:"topic,omitempty"`
-	Contact    string   `json:"contact,omitempty"`
-	State      string   `json:"state,omitempty"`
+	Total           uint64   `json:"total"`
+	Offset          uint64   `json:"offset"`
+	Limit           uint64   `json:"limit"`
+	Order           string   `json:"order,omitempty"`
+	Direction       string   `json:"direction,omitempty"`
+	Level           uint64   `json:"level,omitempty"`
+	Identity        string   `json:"identity,omitempty"`
+	Name            string   `json:"name,omitempty"`
+	Type            string   `json:"type,omitempty"`
+	Metadata        Metadata `json:"metadata,omitempty"`
+	Status          string   `json:"status,omitempty"`
+	Action          string   `json:"action,omitempty"`
+	Subject         string   `json:"subject,omitempty"`
+	Object          string   `json:"object,omitempty"`
+	Permission      string   `json:"permission,omitempty"`
+	Tag             string   `json:"tag,omitempty"`
+	Owner           string   `json:"owner,omitempty"`
+	SharedBy        string   `json:"shared_by,omitempty"`
+	Visibility      string   `json:"visibility,omitempty"`
+	OwnerID         string   `json:"owner_id,omitempty"`
+	Topic           string   `json:"topic,omitempty"`
+	Contact         string   `json:"contact,omitempty"`
+	State           string   `json:"state,omitempty"`
+	ListPermissions string   `json:"list_perms,omitempty"`
+	InvitedBy       string   `json:"invited_by,omitempty"`
+	UserID          string   `json:"user_id,omitempty"`
+	DomainID        string   `json:"domain_id,omitempty"`
+	Relation        string   `json:"relation,omitempty"`
 }
 
 // Credentials represent client credentials: it contains
@@ -102,6 +109,8 @@ type Credentials struct {
 }
 
 // SDK contains Magistrala API.
+//
+//go:generate mockery --name SDK --output=../mocks --filename sdk.go --quiet --note "Copyright (c) Abstract Machines"
 type SDK interface {
 	// CreateUser registers magistrala user.
 	//
@@ -181,16 +190,16 @@ type SDK interface {
 	//  fmt.Println(user)
 	UpdateUserIdentity(user User, token string) (User, errors.SDKError)
 
-	// UpdateUserOwner updates the user's owner.
+	// UpdateUserRole updates the user's role.
 	//
 	// example:
 	//  user := sdk.User{
 	//    ID:   "userID",
-	//    Owner: "ownerID",
+	//    Role: "role",
 	//  }
-	//  user, _ := sdk.UpdateUserOwner(user, "token")
+	//  user, _ := sdk.UpdateUserRole(user, "token")
 	//  fmt.Println(user)
-	UpdateUserOwner(user User, token string) (User, errors.SDKError)
+	UpdateUserRole(user User, token string) (User, errors.SDKError)
 
 	// ResetPasswordRequest sends a password request email to a user.
 	//
@@ -230,22 +239,24 @@ type SDK interface {
 	// CreateToken receives credentials and returns user token.
 	//
 	// example:
-	//  user := sdk.User{
-	//    Credentials: sdk.Credentials{
+	//  lt := sdk.Login{
 	//      Identity: "john.doe@example",
 	//      Secret:   "12345678",
-	//    },
 	//  }
-	//  token, _ := sdk.CreateToken(user)
+	//  token, _ := sdk.CreateToken(lt)
 	//  fmt.Println(token)
-	CreateToken(user User) (Token, errors.SDKError)
+	CreateToken(lt Login) (Token, errors.SDKError)
 
 	// RefreshToken receives credentials and returns user token.
 	//
 	// example:
-	//  token, _ := sdk.RefreshToken("refresh_token")
+	//  lt := sdk.Login{
+	//      DomainID:   "domain_id",
+	//  }
+	// example:
+	//  token, _ := sdk.RefreshToken(lt,"refresh_token")
 	//  fmt.Println(token)
-	RefreshToken(token string) (Token, errors.SDKError)
+	RefreshToken(lt Login, token string) (Token, errors.SDKError)
 
 	// ListUserChannels list all channels belongs a particular user id.
 	//
@@ -348,6 +359,13 @@ type SDK interface {
 	//  fmt.Println(thing)
 	Thing(id, token string) (Thing, errors.SDKError)
 
+	// ThingPermissions returns user permissions on the thing id.
+	//
+	// example:
+	//  thing, _ := sdk.Thing("thingID", "token")
+	//  fmt.Println(thing)
+	ThingPermissions(id, token string) (Thing, errors.SDKError)
+
 	// UpdateThing updates existing thing.
 	//
 	// example:
@@ -379,17 +397,6 @@ type SDK interface {
 	//  thing, err := sdk.UpdateThingSecret("thingID", "newSecret", "token")
 	//  fmt.Println(thing)
 	UpdateThingSecret(id, secret, token string) (Thing, errors.SDKError)
-
-	// UpdateThingOwner updates the client's owner.
-	//
-	// example:
-	//  thing := sdk.Thing{
-	//    ID:    "thingID",
-	//    Owner: "ownerID",
-	//  }
-	//  thing, _ := sdk.UpdateThingOwner(thing, "token")
-	//  fmt.Println(thing)
-	UpdateThingOwner(thing Thing, token string) (Thing, errors.SDKError)
 
 	// EnableThing changes client status to enabled.
 	//
@@ -445,6 +452,13 @@ type SDK interface {
 	//  users, _ := sdk.ListThingUsers("thing_id", pm, "token")
 	//  fmt.Println(users)
 	ListThingUsers(thingID string, pm PageMetadata, token string) (UsersPage, errors.SDKError)
+
+	// DeleteThing deletes a thing with the given id.
+	//
+	// example:
+	//  err := sdk.DeleteThing("thingID", "token")
+	//  fmt.Println(err)
+	DeleteThing(id, token string) errors.SDKError
 
 	// CreateGroup creates new group and returns its id.
 	//
@@ -502,6 +516,13 @@ type SDK interface {
 	//  fmt.Println(group)
 	Group(id, token string) (Group, errors.SDKError)
 
+	// GroupPermissions returns user permissions by group ID.
+	//
+	// example:
+	//  group, _ := sdk.Group("groupID", "token")
+	//  fmt.Println(group)
+	GroupPermissions(id, token string) (Group, errors.SDKError)
+
 	// UpdateGroup updates existing group.
 	//
 	// example:
@@ -537,8 +558,8 @@ type SDK interface {
 	//		Relation: "viewer", // available options: "owner", "admin", "editor", "viewer"
 	//  	UserIDs: ["user_id_1", "user_id_2", "user_id_3"]
 	// }
-	// group, _ := sdk.AddUserToGroup("groupID",req, "token")
-	// fmt.Println(group)
+	// err := sdk.AddUserToGroup("groupID",req, "token")
+	// fmt.Println(err)
 	AddUserToGroup(groupID string, req UsersRelationRequest, token string) errors.SDKError
 
 	// RemoveUserFromGroup remove user from a group.
@@ -548,8 +569,8 @@ type SDK interface {
 	//		Relation: "viewer", // available options: "owner", "admin", "editor", "viewer"
 	//  	UserIDs: ["user_id_1", "user_id_2", "user_id_3"]
 	// }
-	// group, _ := sdk.RemoveUserFromGroup("groupID",req, "token")
-	// fmt.Println(group)
+	// err := sdk.RemoveUserFromGroup("groupID",req, "token")
+	// fmt.Println(err)
 	RemoveUserFromGroup(groupID string, req UsersRelationRequest, token string) errors.SDKError
 
 	// ListGroupUsers list all users in the group id .
@@ -575,6 +596,13 @@ type SDK interface {
 	//  groups, _ := sdk.ListGroupChannels("groupID", pm, "token")
 	//  fmt.Println(groups)
 	ListGroupChannels(groupID string, pm PageMetadata, token string) (GroupsPage, errors.SDKError)
+
+	// DeleteGroup delete given group id.
+	//
+	// example:
+	//  err := sdk.DeleteGroup("groupID", "token")
+	//  fmt.Println(err)
+	DeleteGroup(id, token string) errors.SDKError
 
 	// CreateChannel creates new channel and returns its id.
 	//
@@ -640,6 +668,13 @@ type SDK interface {
 	//  channel, _ := sdk.Channel("channelID", "token")
 	//  fmt.Println(channel)
 	Channel(id, token string) (Channel, errors.SDKError)
+
+	// ChannelPermissions returns user permissions on the channel ID.
+	//
+	// example:
+	//  channel, _ := sdk.Channel("channelID", "token")
+	//  fmt.Println(channel)
+	ChannelPermissions(id, token string) (Channel, errors.SDKError)
 
 	// UpdateChannel updates existing channel.
 	//
@@ -735,6 +770,13 @@ type SDK interface {
 	//  fmt.Println(groups)
 	ListChannelUserGroups(channelID string, pm PageMetadata, token string) (GroupsPage, errors.SDKError)
 
+	// DeleteChannel delete given group id.
+	//
+	// example:
+	//  err := sdk.DeleteChannel("channelID", "token")
+	//  fmt.Println(err)
+	DeleteChannel(id, token string) errors.SDKError
+
 	// Connect bulk connects things to channels specified by id.
 	//
 	// example:
@@ -786,9 +828,13 @@ type SDK interface {
 	// ReadMessages read messages of specified channel.
 	//
 	// example:
-	//  msgs, _ := sdk.ReadMessages("channelID", "token")
+	//  pm := sdk.PageMetadata{
+	//    Offset: 0,
+	//    Limit:  10,
+	//  }
+	//  msgs, _ := sdk.ReadMessages(pm,"channelID", "token")
 	//  fmt.Println(msgs)
-	ReadMessages(chanID, token string) (MessagesPage, errors.SDKError)
+	ReadMessages(pm PageMetadata, chanID, token string) (MessagesPage, errors.SDKError)
 
 	// SetContentType sets message content type.
 	//
@@ -958,6 +1004,160 @@ type SDK interface {
 	//  err := sdk.DeleteSubscription("id", "token")
 	//  fmt.Println(err)
 	DeleteSubscription(id, token string) errors.SDKError
+
+	// CreateDomain creates new domain and returns its details.
+	//
+	// example:
+	//  domain := sdk.Domain{
+	//    Name: "My Domain",
+	//    Metadata: sdk.Metadata{
+	//      "key": "value",
+	//    },
+	//  }
+	//  domain, _ := sdk.CreateDomain(group, "token")
+	//  fmt.Println(domain)
+	CreateDomain(d Domain, token string) (Domain, errors.SDKError)
+
+	// Domain retrieve domain information of given domain ID .
+	//
+	// example:
+	//  domain, _ := sdk.Domain("domainID", "token")
+	//  fmt.Println(domain)
+	Domain(domainID, token string) (Domain, errors.SDKError)
+
+	// DomainPermissions retrieve user permissions on the given domain ID .
+	//
+	// example:
+	//  permissions, _ := sdk.DomainPermissions("domainID", "token")
+	//  fmt.Println(permissions)
+	DomainPermissions(domainID, token string) (Domain, errors.SDKError)
+
+	// UpdateDomain updates details of the given domain ID.
+	//
+	// example:
+	//  domain := sdk.Domain{
+	//    ID : "domainID"
+	//    Name: "New Domain Name",
+	//    Metadata: sdk.Metadata{
+	//      "key": "value",
+	//    },
+	//  }
+	//  domain, _ := sdk.UpdateDomain(domain, "token")
+	//  fmt.Println(domain)
+	UpdateDomain(d Domain, token string) (Domain, errors.SDKError)
+
+	// Domains returns list of domain for the given filters.
+	//
+	// example:
+	//  pm := sdk.PageMetadata{
+	//    Offset: 0,
+	//    Limit:  10,
+	//    Name:   "My Domain",
+	//    Permission : "view"
+	//  }
+	//  domains, _ := sdk.Domains(pm, "token")
+	//  fmt.Println(domains)
+	Domains(pm PageMetadata, token string) (DomainsPage, errors.SDKError)
+
+	// ListDomainUsers returns list of users for the given domain ID and filters.
+	//
+	// example:
+	//  pm := sdk.PageMetadata{
+	//    Offset: 0,
+	//    Limit:  10,
+	//    Permission : "view"
+	//  }
+	//  users, _ := sdk.ListDomainUsers("domainID", pm, "token")
+	//  fmt.Println(users)
+	ListDomainUsers(domainID string, pm PageMetadata, token string) (UsersPage, errors.SDKError)
+
+	// ListUserDomains returns list of domains for the given user ID and filters.
+	//
+	// example:
+	//  pm := sdk.PageMetadata{
+	//    Offset: 0,
+	//    Limit:  10,
+	//    Permission : "view"
+	//  }
+	//  domains, _ := sdk.ListUserDomains("userID", pm, "token")
+	//  fmt.Println(domains)
+	ListUserDomains(userID string, pm PageMetadata, token string) (DomainsPage, errors.SDKError)
+
+	// EnableDomain changes the status of the domain to enabled.
+	//
+	// example:
+	//  err := sdk.EnableDomain("domainID", "token")
+	//  fmt.Println(err)
+	EnableDomain(domainID, token string) errors.SDKError
+
+	// DisableDomain changes the status of the domain to disabled.
+	//
+	// example:
+	//  err := sdk.DisableDomain("domainID", "token")
+	//  fmt.Println(err)
+	DisableDomain(domainID, token string) errors.SDKError
+
+	// AddUserToDomain adds a user to a domain.
+	//
+	// example:
+	// req := sdk.UsersRelationRequest{
+	//		Relation: "viewer", // available options: "owner", "admin", "editor", "viewer",  "member"
+	//  	UserIDs: ["user_id_1", "user_id_2", "user_id_3"]
+	// }
+	// err := sdk.AddUserToDomain("domainID", req, "token")
+	// fmt.Println(err)
+	AddUserToDomain(domainID string, req UsersRelationRequest, token string) errors.SDKError
+
+	// RemoveUserFromDomain removes a user from a domain.
+	//
+	// example:
+	// req := sdk.UsersRelationRequest{
+	//		Relation: "viewer", // available options: "owner", "admin", "editor", "viewer" , "member"
+	//  	UserIDs: ["user_id_1", "user_id_2", "user_id_3"]
+	// }
+	// err := sdk.RemoveUserFromDomain("domainID", req, "token")
+	// fmt.Println(err)
+	RemoveUserFromDomain(domainID string, req UsersRelationRequest, token string) errors.SDKError
+
+	// SendInvitation sends an invitation to the email address associated with the given user.
+	//
+	// For example:
+	//  invitation := sdk.Invitation{
+	//    DomainID: "domainID",
+	//    UserID:   "userID",
+	//    Relation: "viewer", // available options: "owner", "admin", "editor", "viewer"
+	//  }
+	//  err := sdk.SendInvitation(invitation, "token")
+	//  fmt.Println(err)
+	SendInvitation(invitation Invitation, token string) (err error)
+
+	// Invitation returns an invitation.
+	//
+	// For example:
+	//  invitation, _ := sdk.Invitation("userID", "domainID", "token")
+	//  fmt.Println(invitation)
+	Invitation(userID, domainID, token string) (invitation Invitation, err error)
+
+	// Invitations returns a list of invitations.
+	//
+	// For example:
+	//  invitations, _ := sdk.Invitations(PageMetadata{Offset: 0, Limit: 10, Domain: "domainID"}, "token")
+	//  fmt.Println(invitations)
+	Invitations(pm PageMetadata, token string) (invitations InvitationPage, err error)
+
+	// AcceptInvitation accepts an invitation by adding the user to the domain that they were invited to.
+	//
+	// For example:
+	//  err := sdk.AcceptInvitation("domainID", "token")
+	//  fmt.Println(err)
+	AcceptInvitation(domainID, token string) (err error)
+
+	// DeleteInvitation deletes an invitation.
+	//
+	// For example:
+	//  err := sdk.DeleteInvitation("userID", "domainID", "token")
+	//  fmt.Println(err)
+	DeleteInvitation(userID, domainID, token string) (err error)
 }
 
 type mgSDK struct {
@@ -967,6 +1167,8 @@ type mgSDK struct {
 	readerURL      string
 	thingsURL      string
 	usersURL       string
+	domainsURL     string
+	invitationsURL string
 	HostURL        string
 
 	msgContentType ContentType
@@ -981,6 +1183,8 @@ type Config struct {
 	ReaderURL      string
 	ThingsURL      string
 	UsersURL       string
+	DomainsURL     string
+	InvitationsURL string
 	HostURL        string
 
 	MsgContentType  ContentType
@@ -996,6 +1200,8 @@ func NewSDK(conf Config) SDK {
 		readerURL:      conf.ReaderURL,
 		thingsURL:      conf.ThingsURL,
 		usersURL:       conf.UsersURL,
+		domainsURL:     conf.DomainsURL,
+		invitationsURL: conf.InvitationsURL,
 		HostURL:        conf.HostURL,
 
 		msgContentType: conf.MsgContentType,
@@ -1011,8 +1217,8 @@ func NewSDK(conf Config) SDK {
 
 // processRequest creates and send a new HTTP request, and checks for errors in the HTTP response.
 // It then returns the response headers, the response body, and the associated error(s) (if any).
-func (sdk mgSDK) processRequest(method, url, token string, data []byte, headers map[string]string, expectedRespCodes ...int) (http.Header, []byte, errors.SDKError) {
-	req, err := http.NewRequest(method, url, bytes.NewReader(data))
+func (sdk mgSDK) processRequest(method, reqUrl, token string, data []byte, headers map[string]string, expectedRespCodes ...int) (http.Header, []byte, errors.SDKError) {
+	req, err := http.NewRequest(method, reqUrl, bytes.NewReader(data))
 	if err != nil {
 		return make(http.Header), []byte{}, errors.NewSDKError(err)
 	}
@@ -1071,11 +1277,17 @@ func (pm PageMetadata) query() (string, error) {
 	if pm.Total != 0 {
 		q.Add("total", strconv.FormatUint(pm.Total, 10))
 	}
+	if pm.Order != "" {
+		q.Add("order", pm.Order)
+	}
+	if pm.Direction != "" {
+		q.Add("dir", pm.Direction)
+	}
 	if pm.Level != 0 {
 		q.Add("level", strconv.FormatUint(pm.Level, 10))
 	}
-	if pm.Email != "" {
-		q.Add("email", pm.Email)
+	if pm.Identity != "" {
+		q.Add("identity", pm.Identity)
 	}
 	if pm.Name != "" {
 		q.Add("name", pm.Name)
@@ -1122,6 +1334,24 @@ func (pm PageMetadata) query() (string, error) {
 	}
 	if pm.State != "" {
 		q.Add("state", pm.State)
+	}
+	if pm.Permission != "" {
+		q.Add("permission", pm.Permission)
+	}
+	if pm.ListPermissions != "" {
+		q.Add("list_perms", pm.ListPermissions)
+	}
+	if pm.InvitedBy != "" {
+		q.Add("invited_by", pm.InvitedBy)
+	}
+	if pm.UserID != "" {
+		q.Add("user_id", pm.UserID)
+	}
+	if pm.DomainID != "" {
+		q.Add("domain_id", pm.DomainID)
+	}
+	if pm.Relation != "" {
+		q.Add("relation", pm.Relation)
 	}
 
 	return q.Encode(), nil

@@ -1,4 +1,4 @@
-// Copyright (c) Magistrala
+// Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
 package clients
@@ -69,6 +69,17 @@ func ToStatus(status string) (Status, error) {
 // Custom Marshaller for Client/Groups.
 func (s Status) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.String())
+}
+
+func (client Client) MarshalJSON() ([]byte, error) {
+	type Alias Client
+	return json.Marshal(&struct {
+		Alias
+		Status string `json:"status,omitempty"`
+	}{
+		Alias:  (Alias)(client),
+		Status: client.Status.String(),
+	})
 }
 
 // Custom Unmarshaler for Client/Groups.
