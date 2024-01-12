@@ -12,7 +12,7 @@ import (
 	"github.com/absmach/agent/pkg/agent"
 	"github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/messaging"
-	"github.com/mainflux/senml"
+	"github.com/absmach/senml"
 	"robpike.io/filter"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -51,7 +51,6 @@ type broker struct {
 
 // NewBroker returns new MQTT broker instance.
 func NewBroker(svc agent.Service, client mqtt.Client, chann string, messBroker messaging.PubSub, log logger.Logger) MqttBroker {
-
 	return &broker{
 		svc:           svc,
 		client:        client,
@@ -59,7 +58,6 @@ func NewBroker(svc agent.Service, client mqtt.Client, chann string, messBroker m
 		messageBroker: messBroker,
 		channel:       chann,
 	}
-
 }
 
 // Subscribe subscribes to the MQTT message broker.
@@ -151,5 +149,4 @@ func (b *broker) handleMsg(mc mqtt.Client, msg mqtt.Message) {
 			b.logger.Warn(fmt.Sprintf("Services view operation failed: %s", err))
 		}
 	}
-
 }
