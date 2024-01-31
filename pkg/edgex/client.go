@@ -7,16 +7,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
-
-	log "github.com/absmach/magistrala/logger"
 
 	model "github.com/edgexfoundry/go-mod-core-contracts/models"
 )
 
 type Client interface {
-
 	// PushOperation - pushes operation to EdgeX components.
 	PushOperation([]string) (string, error)
 
@@ -32,11 +30,11 @@ type Client interface {
 
 type edgexClient struct {
 	url    string
-	logger log.Logger
+	logger *slog.Logger
 }
 
 // NewClient - Creates ne EdgeX client.
-func NewClient(edgexURL string, logger log.Logger) Client {
+func NewClient(edgexURL string, logger *slog.Logger) Client {
 	return &edgexClient{
 		url:    edgexURL,
 		logger: logger,
@@ -94,7 +92,6 @@ func (ec *edgexClient) FetchMetrics(cmdArr []string) (string, error) {
 
 	resp, err := http.Get(url)
 	if err != nil {
-
 		return "", err
 	}
 	defer resp.Body.Close()

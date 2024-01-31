@@ -7,18 +7,17 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"io"
-	"os"
-
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
 	"github.com/absmach/agent/pkg/agent"
 
 	"github.com/absmach/magistrala/bootstrap"
-	log "github.com/absmach/magistrala/logger"
 	errors "github.com/absmach/magistrala/pkg/errors"
 	export "github.com/mainflux/export/pkg/config"
 )
@@ -56,7 +55,7 @@ type deviceConfig struct {
 }
 
 // Bootstrap - Retrieve device config.
-func Bootstrap(cfg Config, logger log.Logger, file string) error {
+func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 	retries, err := strconv.ParseUint(cfg.Retries, 10, 64)
 	if err != nil {
 		return errors.New(fmt.Sprintf("Invalid BOOTSTRAP_RETRIES value: %s", err))
@@ -81,7 +80,7 @@ func Bootstrap(cfg Config, logger log.Logger, file string) error {
 		if err == nil {
 			break
 		}
-		logger.Error(fmt.Sprintf("Fetching bootstrap failed with error: %s", err))
+		logger.Error("Fetching bootstrap failed", slog.Any("error", err))
 		logger.Debug(fmt.Sprintf("Retries remaining: %d. Retrying in %d seconds", retries, retryDelaySec))
 		time.Sleep(time.Duration(retryDelaySec) * time.Second)
 		if i == int(retries)-1 {
@@ -156,24 +155,24 @@ func fillExportConfig(econf export.Config, c agent.Config) export.Config {
 	return econf
 }
 
-func saveExportConfig(econf export.Config, logger log.Logger) {
+func saveExportConfig(econf export.Config, logger *slog.Logger) {
 	if econf.File == "" {
 		econf.File = exportConfigFile
 	}
 	exConfFileExist := false
 	if _, err := os.Stat(econf.File); err == nil {
 		exConfFileExist = true
-		logger.Info(fmt.Sprintf("Export config file %s exists", econf.File))
+		logger.Info("Export config file exists", slog.Any("file", econf.File))
 	}
 	if !exConfFileExist {
-		logger.Info(fmt.Sprintf("Saving export config file %s", econf.File))
+		logger.Info("Saving export config file", slog.Any("file", econf.File))
 		if err := export.Save(econf); err != nil {
-			logger.Warn(fmt.Sprintf("Failed to save export config file %s", err))
+			logger.Warn("Failed to save export config file", slog.Any("error", err))
 		}
 	}
 }
 
-func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger log.Logger) (deviceConfig, error) {
+func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) (deviceConfig, error) {
 	// Get the SystemCertPool, continue with an empty pool on error.
 	rootCAs, err := x509.SystemCertPool()
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"sort"
 	"strings"
@@ -18,7 +19,6 @@ import (
 	"github.com/absmach/agent/pkg/terminal"
 	paho "github.com/eclipse/paho.mqtt.golang"
 
-	log "github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/messaging"
 	exp "github.com/mainflux/export/pkg/config"
@@ -115,13 +115,13 @@ type agent struct {
 	mqttClient  paho.Client
 	config      *Config
 	edgexClient edgex.Client
-	logger      log.Logger
+	logger      *slog.Logger
 	broker      messaging.PubSub
 	svcs        map[string]Heartbeat
 	terminals   map[string]terminal.Session
 }
 
-func (ag *agent) handle(ctx context.Context, pub messaging.Publisher, logger log.Logger, cfg HeartbeatConfig) handleFunc {
+func (ag *agent) handle(ctx context.Context, pub messaging.Publisher, logger *slog.Logger, cfg HeartbeatConfig) handleFunc {
 	return func(msg *messaging.Message) error {
 		sub := msg.Channel
 		tok := strings.Split(sub, ".")
@@ -156,7 +156,7 @@ func (h handleFunc) Cancel() error {
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, ec edgex.Client, broker messaging.PubSub, logger log.Logger) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, ec edgex.Client, broker messaging.PubSub, logger *slog.Logger) (Service, error) {
 	ag := &agent{
 		mqttClient:  mc,
 		edgexClient: ec,
@@ -179,13 +179,11 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, ec edgex.Client, brok
 	}
 
 	err := ag.broker.Subscribe(ctx, subConfig)
-
 	if err != nil {
 		return ag, errors.Wrap(errNatsSubscribing, err)
 	}
 
 	return ag, nil
-
 }
 
 func (a *agent) Execute(uuid, cmd string) (string, error) {
