@@ -124,29 +124,29 @@ func (b *broker) handleMsg(mc mqtt.Client, msg mqtt.Message) {
 
 	switch cmdType {
 	case control:
-		b.logger.Info(fmt.Sprintf("Control command for uuid %s and command string %s", uuid, cmdStr))
+		b.logger.Info("Control command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if err := b.svc.Control(uuid, cmdStr); err != nil {
 			b.logger.Warn("Control operation failed", slog.Any("error", err))
 		}
 	case exec:
-		b.logger.Info(fmt.Sprintf("Execute command for uuid %s and command string %s", uuid, cmdStr))
+		b.logger.Info("Execute command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if _, err := b.svc.Execute(uuid, cmdStr); err != nil {
 			b.logger.Warn("Execute operation failed", slog.Any("error", err))
 		}
 	case config:
-		b.logger.Info(fmt.Sprintf("Config service for uuid %s and command string %s", uuid, cmdStr))
+		b.logger.Info("Config command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if err := b.svc.ServiceConfig(b.ctx, uuid, cmdStr); err != nil {
-			b.logger.Warn("Execute operation failed", slog.Any("error", err))
+			b.logger.Warn("Config operation failed", slog.Any("error", err))
 		}
 	case service:
-		b.logger.Info(fmt.Sprintf("Services view for uuid %s and command string %s", uuid, cmdStr))
+		b.logger.Info("Services view command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if err := b.svc.ServiceConfig(b.ctx, uuid, cmdStr); err != nil {
 			b.logger.Warn("Services view operation failed", slog.Any("error", err))
 		}
 	case term:
-		b.logger.Info(fmt.Sprintf("Services view for uuid %s and command string %s", uuid, cmdStr))
+		b.logger.Info("Term view command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if err := b.svc.Terminal(uuid, cmdStr); err != nil {
-			b.logger.Warn("Services view operation failed", slog.Any("error", err))
+			b.logger.Warn("Term view operation failed", slog.Any("error", err))
 		}
 	}
 }

@@ -71,7 +71,7 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 		return errors.New(fmt.Sprintf("Invalid BOOTSTRAP_RETRY_DELAY_SECONDS value: %s", err))
 	}
 
-	logger.Info(fmt.Sprintf("Requesting config for %s from %s", cfg.ID, cfg.URL))
+	logger.Info("Requesting config", slog.String("config_id", cfg.ID), slog.String("config_url", cfg.URL))
 
 	dc := deviceConfig{}
 
@@ -81,7 +81,8 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 			break
 		}
 		logger.Error("Fetching bootstrap failed", slog.Any("error", err))
-		logger.Debug(fmt.Sprintf("Retries remaining: %d. Retrying in %d seconds", retries, retryDelaySec))
+
+		logger.Debug("Retrying...", slog.Uint64("retries_remaining", retries), slog.Uint64("delay", retryDelaySec))
 		time.Sleep(time.Duration(retryDelaySec) * time.Second)
 		if i == int(retries)-1 {
 			logger.Warn("Retries exhausted")

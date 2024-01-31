@@ -93,7 +93,7 @@ func main() {
 
 	pubsub, err := brokers.NewPubSub(ctx, cfg.Server.BrokerURL, logger)
 	if err != nil {
-		log.Fatal(fmt.Sprintf("Failed to connect to Broker: %s %s", err, cfg.Server.BrokerURL))
+		log.Fatal("Failed to connect to Broker", slog.Any("error", err), slog.String("broker_url", cfg.Server.BrokerURL))
 	}
 	defer pubsub.Close()
 
