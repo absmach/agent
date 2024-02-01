@@ -83,7 +83,7 @@ func main() {
 
 	logger, err := initLogger(c.LogLevel)
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatalf(fmt.Sprintf("Failed to create logger: %s", err))
 	}
 
 	cfg, err = loadBootConfig(c, cfg, logger)
@@ -393,7 +393,7 @@ func StopSignalHandler(ctx context.Context, cancel context.CancelFunc, logger *s
 func initLogger(levelText string) (*slog.Logger, error) {
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(levelText)); err != nil {
-		return &slog.Logger{}, fmt.Errorf(`{"level":"error","message":"%s: %s","ts":"%s"}`, err, levelText, time.RFC3339Nano)
+		return &slog.Logger{}, fmt.Errorf(`{"level":"error","message":"%s: %s","ts":"%s"}`, err, levelText, time.Now())
 	}
 
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
