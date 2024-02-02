@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"sync"
@@ -15,7 +16,6 @@ import (
 	"github.com/creack/pty"
 
 	"github.com/absmach/agent/pkg/encoder"
-	"github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/errors"
 )
 
@@ -33,7 +33,7 @@ type term struct {
 	resetTimeout time.Duration
 	timer        *time.Ticker
 	publish      func(channel, payload string) error
-	logger       logger.Logger
+	logger       *slog.Logger
 	mu           sync.Mutex
 }
 
@@ -43,7 +43,7 @@ type Session interface {
 	io.Writer
 }
 
-func NewSession(uuid string, timeout time.Duration, publish func(channel, payload string) error, logger logger.Logger) (Session, error) {
+func NewSession(uuid string, timeout time.Duration, publish func(channel, payload string) error, logger *slog.Logger) (Session, error) {
 	t := &term{
 		logger:       logger,
 		uuid:         uuid,
@@ -90,6 +90,7 @@ func (t *term) resetCounter(timeout time.Duration) {
 		return
 	}
 }
+
 func (t *term) decrementCounter() {
 	t.mu.Lock()
 	defer t.mu.Unlock()

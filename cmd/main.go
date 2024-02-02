@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -21,7 +22,6 @@ import (
 	"github.com/absmach/agent/pkg/bootstrap"
 	"github.com/absmach/agent/pkg/conn"
 	"github.com/absmach/agent/pkg/edgex"
-	"github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/messaging/brokers"
 	"github.com/caarlos0/env/v9"
@@ -81,19 +81,19 @@ func main() {
 		log.Fatalf(fmt.Sprintf("Failed to load config: %s", err))
 	}
 
-	logger, err := logger.New(os.Stdout, cfg.Log.Level)
+	logger, err := initLogger(c.LogLevel)
 	if err != nil {
 		log.Fatalf(fmt.Sprintf("Failed to create logger: %s", err))
 	}
 
 	cfg, err = loadBootConfig(c, cfg, logger)
 	if err != nil {
-		logger.Error(fmt.Sprintf("Failed to load config: %s", err))
+		logger.Error("Failed to load config", slog.Any("error", err))
 	}
 
 	pubsub, err := brokers.NewPubSub(ctx, cfg.Server.BrokerURL, logger)
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("Failed to connect to Broker: %s %s", err, cfg.Server.BrokerURL))
+		log.Fatal("Failed to connect to Broker", slog.Any("error", err), slog.String("broker_url", cfg.Server.BrokerURL))
 	}
 	defer pubsub.Close()
 
@@ -106,7 +106,7 @@ func main() {
 
 	svc, err := agent.New(ctx, mqttClient, &cfg, edgexClient, pubsub, logger)
 	if err != nil {
-		logger.Error(fmt.Sprintf("Error in agent service: %s", err))
+		logger.Error("Error in agent service", slog.Any("error", err))
 		return
 	}
 
@@ -138,7 +138,7 @@ func main() {
 	})
 
 	g.Go(func() error {
-		logger.Info(fmt.Sprintf("Agent service started, exposed port %s", cfg.Server.Port))
+		logger.Info("Agent service started", slog.String("port", cfg.Server.Port))
 		return srv.ListenAndServe()
 	})
 
@@ -147,7 +147,7 @@ func main() {
 	})
 
 	if err := g.Wait(); err != nil {
-		logger.Error(fmt.Sprintf("Agent terminated: %v", err))
+		logger.Error("Agent terminated", slog.Any("error", err))
 	}
 }
 
@@ -225,7 +225,7 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 	return c, nil
 }
 
-func loadBootConfig(cfg config, c agent.Config, logger logger.Logger) (agent.Config, error) {
+func loadBootConfig(cfg config, c agent.Config, logger *slog.Logger) (agent.Config, error) {
 	file := cfg.ConfigFile
 	skipTLS, err := strconv.ParseBool(cfg.BootstrapSkipTLS)
 	if err != nil {
@@ -267,14 +267,14 @@ func loadBootConfig(cfg config, c agent.Config, logger logger.Logger) (agent.Con
 	return bsc, nil
 }
 
-func connectToMQTTBroker(conf agent.MQTTConfig, logger logger.Logger) (mqtt.Client, error) {
+func connectToMQTTBroker(conf agent.MQTTConfig, logger *slog.Logger) (mqtt.Client, error) {
 	name := fmt.Sprintf("agent-%s", conf.Username)
 	conn := func(client mqtt.Client) {
-		logger.Info(fmt.Sprintf("Client %s connected", name))
+		logger.Info("Client connected", slog.String("client_name", name))
 	}
 
 	lost := func(client mqtt.Client, err error) {
-		logger.Info(fmt.Sprintf("Client %s disconnected", name))
+		logger.Info("Client disconnected", slog.String("client_name", name))
 	}
 
 	opts := mqtt.NewClientOptions().
@@ -373,7 +373,7 @@ func loadCertificate(cnfg agent.MQTTConfig) (agent.MQTTConfig, error) {
 	return c, nil
 }
 
-func StopSignalHandler(ctx context.Context, cancel context.CancelFunc, logger logger.Logger, svcName string, server *http.Server) error {
+func StopSignalHandler(ctx context.Context, cancel context.CancelFunc, logger *slog.Logger, svcName string, server *http.Server) error {
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGABRT)
 	select {
@@ -388,4 +388,17 @@ func StopSignalHandler(ctx context.Context, cancel context.CancelFunc, logger lo
 	case <-ctx.Done():
 		return nil
 	}
+}
+
+func initLogger(levelText string) (*slog.Logger, error) {
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(levelText)); err != nil {
+		return &slog.Logger{}, fmt.Errorf(`{"level":"error","message":"%s: %s","ts":"%s"}`, err, levelText, time.Now())
+	}
+
+	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+	})
+
+	return slog.New(logHandler), nil
 }

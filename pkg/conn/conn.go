@@ -6,11 +6,11 @@ package conn
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
 	"github.com/absmach/agent/pkg/agent"
-	"github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/messaging"
 	"github.com/absmach/senml"
 	"robpike.io/filter"
@@ -43,14 +43,14 @@ type MqttBroker interface {
 type broker struct {
 	svc           agent.Service
 	client        mqtt.Client
-	logger        logger.Logger
+	logger        *slog.Logger
 	messageBroker messaging.PubSub
 	channel       string
 	ctx           context.Context
 }
 
 // NewBroker returns new MQTT broker instance.
-func NewBroker(svc agent.Service, client mqtt.Client, chann string, messBroker messaging.PubSub, log logger.Logger) MqttBroker {
+func NewBroker(svc agent.Service, client mqtt.Client, chann string, messBroker messaging.PubSub, log *slog.Logger) MqttBroker {
 	return &broker{
 		svc:           svc,
 		client:        client,
@@ -87,7 +87,7 @@ func (b *broker) handleNatsMsg(mc mqtt.Client, msg mqtt.Message) {
 	}
 	if topic := extractNatsTopic(msg.Topic()); topic != "" {
 		if err := b.messageBroker.Publish(ctx, topic, &message); err != nil {
-			b.logger.Warn(fmt.Sprintf("error publishing message with error: %v", err))
+			b.logger.Warn("Error publishing message", slog.Any("error", err))
 		}
 	}
 }
@@ -110,12 +110,12 @@ func extractNatsTopic(topic string) string {
 func (b *broker) handleMsg(mc mqtt.Client, msg mqtt.Message) {
 	sm, err := senml.Decode(msg.Payload(), senml.JSON)
 	if err != nil {
-		b.logger.Warn(fmt.Sprintf("SenML decode failed: %s", err))
+		b.logger.Warn("SenML decode failed", slog.Any("error", err))
 		return
 	}
 
 	if len(sm.Records) == 0 {
-		b.logger.Error(fmt.Sprintf("SenML payload empty: `%s`", string(msg.Payload())))
+		b.logger.Error("SenML payload empty", slog.Any("payload", msg.Payload()))
 		return
 	}
 	cmdType := sm.Records[0].Name
@@ -124,29 +124,29 @@ func (b *broker) handleMsg(mc mqtt.Client, msg mqtt.Message) {
 
 	switch cmdType {
 	case control:
-		b.logger.Info(fmt.Sprintf("Control command for uuid %s and command string %s", uuid, cmdStr))
+		b.logger.Info("Control command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if err := b.svc.Control(uuid, cmdStr); err != nil {
-			b.logger.Warn(fmt.Sprintf("Control operation failed: %s", err))
+			b.logger.Warn("Control operation failed", slog.Any("error", err))
 		}
 	case exec:
-		b.logger.Info(fmt.Sprintf("Execute command for uuid %s and command string %s", uuid, cmdStr))
+		b.logger.Info("Execute command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if _, err := b.svc.Execute(uuid, cmdStr); err != nil {
-			b.logger.Warn(fmt.Sprintf("Execute operation failed: %s", err))
+			b.logger.Warn("Execute operation failed", slog.Any("error", err))
 		}
 	case config:
-		b.logger.Info(fmt.Sprintf("Config service for uuid %s and command string %s", uuid, cmdStr))
+		b.logger.Info("Config command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if err := b.svc.ServiceConfig(b.ctx, uuid, cmdStr); err != nil {
-			b.logger.Warn(fmt.Sprintf("Execute operation failed: %s", err))
+			b.logger.Warn("Config operation failed", slog.Any("error", err))
 		}
 	case service:
-		b.logger.Info(fmt.Sprintf("Services view for uuid %s and command string %s", uuid, cmdStr))
+		b.logger.Info("Services view command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if err := b.svc.ServiceConfig(b.ctx, uuid, cmdStr); err != nil {
-			b.logger.Warn(fmt.Sprintf("Services view operation failed: %s", err))
+			b.logger.Warn("Services view operation failed", slog.Any("error", err))
 		}
 	case term:
-		b.logger.Info(fmt.Sprintf("Services view for uuid %s and command string %s", uuid, cmdStr))
+		b.logger.Info("Term view command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if err := b.svc.Terminal(uuid, cmdStr); err != nil {
-			b.logger.Warn(fmt.Sprintf("Services view operation failed: %s", err))
+			b.logger.Warn("Term view operation failed", slog.Any("error", err))
 		}
 	}
 }
