@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/absmach/agent/pkg/agent"
-	"github.com/absmach/magistrala/pkg/messaging"
 	"github.com/absmach/senml"
+	"github.com/absmach/supermq/pkg/messaging"
 	"robpike.io/filter"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"

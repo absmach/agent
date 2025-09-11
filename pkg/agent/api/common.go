@@ -27,7 +27,7 @@ type mqttConfig struct {
 	QoS      byte   `json:"qos"`
 }
 
-// Config struct of Magistrala Agent.
+// Config struct of SuperMQ Agent.
 type agentConfig struct {
 	Server   serverConfig `json:"server"`
 	Channels chanConfig   `json:"channels"`

@@ -16,7 +16,7 @@ import (
 	"github.com/creack/pty"
 
 	"github.com/absmach/agent/pkg/encoder"
-	"github.com/absmach/magistrala/pkg/errors"
+	"github.com/absmach/supermq/pkg/errors"
 )
 
 const (

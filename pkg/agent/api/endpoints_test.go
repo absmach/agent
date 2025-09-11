@@ -20,8 +20,8 @@ import (
 	"github.com/absmach/agent/pkg/agent/mocks"
 	paho "github.com/eclipse/paho.mqtt.golang"
 
-	"github.com/absmach/magistrala/logger"
-	"github.com/absmach/magistrala/pkg/messaging/brokers"
+	"github.com/absmach/supermq/logger"
+	"github.com/absmach/supermq/pkg/messaging/brokers"
 	"github.com/stretchr/testify/assert"
 )
 
