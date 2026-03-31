@@ -9,9 +9,9 @@ import (
 	"log"
 	"os"
 
-	mflog "github.com/absmach/magistrala/logger"
-	"github.com/absmach/magistrala/pkg/messaging"
-	"github.com/absmach/magistrala/pkg/messaging/brokers"
+	smqlog "github.com/absmach/supermq/logger"
+	"github.com/absmach/supermq/pkg/messaging"
+	"github.com/absmach/supermq/pkg/messaging/brokers"
 	"github.com/nats-io/nats.go"
 )
 
@@ -36,7 +36,7 @@ func main() {
 
 	subj, msg := args[0], []byte(args[1])
 
-	logger, err := mflog.New(os.Stdout, "info")
+	logger, err := smqlog.New(os.Stdout, "info")
 	if err != nil {
 		log.Fatalf("failed to init logger: %s", err)
 	}

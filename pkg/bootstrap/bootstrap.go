@@ -18,7 +18,7 @@ import (
 	"github.com/absmach/agent/pkg/agent"
 
 	"github.com/absmach/magistrala/bootstrap"
-	errors "github.com/absmach/magistrala/pkg/errors"
+	errors "github.com/absmach/supermq/pkg/errors"
 	export "github.com/mainflux/export/pkg/config"
 )
 
@@ -45,13 +45,13 @@ type ConfigContent struct {
 }
 
 type deviceConfig struct {
-	ClientID       string              `json:"client_id"`
-	ClientSecret   string              `json:"client_secret"`
-	Channels       []bootstrap.Channel `json:"channels"`
-	ClientKey      string              `json:"client_key"`
-	ClientCert     string              `json:"client_cert"`
-	CaCert         string              `json:"ca_cert"`
-	SvcsConf       ServicesConfig      `json:"-"`
+	ClientID     string              `json:"client_id"`
+	ClientSecret string              `json:"client_secret"`
+	Channels     []bootstrap.Channel `json:"channels"`
+	ClientKey    string              `json:"client_key"`
+	ClientCert   string              `json:"client_cert"`
+	CaCert       string              `json:"ca_cert"`
+	SvcsConf     ServicesConfig      `json:"-"`
 }
 
 // Bootstrap - Retrieve device config.

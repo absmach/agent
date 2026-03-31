@@ -40,8 +40,10 @@ services:
     volumes:
       - nodered-data:/data
       - ./nodered/flows.json:/data/flows.json
+      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
     environment:
       TZ: UTC
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
 
   # Magistrala Agent
   agent:

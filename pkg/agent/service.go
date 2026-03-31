@@ -20,8 +20,8 @@ import (
 	"github.com/absmach/agent/pkg/terminal"
 	paho "github.com/eclipse/paho.mqtt.golang"
 
-	"github.com/absmach/magistrala/pkg/errors"
-	"github.com/absmach/magistrala/pkg/messaging"
+	"github.com/absmach/supermq/pkg/errors"
+	"github.com/absmach/supermq/pkg/messaging"
 	exp "github.com/mainflux/export/pkg/config"
 )
 

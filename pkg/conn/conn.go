@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/absmach/agent/pkg/agent"
-	"github.com/absmach/magistrala/pkg/messaging"
+	"github.com/absmach/supermq/pkg/messaging"
 	"github.com/absmach/senml"
 	"robpike.io/filter"
 

@@ -24,8 +24,8 @@ import (
 	"github.com/absmach/agent/pkg/conn"
 	"github.com/absmach/agent/pkg/edgex"
 	"github.com/absmach/agent/pkg/nodered"
-	"github.com/absmach/magistrala/pkg/errors"
-	"github.com/absmach/magistrala/pkg/messaging/brokers"
+	"github.com/absmach/supermq/pkg/errors"
+	"github.com/absmach/supermq/pkg/messaging/brokers"
 	"github.com/caarlos0/env/v9"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	kitprometheus "github.com/go-kit/kit/metrics/prometheus"
@@ -275,7 +275,7 @@ func loadBootConfig(cfg config, c agent.Config, logger *slog.Logger) (agent.Conf
 }
 
 func connectToMQTTBroker(conf agent.MQTTConfig, logger *slog.Logger) (mqtt.Client, error) {
-	name := fmt.Sprintf("agent-%s", conf.Username)
+	name := conf.Username
 	conn := func(client mqtt.Client) {
 		logger.Info("Client connected", slog.String("client_name", name))
 	}
