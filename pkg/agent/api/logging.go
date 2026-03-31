@@ -142,3 +142,21 @@ func (lm loggingMiddleware) Terminal(uuid, cmdStr string) (err error) {
 
 	return lm.svc.Terminal(uuid, cmdStr)
 }
+
+func (lm loggingMiddleware) NodeRed(uuid, cmdStr string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.String("uuid", uuid),
+			slog.String("cmd", cmdStr),
+		}
+		if err != nil {
+			args = append(args, slog.Any("error", err))
+			lm.logger.Warn("NodeRed command failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("NodeRed command completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.NodeRed(uuid, cmdStr)
+}

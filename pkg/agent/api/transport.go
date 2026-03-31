@@ -51,6 +51,12 @@ func MakeHandler(svc agent.Service) http.Handler {
 		encodeResponse,
 	))
 
+	r.Post("/nodered", kithttp.NewServer(
+		nodeRedEndpoint(svc),
+		decodeNodeRedRequest,
+		encodeResponse,
+	))
+
 	r.Handle("/metrics", promhttp.Handler())
 	r.GetFunc("/health", magistrala.Health("agent", ""))
 
@@ -81,6 +87,15 @@ func decodeExecRequest(_ context.Context, r *http.Request) (interface{}, error) 
 
 func decodeAddConfigRequest(_ context.Context, r *http.Request) (interface{}, error) {
 	req := addConfigReq{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+func decodeNodeRedRequest(_ context.Context, r *http.Request) (interface{}, error) {
+	req := nodeRedReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, err
 	}

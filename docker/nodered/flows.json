@@ -1,0 +1,85 @@
+[
+    {
+        "id": "flow-magistrala-agent",
+        "type": "tab",
+        "label": "Magistrala Agent Flow",
+        "disabled": false,
+        "info": "Publishes SenML sensor data to Magistrala cloud every 30s via MQTT over TLS."
+    },
+    {
+        "id": "mqtt-broker-config",
+        "type": "mqtt-broker",
+        "name": "Magistrala Cloud MQTT",
+        "broker": "messaging.magistrala.absmach.eu",
+        "port": "8883",
+        "clientid": "nodered-91e9aff0-b934-48f9-917c-2524e9f25729",
+        "autoConnect": true,
+        "usetls": true,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "credentials": {
+            "user": "91e9aff0-b934-48f9-917c-2524e9f25729",
+            "password": "ec557975-fa05-419d-ba49-4cb07ce73735"
+        },
+        "birthTopic": "",
+        "closeTopic": "",
+        "willTopic": "",
+        "z": ""
+    },
+    {
+        "id": "inject-sensor",
+        "type": "inject",
+        "z": "flow-magistrala-agent",
+        "name": "Every 30s",
+        "props": [{"p": "payload"}],
+        "repeat": "30",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "5",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 150,
+        "y": 160,
+        "wires": [["build-senml"]]
+    },
+    {
+        "id": "build-senml",
+        "type": "function",
+        "z": "flow-magistrala-agent",
+        "name": "Build SenML payload",
+        "func": "var now = Date.now() * 1e6;\nmsg.payload = JSON.stringify([\n    {\"bn\": \"nodered:\", \"bt\": now, \"n\": \"temperature\", \"u\": \"Cel\", \"v\": 22.5 + Math.random() * 2},\n    {\"n\": \"humidity\", \"u\": \"%\", \"v\": 55.0 + Math.random() * 5}\n]);\nmsg.topic = \"m/a1c51744-3317-48e2-9eef-4df37f68b9d1/c/82f1d080-b1ce-41b7-aef2-62b270e551e7/data\";\nreturn msg;",
+        "outputs": 1,
+        "x": 380,
+        "y": 160,
+        "wires": [["mqtt-pub-data", "debug-output"]]
+    },
+    {
+        "id": "mqtt-pub-data",
+        "type": "mqtt out",
+        "z": "flow-magistrala-agent",
+        "name": "Publish to Magistrala",
+        "topic": "",
+        "qos": "0",
+        "retain": "false",
+        "broker": "mqtt-broker-config",
+        "x": 640,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "debug-output",
+        "type": "debug",
+        "z": "flow-magistrala-agent",
+        "name": "Debug",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "complete": "payload",
+        "x": 620,
+        "y": 200,
+        "wires": []
+    }
+]

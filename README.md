@@ -44,7 +44,7 @@ Start Agent with:
 ```bash
 MG_AGENT_BOOTSTRAP_ID=<bootstrap_id> \
 MG_AGENT_BOOTSTRAP_KEY=<bootstrap_key> \
-MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/things/bootstrap \
+MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/clients/bootstrap \
 build/magistrala-agent
 ```
 
@@ -53,7 +53,7 @@ or,if [Magistrala UI](https://github.com/absmach/ui) is used,
 ```bash
 MG_AGENT_BOOTSTRAP_ID=<bootstrap_id> \
 MG_AGENT_BOOTSTRAP_KEY=<bootstrap_key> \
-MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/bootstrap/things/bootstrap \
+MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/bootstrap/clients/bootstrap \
 build/magistrala-agent
 ```
 
@@ -102,7 +102,7 @@ Environment:
 | MG_AGENT_EDGEX_URL | Edgex base url | http://localhost:48090/api/v1/ |
 | MG_AGENT_MQTT_URL | MQTT broker url | localhost:1883 |
 | MG_AGENT_HTTP_PORT | Agent http port | 9999 |
-| MG_AGENT_BOOTSTRAP_URL | Magistrala bootstrap url | http://localhost:9013/things/bootstrap |
+| MG_AGENT_BOOTSTRAP_URL | Magistrala bootstrap url | http://localhost:9013/clients/bootstrap |
 | MG_AGENT_BOOTSTRAP_ID | Magistrala bootstrap id | |
 | MG_AGENT_BOOTSTRAP_KEY | Magistrala bootstrap key | |
 | MG_AGENT_BOOTSTRAP_RETRIES | Number of retries for bootstrap procedure | 5 |
@@ -112,15 +112,15 @@ Environment:
 | MG_AGENT_DATA_CHANNEL | Channel for data sending | |
 | MG_AGENT_ENCRYPTION | Encryption | false |
 | MG_AGENT_BROKER_URL | Broker url | nats://localhost:4222 |
-| MG_AGENT_MQTT_USERNAME | MQTT username, Magistrala thing id | |
-| MG_AGENT_MQTT_PASSWORD | MQTT password, Magistrala thing key | |
+| MG_AGENT_MQTT_USERNAME | MQTT username, Magistrala client id | |
+| MG_AGENT_MQTT_PASSWORD | MQTT password, Magistrala client secret | |
 | MG_AGENT_MQTT_SKIP_TLS | Skip TLS verification for MQTT | true |
 | MG_AGENT_MQTT_MTLS | Use MTLS for MQTT | false |
 | MG_AGENT_MQTT_CA | Location for CA certificate for MTLS | ca.crt |
 | MG_AGENT_MQTT_QOS | QoS | 0 |
 | MG_AGENT_MQTT_RETAIN | MQTT retain | false |
-| MG_AGENT_MQTT_CLIENT_CERT | Location of client certificate for MTLS | thing.cert |
-| MG_AGENT_MQTT_CLIENT_PK | Location of client certificate key for MTLS | thing.key |
+| MG_AGENT_MQTT_CLIENT_CERT | Location of client certificate for MTLS | client.cert |
+| MG_AGENT_MQTT_CLIENT_PK | Location of client certificate key for MTLS | client.key |
 | MG_AGENT_HEARTBEAT_INTERVAL | Interval in which heartbeat from service is expected | 30s |
 | MG_AGENT_TERMINAL_SESSION_TIMEOUT | Timeout for terminal session | 30s |
 
@@ -143,7 +143,7 @@ Payload is up to the application and service itself.
 Example of on command can be:
 
 ```bash
-mosquitto_pub -u <thing_id> -P <thing_key> -t channels/<control_channel_id>/messages/services/adc -h <mqtt_host> -p 1883  -m  "[{\"bn\":\"1:\", \"n\":\"read\", \"vs\":\"temperature\"}]"
+mosquitto_pub -u <client_id> -P <client_secret> -t channels/<control_channel_id>/messages/services/adc -h <mqtt_host> -p 1883  -m  "[{\"bn\":\"1:\", \"n\":\"read\", \"vs\":\"temperature\"}]"
 ```
 
 ## Heartbeat service
@@ -191,13 +191,13 @@ Or you can send a command via MQTT to Agent and receive response on MQTT topic l
 In one terminal subscribe for result:
 
 ```bash
-mosquitto_sub -u <thing_id> -P <thing_key> -t channels/<control_channel_id>/messages/req -h <mqtt_host> -p 1883
+mosquitto_sub -u <client_id> -P <client_secret> -t channels/<control_channel_id>/messages/req -h <mqtt_host> -p 1883
 ```
 
 In another terminal publish request to view the list of services:
 
 ```bash
-mosquitto_pub -u <thing_id> -P <thing_key> -t channels/<control_channel_id>/messages/req -h <mqtt_host> -p 1883  -m  '[{"bn":"1:", "n":"config", "vs":"view"}]'
+mosquitto_pub -u <client_id> -P <client_secret> -t channels/<control_channel_id>/messages/req -h <mqtt_host> -p 1883  -m  '[{"bn":"1:", "n":"config", "vs":"view"}]'
 ```
 
 Check the output in terminal where you subscribed for results. You should see something like:
@@ -219,7 +219,7 @@ Agent can be used to send configuration file for the [Export][export] service fr
 Here is the example command:
 
 ```bash
-mosquitto_pub -u <thing_id> -P <thing_key> -t channels/<control_channel_id>/messages/req -h localhost -p 1883  -m  "[{\"bn\":\"1:\", \"n\":\"config\", \"vs\":\"<config_file_path>, <file_content_base64>\"}]"
+mosquitto_pub -u <client_id> -P <client_secret> -t channels/<control_channel_id>/messages/req -h localhost -p 1883  -m  "[{\"bn\":\"1:\", \"n\":\"config\", \"vs\":\"<config_file_path>, <file_content_base64>\"}]"
 
 ```
 

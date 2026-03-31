@@ -52,3 +52,16 @@ func (req addConfigReq) validate() error {
 
 	return nil
 }
+
+type nodeRedReq struct {
+	Command string `json:"command"`
+	Flows   string `json:"flows"`
+}
+
+func (req nodeRedReq) validate() error {
+	if req.Command == "" {
+		return agent.ErrMalformedEntity
+	}
+
+	return nil
+}

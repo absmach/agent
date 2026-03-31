@@ -7,6 +7,9 @@ File = "config.toml"
 [edgex]
   url = "http://localhost:48090/api/v1/"
 
+[nodered]
+  url = "http://localhost:1880/"
+
 [heartbeat]
   interval = "30s"
 

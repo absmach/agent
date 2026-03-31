@@ -28,6 +28,10 @@ type EdgexConfig struct {
 	URL string `toml:"url"`
 }
 
+type NodeRedConfig struct {
+	URL string `toml:"url"`
+}
+
 type LogConfig struct {
 	Level string `toml:"level"`
 }
@@ -64,16 +68,19 @@ type Config struct {
 	Heartbeat HeartbeatConfig `toml:"heartbeat" json:"heartbeat"`
 	Channels  ChanConfig      `toml:"channels" json:"channels"`
 	Edgex     EdgexConfig     `toml:"edgex" json:"edgex"`
+	NodeRed   NodeRedConfig   `toml:"nodered" json:"nodered"`
 	Log       LogConfig       `toml:"log" json:"log"`
 	MQTT      MQTTConfig      `toml:"mqtt" json:"mqtt"`
+	DomainID  string          `toml:"domain_id" json:"domain_id"`
 	File      string
 }
 
-func NewConfig(sc ServerConfig, cc ChanConfig, ec EdgexConfig, lc LogConfig, mc MQTTConfig, hc HeartbeatConfig, tc TerminalConfig, file string) Config {
+func NewConfig(sc ServerConfig, cc ChanConfig, ec EdgexConfig, nc NodeRedConfig, lc LogConfig, mc MQTTConfig, hc HeartbeatConfig, tc TerminalConfig, file string) Config {
 	return Config{
 		Server:    sc,
 		Channels:  cc,
 		Edgex:     ec,
+		NodeRed:   nc,
 		Log:       lc,
 		MQTT:      mc,
 		Heartbeat: hc,

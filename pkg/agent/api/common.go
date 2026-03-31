@@ -16,6 +16,10 @@ type edgexConfig struct {
 	Url string `json:"url"`
 }
 
+type noderedConfig struct {
+	Url string `json:"url"`
+}
+
 type logConfig struct {
 	Level string `json:"level"`
 }
@@ -29,9 +33,10 @@ type mqttConfig struct {
 
 // Config struct of Magistrala Agent.
 type agentConfig struct {
-	Server   serverConfig `json:"server"`
-	Channels chanConfig   `json:"channels"`
-	Edgex    edgexConfig  `json:"edgex"`
-	Log      logConfig    `json:"log"`
-	Mqtt     mqttConfig   `json:"mqtt"`
+	Server   serverConfig  `json:"server"`
+	Channels chanConfig    `json:"channels"`
+	Edgex    edgexConfig   `json:"edgex"`
+	NodeRed  noderedConfig `json:"nodered"`
+	Log      logConfig     `json:"log"`
+	Mqtt     mqttConfig    `json:"mqtt"`
 }

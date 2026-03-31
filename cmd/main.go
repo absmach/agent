@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/absmach/agent/pkg/bootstrap"
 	"github.com/absmach/agent/pkg/conn"
 	"github.com/absmach/agent/pkg/edgex"
+	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/messaging/brokers"
 	"github.com/caarlos0/env/v9"
@@ -35,9 +37,10 @@ type config struct {
 	ConfigFile             string `env:"MG_AGENT_CONFIG_FILE" envDefault:"config.toml"`
 	LogLevel               string `env:"MG_AGENT_LOG_LEVEL" envDefault:"info"`
 	EdgexURL               string `env:"MG_AGENT_EDGEX_URL" envDefault:"http://localhost:48090/api/v1/"`
+	NodeRedURL             string `env:"MG_AGENT_NODERED_URL" envDefault:"http://localhost:1880/"`
 	MqttURL                string `env:"MG_AGENT_MQTT_URL" envDefault:"localhost:1883"`
 	HTTPPort               string `env:"MG_AGENT_HTTP_PORT" envDefault:"9999"`
-	BootstrapURL           string `env:"MG_AGENT_BOOTSTRAP_URL" envDefault:"http://localhost:9013/things/bootstrap"`
+	BootstrapURL           string `env:"MG_AGENT_BOOTSTRAP_URL" envDefault:"http://localhost:9013/clients/bootstrap"`
 	BootstrapID            string `env:"MG_AGENT_BOOTSTRAP_ID" envDefault:""`
 	BootstrapKey           string `env:"MG_AGENT_BOOTSTRAP_KEY" envDefault:""`
 	BootstrapRetries       string `env:"MG_AGENT_BOOTSTRAP_RETRIES" envDefault:"5"`
@@ -54,10 +57,11 @@ type config struct {
 	MqttCA                 string `env:"MG_AGENT_MQTT_CA" envDefault:"ca.crt"`
 	MqttQoS                string `env:"MG_AGENT_MQTT_QOS" envDefault:"0"`
 	MqttRetain             string `env:"MG_AGENT_MQTT_RETAIN" envDefault:"false"`
-	MqttCert               string `env:"MG_AGENT_MQTT_CLIENT_CERT" envDefault:"thing.cert"`
-	MqttPrivateKey         string `env:"MG_AGENT_MQTT_CLIENT_CERT" envDefault:"thing.key"`
+	MqttCert               string `env:"MG_AGENT_MQTT_CLIENT_CERT" envDefault:"client.cert"`
+	MqttPrivateKey         string `env:"MG_AGENT_MQTT_CLIENT_CERT" envDefault:"client.key"`
 	HeartbeatInterval      string `env:"MG_AGENT_HEARTBEAT_INTERVAL" envDefault:"10s"`
 	TermSessionTimeout     string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT" envDefault:"60s"`
+	DomainID               string `env:"MG_AGENT_DOMAIN_ID" envDefault:""`
 }
 
 var (
@@ -103,8 +107,9 @@ func main() {
 		return
 	}
 	edgexClient := edgex.NewClient(cfg.Edgex.URL, logger)
+	noderedClient := nodered.NewClient(cfg.NodeRed.URL, logger)
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, edgexClient, pubsub, logger)
+	svc, err := agent.New(ctx, mqttClient, &cfg, edgexClient, noderedClient, pubsub, logger)
 	if err != nil {
 		logger.Error("Error in agent service", slog.Any("error", err))
 		return
@@ -126,7 +131,7 @@ func main() {
 			Help:      "Total duration of requests in microseconds.",
 		}, []string{"method"}),
 	)
-	b := conn.NewBroker(svc, mqttClient, cfg.Channels.Control, pubsub, logger)
+	b := conn.NewBroker(svc, mqttClient, cfg.Channels.Control, cfg.DomainID, pubsub, logger)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", cfg.Server.Port),
@@ -176,6 +181,7 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 		SessionTimeout: termSessionTimeout,
 	}
 	ec := agent.EdgexConfig{URL: cfg.EdgexURL}
+	nc := agent.NodeRedConfig{URL: cfg.NodeRedURL}
 	lc := agent.LogConfig{Level: cfg.LogLevel}
 
 	mtls, err := strconv.ParseBool(cfg.MqttMTLS)
@@ -212,7 +218,8 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 	}
 
 	file := cfg.ConfigFile
-	c := agent.NewConfig(sc, cc, ec, lc, mc, ch, ct, file)
+	c := agent.NewConfig(sc, cc, ec, nc, lc, mc, ch, ct, file)
+	c.DomainID = cfg.DomainID
 	mc, err = loadCertificate(c.MQTT)
 	if err != nil {
 		return c, errors.Wrap(errFailedToSetupMTLS, err)
@@ -303,6 +310,18 @@ func connectToMQTTBroker(conf agent.MQTTConfig, logger *slog.Logger) (mqtt.Clien
 			cfg.Certificates = []tls.Certificate{conf.Cert}
 		}
 
+		opts.SetTLSConfig(cfg)
+		opts.SetProtocolVersion(4)
+	} else if strings.HasPrefix(conf.URL, "ssl://") || strings.HasPrefix(conf.URL, "tls://") {
+		// Standard TLS using system cert pool (no client certs).
+		rootCAs, _ := x509.SystemCertPool()
+		if rootCAs == nil {
+			rootCAs = x509.NewCertPool()
+		}
+		cfg := &tls.Config{
+			InsecureSkipVerify: conf.SkipTLSVer,
+			RootCAs:            rootCAs,
+		}
 		opts.SetTLSConfig(cfg)
 		opts.SetProtocolVersion(4)
 	}

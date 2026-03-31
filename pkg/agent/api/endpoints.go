@@ -70,6 +70,7 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 			Data:    req.Agent.Channels.Data,
 		}
 		ec := agent.EdgexConfig{URL: req.Agent.Edgex.Url}
+		nc := agent.NodeRedConfig{URL: req.Agent.NodeRed.Url}
 		lc := agent.LogConfig{Level: req.Agent.Log.Level}
 		mc := agent.MQTTConfig{
 			URL:      req.Agent.Mqtt.Url,
@@ -80,6 +81,7 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 			Server:   sc,
 			Channels: cc,
 			Edgex:    ec,
+			NodeRed:  nc,
 			Log:      lc,
 			MQTT:     mc,
 		}
@@ -105,5 +107,29 @@ func viewConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 func viewServicesEndpoint(svc agent.Service) endpoint.Endpoint {
 	return func(_ context.Context, request interface{}) (interface{}, error) {
 		return svc.Services(), nil
+	}
+}
+
+func nodeRedEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request interface{}) (interface{}, error) {
+		req := request.(nodeRedReq)
+
+		if err := req.validate(); err != nil {
+			return nil, err
+		}
+
+		cmdStr := req.Command
+		if req.Flows != "" {
+			cmdStr = req.Command + "," + req.Flows
+		}
+
+		if err := svc.NodeRed("api", cmdStr); err != nil {
+			return genericRes{}, err
+		}
+
+		return genericRes{
+			Service:  "agent",
+			Response: "nodered",
+		}, nil
 	}
 }
