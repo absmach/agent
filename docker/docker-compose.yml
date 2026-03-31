@@ -78,3 +78,4 @@ services:
       MG_AGENT_BOOTSTRAP_RETRIES: ${MG_AGENT_BOOTSTRAP_RETRIES}
     volumes:
       - ../configs/config.toml:/config.toml
+      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro

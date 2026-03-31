@@ -21,7 +21,7 @@ endif
 
 define compile_service
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) GOARM=$(GOARM) \
-	go build -mod=vendor -tags $(MG_BROKER_TYPE) -ldflags "-s -w \
+	go build -tags $(MG_BROKER_TYPE) -ldflags "-s -w \
 	-X 'github.com/absmach/agent.BuildTime=$(TIME)' \
 	-X 'github.com/absmach/agent.Version=$(VERSION)' \
 	-X 'github.com/absmach/agent.Commit=$(COMMIT)'" \
