@@ -19,11 +19,11 @@ import (
 	"github.com/absmach/agent/pkg/agent/api"
 	edgexmocks "github.com/absmach/agent/pkg/edgex/mocks"
 	noderedmocks "github.com/absmach/agent/pkg/nodered/mocks"
-	paho "github.com/eclipse/paho.mqtt.golang"
-
 	"github.com/absmach/supermq/logger"
 	"github.com/absmach/supermq/pkg/messaging/brokers"
+	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 type testRequest struct {
@@ -42,7 +42,7 @@ func (tr testRequest) make() (*http.Response, error) {
 	return tr.client.Do(req)
 }
 
-func newService(ctx context.Context, t *testing.T) (agent.Service, error) {
+func newService(ctx context.Context, t *testing.T, nc *noderedmocks.Client) (agent.Service, error) {
 	opts := paho.NewClientOptions().
 		SetUsername(username).
 		AddBroker(mqttAddress).
@@ -55,7 +55,9 @@ func newService(ctx context.Context, t *testing.T) (agent.Service, error) {
 	}
 
 	edgexClient := edgexmocks.NewClient(t)
-	noderedClient := noderedmocks.NewClient(t)
+	if nc == nil {
+		nc = noderedmocks.NewClient(t)
+	}
 	config := agent.Config{}
 	config.Heartbeat.Interval = time.Second
 
@@ -68,9 +70,9 @@ func newService(ctx context.Context, t *testing.T) (agent.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to connect to Broker: %s %s", err, brokerAddress)
 	}
-	defer pubsub.Close()
+	t.Cleanup(func() { pubsub.Close() })
 
-	agentSvc, err := agent.New(ctx, mqttClient, &config, edgexClient, noderedClient, pubsub, logger)
+	agentSvc, err := agent.New(ctx, mqttClient, &config, edgexClient, nc, pubsub, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +91,7 @@ func toJSON(data interface{}) string {
 }
 
 func TestPublish(t *testing.T) {
-	svc, err := newService(context.TODO(), t)
+	svc, err := newService(context.TODO(), t, nil)
 	if err != nil {
 		t.Errorf("failed to create service: %v", err)
 		return
@@ -128,11 +130,17 @@ func TestPublish(t *testing.T) {
 }
 
 func TestNodeRed(t *testing.T) {
-	svc, err := newService(context.TODO(), t)
+	nc := noderedmocks.NewClient(t)
+	nc.On("Ping").Return("", nil)
+	nc.On("FetchFlows").Return("", nil)
+	nc.On("DeployFlows", mock.Anything).Return("", nil)
+
+	svc, err := newService(context.TODO(), t, nc)
 	if err != nil {
 		t.Errorf("failed to create service: %v", err)
 		return
 	}
+
 	ts := newServer(svc)
 	defer ts.Close()
 	client := ts.Client()

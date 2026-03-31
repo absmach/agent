@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 
 	"github.com/absmach/agent/pkg/agent"
-	smq "github.com/absmach/supermq"
+	"github.com/absmach/supermq"
 	"github.com/go-zoo/bone"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -58,7 +58,7 @@ func MakeHandler(svc agent.Service) http.Handler {
 	))
 
 	r.Handle("/metrics", promhttp.Handler())
-	r.GetFunc("/health", smq.Health("agent", ""))
+	r.GetFunc("/health", supermq.Health("agent", ""))
 
 	return r
 }

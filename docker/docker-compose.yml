@@ -40,6 +40,8 @@ services:
     volumes:
       - nodered-data:/data
       - ./nodered/flows.json:/data/flows.json
+      - ./nodered/flows_cred.json:/data/flows_cred.json
+      - ./nodered/settings.js:/data/settings.js
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
     environment:
       TZ: UTC

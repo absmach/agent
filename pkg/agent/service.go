@@ -367,17 +367,18 @@ func (a *agent) terminalWrite(uuid, cmd string) error {
 
 func (a *agent) NodeRed(uuid, cmdStr string) error {
 	cmdArgs := strings.Split(strings.ReplaceAll(cmdStr, " ", ""), ",")
-	if len(cmdArgs) < 2 {
+
+	cmd := cmdArgs[0]
+	if cmd == "" {
 		return errInvalidCommand
 	}
 
-	cmd := cmdArgs[0]
 	var resp string
 	var err error
 
 	switch cmd {
 	case "nodered-deploy":
-		if len(cmdArgs) < 2 {
+		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
 			return errInvalidCommand
 		}
 		// The flow JSON is passed as the second argument, base64 encoded to avoid comma issues.
@@ -387,7 +388,7 @@ func (a *agent) NodeRed(uuid, cmdStr string) error {
 		}
 		resp, err = a.noderedClient.DeployFlows(string(flowData))
 	case "nodered-add-flow":
-		if len(cmdArgs) < 2 {
+		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
 			return errInvalidCommand
 		}
 		flowData, decErr := base64.StdEncoding.DecodeString(cmdArgs[1])

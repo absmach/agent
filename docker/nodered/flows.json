@@ -12,7 +12,7 @@
         "name": "Magistrala Cloud MQTT",
         "broker": "messaging.magistrala.absmach.eu",
         "port": "8883",
-        "clientid": "nodered-91e9aff0-b934-48f9-917c-2524e9f25729",
+        "clientid": "91e9aff0-b934-48f9-917c-2524e9f25729",
         "autoConnect": true,
         "usetls": true,
         "protocolVersion": "4",
