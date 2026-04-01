@@ -61,8 +61,8 @@ Starts: Agent (:9999), Node-RED (:1880), NATS (:4222).
 ### Stopping
 
 ```bash
-make stop          # preserves Node-RED flow edits (named volumes kept)
-make clean_volumes # full reset, removes all named volumes
+make stop
+make clean_volumes
 ```
 
 ## Running without Docker
@@ -184,7 +184,7 @@ mosquitto_pub \
   -m '[{"bn":"req-1:", "n":"exec", "vs":"ls,-la"}]'
 ```
 
-### View registered services
+### View service config
 
 ```bash
 mosquitto_pub \
@@ -202,9 +202,15 @@ Agent can manage Node-RED flows running on the same device. Flows can be deploye
 
 ### Via HTTP (local)
 
+First, base64-encode the flow JSON:
+
 ```bash
 FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
+```
 
+Then send it to the agent. The agent decodes the flows, patches the MQTT client ID, and forwards them to Node-RED on its behalf:
+
+```bash
 curl -s -X POST http://localhost:9999/nodered \
   -H 'Content-Type: application/json' \
   -d "{\"command\":\"nodered-deploy\",\"flows\":\"$FLOWS\"}"
