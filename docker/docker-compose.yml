@@ -47,6 +47,8 @@ services:
       NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
       MG_AGENT_CLIENT_ID: ${MG_AGENT_CLIENT_ID}
       MG_AGENT_CLIENT_SECRET: ${MG_AGENT_CLIENT_SECRET}
+      MG_AGENT_DOMAIN_ID: ${MG_AGENT_DOMAIN_ID}
+      MG_AGENT_DATA_CHANNEL: ${MG_AGENT_DATA_CHANNEL}
 
   # Magistrala Agent
   agent:

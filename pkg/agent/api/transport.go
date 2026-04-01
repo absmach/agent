@@ -6,15 +6,13 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 
 	"github.com/absmach/agent/pkg/agent"
 	"github.com/absmach/supermq"
+	kithttp "github.com/go-kit/kit/transport/http"
 	"github.com/go-zoo/bone"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	"net/http"
-
-	kithttp "github.com/go-kit/kit/transport/http"
 )
 
 // MakeHandler returns a HTTP handler for API endpoints.
