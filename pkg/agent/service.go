@@ -386,7 +386,7 @@ func (a *agent) NodeRed(uuid, cmdStr string) error {
 		if decErr != nil {
 			return errors.Wrap(errNodeRedFailed, decErr)
 		}
-		resp, err = a.noderedClient.DeployFlows(string(flowData))
+		resp, err = a.noderedClient.DeployFlows(a.patchNodeRedClientID(string(flowData)))
 	case "nodered-add-flow":
 		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
 			return errInvalidCommand
@@ -395,7 +395,7 @@ func (a *agent) NodeRed(uuid, cmdStr string) error {
 		if decErr != nil {
 			return errors.Wrap(errNodeRedFailed, decErr)
 		}
-		resp, err = a.noderedClient.AddFlow(string(flowData))
+		resp, err = a.noderedClient.AddFlow(a.patchNodeRedClientID(string(flowData)))
 	case "nodered-flows":
 		resp, err = a.noderedClient.FetchFlows()
 	case "nodered-state":
@@ -411,6 +411,16 @@ func (a *agent) NodeRed(uuid, cmdStr string) error {
 	}
 
 	return a.processResponse(uuid, cmd, resp)
+}
+
+// patchNodeRedClientID replaces the agent's MQTT clientid with a "-nr" suffixed
+// version in flow JSON so Node-RED does not steal the agent's MQTT session.
+func (a *agent) patchNodeRedClientID(flowJSON string) string {
+	clientID := a.config.MQTT.Username
+	if clientID == "" {
+		return flowJSON
+	}
+	return strings.ReplaceAll(flowJSON, `"clientid": "`+clientID+`"`, `"clientid": "`+clientID+`-nr"`)
 }
 
 func (a *agent) processResponse(uuid, cmd, resp string) error {
