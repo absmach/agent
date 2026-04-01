@@ -16,9 +16,8 @@ import (
 	"time"
 
 	"github.com/absmach/agent/pkg/agent"
-
 	"github.com/absmach/magistrala/bootstrap"
-	errors "github.com/absmach/supermq/pkg/errors"
+	"github.com/absmach/supermq/pkg/errors"
 	export "github.com/mainflux/export/pkg/config"
 )
 

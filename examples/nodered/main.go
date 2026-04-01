@@ -102,4 +102,3 @@ func readFlows(arg string) []byte {
 	}
 	return data
 }
-

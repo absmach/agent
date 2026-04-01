@@ -122,3 +122,6 @@ run:
 
 stop:
 	docker compose -f docker/docker-compose.yml --env-file docker/.env down
+
+clean_volumes:
+	docker compose -f docker/docker-compose.yml --env-file docker/.env down -v

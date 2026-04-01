@@ -12,8 +12,8 @@ networks:
     driver: bridge
 
 volumes:
-  nodered-data:
   nats-data:
+  nodered-data:
 
 services:
   # NATS broker for agent internal heartbeat/service management
@@ -33,19 +33,20 @@ services:
     image: nodered/node-red:latest
     container_name: agent-nodered
     restart: on-failure
+    entrypoint: ["/seed/entrypoint.sh"]
     ports:
       - "1880:1880"
     networks:
       - magistrala-agent-base-net
     volumes:
+      - ./nodered:/seed:ro
       - nodered-data:/data
-      - ./nodered/flows.json:/data/flows.json
-      - ./nodered/flows_cred.json:/data/flows_cred.json
-      - ./nodered/settings.js:/data/settings.js
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
     environment:
       TZ: UTC
       NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
+      MG_AGENT_CLIENT_ID: ${MG_AGENT_CLIENT_ID}
+      MG_AGENT_CLIENT_SECRET: ${MG_AGENT_CLIENT_SECRET}
 
   # Magistrala Agent
   agent:
