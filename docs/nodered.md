@@ -71,8 +71,7 @@ This will:
 3. Connect the Client to the Channel
 4. Set up Bootstrap configuration
 5. Configure a Rule Engine rule with `save_senml` output to persist all messages
-6. Configure a Modbus alarm rule (Lua) that fires when holding register values are out of range
-7. Update `docker/.env` with the provisioned IDs
+6. Update `docker/.env` with the provisioned IDs
 
 Then restart the agent:
 ```bash
@@ -143,7 +142,7 @@ Simulates polling 4 Modbus TCP holding registers (FC03) every 10 seconds and pub
 | HR2 | Power | W |
 | HR3 | Temperature | °C |
 
-The simulation function node can be replaced with a real `modbus-read` node when a physical Modbus TCP slave is available. The provisioning script also creates a companion **Modbus alarm rule** in the Rule Engine that fires an alarm whenever any holding register value falls outside the valid range (0–32767).
+The simulation function node can be replaced with a real `modbus-read` node when a physical Modbus TCP slave is available.
 
 **Deploy via Magistrala MQTT:**
 
@@ -165,7 +164,7 @@ The agent will:
 1. Receive the SenML message over MQTT
 2. Base64-decode the flow JSON
 3. Patch the MQTT `clientid` in the flow to `<client-id>-nr` (prevents session conflict with the agent itself)
-4. `PUT` the flows to Node-RED's REST API
+4. `POST` the flows to Node-RED's REST API
 5. Publish the result back to the control channel
 
 **Verify the deployment:**
