@@ -103,7 +103,7 @@ func (ms *metricsMiddleware) Terminal(topic, payload string) error {
 	return ms.svc.Terminal(topic, payload)
 }
 
-func (ms *metricsMiddleware) NodeRed(uuid, cmdStr string) error {
+func (ms *metricsMiddleware) NodeRed(uuid, cmdStr string) (string, error) {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "nodered").Add(1)
 		ms.latency.With("method", "nodered").Observe(time.Since(begin).Seconds())

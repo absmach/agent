@@ -113,7 +113,7 @@ type Service interface {
 	Publish(string, string) error
 
 	// NodeRed manages Node-RED flow operations.
-	NodeRed(string, string) error
+	NodeRed(string, string) (string, error)
 }
 
 var _ Service = (*agent)(nil)
@@ -238,15 +238,15 @@ func (a *agent) Control(uuid, cmdStr string) error {
 	case "edgex-ping":
 		resp, err = a.edgexClient.Ping()
 	case "nodered-deploy":
-		return a.NodeRed(uuid, cmdStr)
+		resp, err = a.NodeRed(uuid, cmdStr)
 	case "nodered-add-flow":
-		return a.NodeRed(uuid, cmdStr)
+		resp, err = a.NodeRed(uuid, cmdStr)
 	case "nodered-flows":
-		resp, err = a.noderedClient.FetchFlows()
+		resp, err = a.NodeRed(uuid, cmdStr)
 	case "nodered-state":
-		resp, err = a.noderedClient.FlowState()
+		resp, err = a.NodeRed(uuid, cmdStr)
 	case "nodered-ping":
-		resp, err = a.noderedClient.Ping()
+		resp, err = a.NodeRed(uuid, cmdStr)
 	default:
 		err = errUnknownCommand
 	}
@@ -365,12 +365,12 @@ func (a *agent) terminalWrite(uuid, cmd string) error {
 	return term.Send(p)
 }
 
-func (a *agent) NodeRed(uuid, cmdStr string) error {
+func (a *agent) NodeRed(uuid, cmdStr string) (string, error) {
 	cmdArgs := strings.Split(strings.ReplaceAll(cmdStr, " ", ""), ",")
 
 	cmd := cmdArgs[0]
 	if cmd == "" {
-		return errInvalidCommand
+		return "", errInvalidCommand
 	}
 
 	var resp string
@@ -379,21 +379,20 @@ func (a *agent) NodeRed(uuid, cmdStr string) error {
 	switch cmd {
 	case "nodered-deploy":
 		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
-			return errInvalidCommand
+			return "", errInvalidCommand
 		}
-		// The flow JSON is passed as the second argument, base64 encoded to avoid comma issues.
 		flowData, decErr := base64.StdEncoding.DecodeString(cmdArgs[1])
 		if decErr != nil {
-			return errors.Wrap(errNodeRedFailed, decErr)
+			return "", errors.Wrap(errNodeRedFailed, decErr)
 		}
 		resp, err = a.noderedClient.DeployFlows(a.patchNodeRedClientID(string(flowData)))
 	case "nodered-add-flow":
 		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
-			return errInvalidCommand
+			return "", errInvalidCommand
 		}
 		flowData, decErr := base64.StdEncoding.DecodeString(cmdArgs[1])
 		if decErr != nil {
-			return errors.Wrap(errNodeRedFailed, decErr)
+			return "", errors.Wrap(errNodeRedFailed, decErr)
 		}
 		resp, err = a.noderedClient.AddFlow(a.patchNodeRedClientID(string(flowData)))
 	case "nodered-flows":
@@ -407,10 +406,10 @@ func (a *agent) NodeRed(uuid, cmdStr string) error {
 	}
 
 	if err != nil {
-		return errors.Wrap(errNodeRedFailed, err)
+		return "", errors.Wrap(errNodeRedFailed, err)
 	}
 
-	return a.processResponse(uuid, cmd, resp)
+	return resp, nil
 }
 
 // patchNodeRedClientID replaces the agent's MQTT clientid with a "-nr" suffixed

@@ -147,6 +147,43 @@ else
   echo "  WARNING: Rule Engine returned HTTP ${RE_RESPONSE}. Check manually if needed."
 fi
 
+# Step 6b: Modbus alarm rule — triggers on out-of-range holding register values
+echo ""
+echo "Step 6b: Configuring Modbus alarm rule..."
+MODBUS_LUA='for _, m in ipairs(message.payload) do
+  if m.n and string.match(m.n, "^hr%d") then
+    if m.v and (m.v < 0 or m.v > 32767) then
+      return {cause="modbus_out_of_range", register=m.n, value=m.v, severity=70}
+    end
+  end
+end
+return false'
+
+MODBUS_RE_RESPONSE=$(curl -sSL -o /dev/null -w "%{http_code}" -X POST "${DOMAIN_API}/rules" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -d "{
+    \"name\": \"modbus-register-alarm\",
+    \"input_channel\": \"${CHANNEL}\",
+    \"input_topic\": \">\",
+    \"logic\": {
+      \"type\": 0,
+      \"value\": $(python3 -c "import json,sys; print(json.dumps(open('/dev/stdin').read()))" <<< "$MODBUS_LUA")
+    },
+    \"outputs\": [
+      {\"type\": \"alarms\"},
+      {\"type\": \"save_senml\"}
+    ],
+    \"metadata\": {
+      \"description\": \"Alarm on Modbus holding register out-of-range values\"
+    }
+  }" 2>/dev/null || echo "000")
+if [ "$MODBUS_RE_RESPONSE" = "201" ] || [ "$MODBUS_RE_RESPONSE" = "200" ]; then
+  echo "  Modbus alarm rule created."
+else
+  echo "  WARNING: Modbus rule returned HTTP ${MODBUS_RE_RESPONSE}. Check manually if needed."
+fi
+
 # Step 7: Update docker/.env with provisioned values
 echo ""
 echo "Step 7: Updating docker/.env..."

@@ -154,7 +154,7 @@ func (b *broker) handleMsg(mc mqtt.Client, msg mqtt.Message) {
 		}
 	case nred:
 		b.logger.Info("NodeRed command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-		if err := b.svc.NodeRed(uuid, cmdStr); err != nil {
+		if err := b.svc.Control(uuid, cmdStr); err != nil {
 			b.logger.Warn("NodeRed operation failed", slog.Any("error", err))
 		}
 	}

@@ -122,13 +122,14 @@ func nodeRedEndpoint(svc agent.Service) endpoint.Endpoint {
 			cmdStr = req.Command + "," + req.Flows
 		}
 
-		if err := svc.NodeRed("api", cmdStr); err != nil {
+		resp, err := svc.NodeRed("api", cmdStr)
+		if err != nil {
 			return genericRes{}, nil
 		}
 
 		return genericRes{
 			Service:  "agent",
-			Response: "nodered",
+			Response: resp,
 		}, nil
 	}
 }

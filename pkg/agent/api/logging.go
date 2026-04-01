@@ -146,7 +146,7 @@ func (lm *loggingMiddleware) Terminal(uuid, cmdStr string) (err error) {
 	return lm.svc.Terminal(uuid, cmdStr)
 }
 
-func (lm *loggingMiddleware) NodeRed(uuid, cmdStr string) (err error) {
+func (lm *loggingMiddleware) NodeRed(uuid, cmdStr string) (resp string, err error) {
 	defer func(begin time.Time) {
 		args := []any{
 			slog.String("duration", time.Since(begin).String()),

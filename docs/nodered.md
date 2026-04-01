@@ -71,7 +71,8 @@ This will:
 3. Connect the Client to the Channel
 4. Set up Bootstrap configuration
 5. Configure a Rule Engine rule with `save_senml` output to persist all messages
-6. Update `docker/.env` with the provisioned IDs
+6. Configure a Modbus alarm rule (Lua) that fires when holding register values are out of range
+7. Update `docker/.env` with the provisioned IDs
 
 Then restart the agent:
 ```bash
@@ -130,6 +131,19 @@ Seeded into Node-RED on first start. It periodically publishes SenML temperature
 ### Speed sensor flow (`examples/nodered/speed-flow.json`)
 
 A ready-to-deploy example that publishes `speed` (km/h), `rpm`, and `gear` SenML records every 15 seconds. Use it to test remote flow deployment end-to-end.
+
+### Modbus holding register flow (`examples/nodered/modbus-flow.json`)
+
+Simulates polling 4 Modbus TCP holding registers (FC03) every 10 seconds and publishing SenML records to Magistrala:
+
+| Register | Measurement | Unit |
+|----------|-------------|------|
+| HR0 | Voltage | V |
+| HR1 | Current (scaled ×10) | A |
+| HR2 | Power | W |
+| HR3 | Temperature | °C |
+
+The simulation function node can be replaced with a real `modbus-read` node when a physical Modbus TCP slave is available. The provisioning script also creates a companion **Modbus alarm rule** in the Rule Engine that fires an alarm whenever any holding register value falls outside the valid range (0–32767).
 
 **Deploy via Magistrala MQTT:**
 
