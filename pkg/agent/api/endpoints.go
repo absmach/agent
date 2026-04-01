@@ -66,8 +66,7 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 
 		sc := agent.ServerConfig{Port: req.Agent.Server.Port}
 		cc := agent.ChanConfig{
-			Control: req.Agent.Channels.Control,
-			Data:    req.Agent.Channels.Data,
+			ID: req.Agent.Channels.ID,
 		}
 		ec := agent.EdgexConfig{URL: req.Agent.Edgex.Url}
 		nc := agent.NodeRedConfig{URL: req.Agent.NodeRed.Url}

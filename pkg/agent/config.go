@@ -20,8 +20,7 @@ type ServerConfig struct {
 }
 
 type ChanConfig struct {
-	Control string `toml:"control"`
-	Data    string `toml:"data"`
+	ID string `toml:"id"`
 }
 
 type EdgexConfig struct {

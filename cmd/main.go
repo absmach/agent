@@ -45,8 +45,7 @@ type config struct {
 	BootstrapRetries       string `env:"MG_AGENT_BOOTSTRAP_RETRIES" envDefault:"5"`
 	BootstrapSkipTLS       string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS" envDefault:"false"`
 	BootstrapRetryDelaySec string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
-	ControlChannel         string `env:"MG_AGENT_CONTROL_CHANNEL" envDefault:""`
-	DataChannel            string `env:"MG_AGENT_DATA_CHANNEL" envDefault:""`
+	Channel                string `env:"MG_AGENT_CHANNEL" envDefault:""`
 	Encryption             string `env:"MG_AGENT_ENCRYPTION" envDefault:"false"`
 	NatsURL                string `env:"MG_AGENT_NATS_URL" envDefault:"nats://localhost:4222"`
 	MqttUsername           string `env:"MG_AGENT_MQTT_USERNAME" envDefault:""`
@@ -117,7 +116,7 @@ func main() {
 	svc = api.NewLogging(svc, logger)
 	counter, latency := prometheus.MakeMetrics("agent", "api")
 	svc = api.NewMetrics(svc, counter, latency)
-	b := conn.NewBroker(svc, mqttClient, cfg.Channels.Control, cfg.DomainID, pubsub, logger)
+	b := conn.NewBroker(svc, mqttClient, cfg.Channels.ID, cfg.DomainID, pubsub, logger)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", cfg.Server.Port),
@@ -148,8 +147,7 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 		Port:      cfg.HTTPPort,
 	}
 	cc := agent.ChanConfig{
-		Control: cfg.ControlChannel,
-		Data:    cfg.DataChannel,
+		ID: cfg.Channel,
 	}
 	interval, err := time.ParseDuration(cfg.HeartbeatInterval)
 	if err != nil {

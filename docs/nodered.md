@@ -43,20 +43,35 @@ open http://localhost:1880
 
 ## Provisioning with Magistrala
 
-If you have a running Magistrala instance, use the provisioning script to automatically create Things, Channels, and Rule Engine rules:
+If you have a running Magistrala instance, use the provisioning script to automatically create Clients, Channels, and Rule Engine rules:
 
 ```bash
-cd docker/nodered
-./provision.sh http://magistrala-host admin@example.com password123
+export MG_PAT=<personal-access-token>
+export MG_DOMAIN_ID=<domain-id>
+make run_provision
+```
+
+Or with a custom API URL:
+
+```bash
+MG_API=https://my-instance/api make run_provision MG_DOMAIN_ID=<domain-id> MG_PAT=<pat>
+```
+
+Or run the script directly:
+
+```bash
+export MG_PAT=<personal-access-token>
+export MG_DOMAIN_ID=<domain-id>
+bash docker/nodered/provision.sh
 ```
 
 This will:
-1. Create a Thing (device client) with credentials
-2. Create Control and Data channels
-3. Connect the Thing to both channels
+1. Create a Client (device) with credentials
+2. Create a Channel
+3. Connect the Client to the Channel
 4. Set up Bootstrap configuration
-5. Configure a Rule Engine to store messages from the data channel
-6. Write a `.env` file with all the IDs
+5. Configure a Rule Engine rule with `save_senml` output to persist all messages
+6. Update `docker/.env` with the provisioned IDs
 
 Then restart the agent:
 ```bash
@@ -93,11 +108,7 @@ curl -s -X POST http://localhost:9999/nodered \
 
 ### Via MQTT (from Magistrala cloud)
 
-Send a SenML array to `m/<domain-id>/c/<control-channel-id>/req`:
-
-```json
-[{"bn":"<uuid>:", "n":"nodered", "vs":"nodered-deploy,<base64-encoded-flow-json>"}]
-```
+Send a SenML array to `m/<domain-id>/c/<channel-id>/req`:
 
 Supported commands:
 - `nodered-deploy,<base64-flow>` — Deploy flows to Node-RED
@@ -132,7 +143,7 @@ mosquitto_pub \
   --capath /etc/ssl/certs \
   -u <client-id> -P <client-secret> \
   --id "deploy-$(date +%s)" \
-  -t "m/<domain-id>/c/<control-channel-id>/req" \
+  -t "m/<domain-id>/c/<channel-id>/req" \
   -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-deploy,$FLOWS\"}]"
 ```
 
@@ -151,7 +162,7 @@ mosquitto_pub \
   --capath /etc/ssl/certs \
   -u <client-id> -P <client-secret> \
   --id "list-$(date +%s)" \
-  -t "m/<domain-id>/c/<control-channel-id>/req" \
+  -t "m/<domain-id>/c/<channel-id>/req" \
   -m '[{"bn":"req-2:", "n":"nodered", "vs":"nodered-flows"}]'
 ```
 
@@ -160,7 +171,7 @@ The agent logs will show:
 {"level":"INFO","msg":"NodeRed command \"nodered-deploy,...\" completed successfully.","duration":"...","uuid":"req-1"}
 ```
 
-Node-RED will start publishing speed data to `m/<domain-id>/c/<data-channel-id>/data` within 3 seconds of deployment.
+Node-RED will start publishing speed data to `m/<domain-id>/c/<channel-id>/data` within 3 seconds of deployment.
 
 ## Configuration
 
@@ -178,7 +189,6 @@ The Node-RED URL is configured via:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MG_AGENT_NODERED_URL` | `http://localhost:1880/` | Node-RED REST API base URL |
-| `MG_AGENT_THING_ID` | (pre-set UUID) | Magistrala Thing ID |
-| `MG_AGENT_THING_KEY` | (pre-set UUID) | Magistrala Thing Key |
-| `MG_AGENT_CONTROL_CHANNEL` | (pre-set UUID) | Control channel ID |
-| `MG_AGENT_DATA_CHANNEL` | (pre-set UUID) | Data channel ID |
+| `MG_AGENT_CLIENT_ID` | (pre-set UUID) | Magistrala Client ID |
+| `MG_AGENT_CLIENT_SECRET` | (pre-set UUID) | Magistrala Client Secret |
+| `MG_AGENT_CHANNEL` | (pre-set UUID) | Channel ID (req/data/res subtopics) |

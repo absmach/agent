@@ -37,10 +37,12 @@ The recommended way to run agent is with the provided Docker Compose stack, whic
 If you have a running Magistrala instance, create the required clients and channels:
 
 ```bash
-make run_provision MG_URL=https://magistrala-host MG_EMAIL=admin@example.com MG_PASSWORD=password MG_DOMAIN_ID=<domain-id>
+export MG_PAT=<personal-access-token>
+export MG_DOMAIN_ID=<domain-id>
+make run_provision
 ```
 
-This writes a `docker/.env` file with all credentials.
+This writes credentials directly into `docker/.env`.
 
 ### 2. Build the dev Docker image
 
@@ -54,7 +56,7 @@ make all && make docker_dev
 make run
 ```
 
-Starts: Agent (:9999), Node-RED (:1880), Mosquitto (:1883), NATS (:4222).
+Starts: Agent (:9999), Node-RED (:1880), NATS (:4222).
 
 ### Stopping
 
@@ -87,8 +89,7 @@ Or with environment variables directly (no bootstrap):
 MG_AGENT_MQTT_URL=mqtts://messaging.example.com:8883 \
 MG_AGENT_MQTT_USERNAME=<client-id> \
 MG_AGENT_MQTT_PASSWORD=<client-secret> \
-MG_AGENT_CONTROL_CHANNEL=<channel-id> \
-MG_AGENT_DATA_CHANNEL=<channel-id> \
+MG_AGENT_CHANNEL=<channel-id> \
 MG_AGENT_DOMAIN_ID=<domain-id> \
 build/magistrala-agent
 ```
@@ -105,8 +106,7 @@ Example configuration:
   broker_url = "nats://localhost:4222"
 
 [channels]
-  control = "<control-channel-id>"
-  data    = "<data-channel-id>"
+  id = "<channel-id>"
 
 [mqtt]
   url      = "mqtts://messaging.example.com:8883"
@@ -139,8 +139,7 @@ Environment variables:
 | `MG_AGENT_MQTT_CA` | CA certificate path for mTLS | `ca.crt` |
 | `MG_AGENT_MQTT_QOS` | MQTT QoS level | `0` |
 | `MG_AGENT_MQTT_RETAIN` | MQTT retain flag | `false` |
-| `MG_AGENT_CONTROL_CHANNEL` | Channel ID for commands | |
-| `MG_AGENT_DATA_CHANNEL` | Channel ID for data | |
+| `MG_AGENT_CHANNEL` | Channel ID (req/data/res subtopics) | |
 | `MG_AGENT_DOMAIN_ID` | Magistrala domain ID | |
 | `MG_AGENT_EDGEX_URL` | EdgeX base URL | `http://localhost:48090/api/v1/` |
 | `MG_AGENT_NODERED_URL` | Node-RED API URL | `http://localhost:1880/` |
@@ -155,7 +154,7 @@ Environment variables:
 
 ## MQTT Message Format
 
-Agent subscribes to `m/<domain-id>/c/<control-channel-id>/req`.
+Agent subscribes to `m/<domain-id>/c/<channel-id>/req`.
 
 All messages use [SenML][senml] JSON array format:
 
@@ -181,7 +180,7 @@ The `n` field selects the subsystem. Supported subsystems:
 mosquitto_pub \
   -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
   -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
-  -t "m/<domain-id>/c/<control-channel-id>/req" \
+  -t "m/<domain-id>/c/<channel-id>/req" \
   -m '[{"bn":"req-1:", "n":"exec", "vs":"ls,-la"}]'
 ```
 
@@ -191,11 +190,11 @@ mosquitto_pub \
 mosquitto_pub \
   -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
   -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
-  -t "m/<domain-id>/c/<control-channel-id>/req" \
+  -t "m/<domain-id>/c/<channel-id>/req" \
   -m '[{"bn":"req-1:", "n":"config", "vs":"view"}]'
 ```
 
-Responses are published to `m/<domain-id>/c/<control-channel-id>/control`.
+Responses are published to `m/<domain-id>/c/<channel-id>/res`.
 
 ## Node-RED Integration
 
@@ -238,7 +237,7 @@ FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
 mosquitto_pub \
   -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
   -u <client-id> -P <client-secret> --id "deploy-$(date +%s)" \
-  -t "m/<domain-id>/c/<control-channel-id>/req" \
+  -t "m/<domain-id>/c/<channel-id>/req" \
   -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-deploy,$FLOWS\"}]"
 ```
 
@@ -269,7 +268,7 @@ Agent can push a config file for the [Export][export] service from cloud to gate
 mosquitto_pub \
   -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
   -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-  -t "m/<domain-id>/c/<control-channel-id>/req" \
+  -t "m/<domain-id>/c/<channel-id>/req" \
   -m "[{\"bn\":\"req-1:\", \"n\":\"config\", \"vs\":\"<config_file_path>,<file_content_base64>\"}]"
 ```
 

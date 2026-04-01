@@ -29,7 +29,7 @@ EOF
 #  - topic: inject the provisioned domain and data channel
 sed -i \
     -e "s/\"clientid\": \"[^\"]*\"/\"clientid\": \"${MG_AGENT_CLIENT_ID}-nr\"/" \
-    -e "s|m/[^/]*/c/[^/]*/data|m/${MG_AGENT_DOMAIN_ID}/c/${MG_AGENT_DATA_CHANNEL}/data|g" \
+    -e "s|m/[^/]*/c/[^/]*/data|m/${MG_AGENT_DOMAIN_ID}/c/${MG_AGENT_CHANNEL}/data|g" \
     /data/flows.json
 
 exec /usr/src/node-red/node_modules/.bin/node-red --settings /data/settings.js "$@"

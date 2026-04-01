@@ -2,8 +2,7 @@ File = "/config.toml"
 domain_id = "a1c51744-3317-48e2-9eef-4df37f68b9d1"
 
 [channels]
-  control = "82f1d080-b1ce-41b7-aef2-62b270e551e7"
-  data = "82f1d080-b1ce-41b7-aef2-62b270e551e7"
+  id = "82f1d080-b1ce-41b7-aef2-62b270e551e7"
 
 [edgex]
   url = "http://localhost:48090/api/v1/"

@@ -8,8 +8,7 @@ type serverConfig struct {
 }
 
 type chanConfig struct {
-	Control string `json:"control"`
-	Data    string `json:"data"`
+	ID string `json:"id"`
 }
 
 type edgexConfig struct {

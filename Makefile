@@ -115,7 +115,7 @@ release:
 	$(call docker_push,$(version))
 
 run_provision:
-	@bash docker/nodered/provision.sh $(MG_URL) $(MG_EMAIL) $(MG_PASSWORD) $(MG_DOMAIN_ID)
+	@MG_API="$(MG_API)" MG_DOMAIN_ID="$(MG_DOMAIN_ID)" MG_PAT="$(MG_PAT)" bash docker/nodered/provision.sh
 
 run:
 	docker compose -f docker/docker-compose.yml --env-file docker/.env up -d

@@ -7,55 +7,51 @@
 # and configures a Rule Engine (RE) to store messages from the mock device.
 #
 # Prerequisites:
-#   - A running Magistrala instance
-#   - magistrala-cli installed (or use curl directly)
+#   - A running Magistrala instance (self-hosted or cloud)
+#   - curl and python3 available
+#
+# Environment variables:
+#   MG_API       - API base URL (default: https://cloud.magistrala.absmach.eu/api)
+#   MG_DOMAIN_ID - Domain ID (required)
+#   MG_PAT       - Personal Access Token (required)
 #
 # Usage:
-#   ./provision.sh [MAGISTRALA_URL] [USER_EMAIL] [USER_PASSWORD] [DOMAIN_ID]
+#   export MG_PAT=pat_xxx
+#   export MG_DOMAIN_ID=<domain-id>
+#   ./provision.sh
 #
-# Example:
-#   ./provision.sh http://localhost admin@example.com 12345678 <domain-id>
+# Optionally override the API URL:
+#   MG_API=https://my-instance/api ./provision.sh
 
 set -euo pipefail
 
-MG_URL="${1:-http://localhost}"
-MG_EMAIL="${2:-admin@example.com}"
-MG_PASSWORD="${3:-12345678}"
-DOMAIN_ID="${4:-}"
+MG_API="${MG_API:-https://cloud.magistrala.absmach.eu/api}"
+DOMAIN_ID="${MG_DOMAIN_ID:-}"
 
 if [ -z "$DOMAIN_ID" ]; then
-  echo "ERROR: DOMAIN_ID is required as the 4th argument."
-  echo "Usage: ./provision.sh [MAGISTRALA_URL] [USER_EMAIL] [USER_PASSWORD] [DOMAIN_ID]"
+  echo "ERROR: MG_DOMAIN_ID is required."
   exit 1
 fi
 
-USERS_URL="${MG_URL}:9002"
-CLIENTS_URL="${MG_URL}:9000"
-BOOTSTRAP_URL="${MG_URL}:9013"
-RE_URL="${MG_URL}:9008"
+if [ -z "${MG_PAT:-}" ]; then
+  echo "ERROR: MG_PAT is required."
+  exit 1
+fi
+
+DOMAIN_API="${MG_API}/${DOMAIN_ID}"
 
 echo "=== Magistrala Mock Device Provisioning ==="
-echo "Magistrala URL: ${MG_URL}"
-echo "Domain ID:      ${DOMAIN_ID}"
+echo "API URL:   ${MG_API}"
+echo "Domain ID: ${DOMAIN_ID}"
 echo ""
 
-# Step 1: Obtain user token
-echo "Step 1: Obtaining user token..."
-TOKEN=$(curl -sSL -X POST "${USERS_URL}/users/tokens/issue" \
-  -H "Content-Type: application/json" \
-  -d "{\"identity\": \"${MG_EMAIL}\", \"secret\": \"${MG_PASSWORD}\"}" | \
-  python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null || echo "")
-
-if [ -z "$TOKEN" ]; then
-  echo "ERROR: Failed to obtain token. Check Magistrala URL and credentials."
-  exit 1
-fi
-echo "  Token obtained successfully."
+TOKEN="${MG_PAT}"
+echo "Step 1: Using PAT token."
 
 # Step 2: Create the agent Client (device)
 echo ""
 echo "Step 2: Creating agent Client (device)..."
-CLIENT_RESPONSE=$(curl -sSL -X POST "${CLIENTS_URL}/${DOMAIN_ID}/clients" \
+CLIENT_RESPONSE=$(curl -sSL -X POST "${DOMAIN_API}/clients" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${TOKEN}" \
   -d '{
@@ -77,69 +73,40 @@ fi
 echo "  Client ID:     ${CLIENT_ID}"
 echo "  Client Secret: ${CLIENT_SECRET}"
 
-# Step 3: Create Control Channel
+# Step 3: Create Channel
 echo ""
-echo "Step 3: Creating Control Channel..."
-CONTROL_CH_RESPONSE=$(curl -sSL -X POST "${CLIENTS_URL}/${DOMAIN_ID}/channels" \
+echo "Step 3: Creating Channel..."
+CH_RESPONSE=$(curl -sSL -X POST "${DOMAIN_API}/channels" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${TOKEN}" \
   -d '{
-    "name": "agent-control-channel",
+    "name": "agent-channel",
     "metadata": {
-      "type": "control",
-      "description": "Control channel for agent commands"
+      "description": "Agent channel (req/data/res subtopics)"
     }
   }')
 
-CONTROL_CHANNEL=$(echo "$CONTROL_CH_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
+CHANNEL=$(echo "$CH_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 
-if [ -z "$CONTROL_CHANNEL" ]; then
-  echo "ERROR: Failed to create Control Channel."
+if [ -z "$CHANNEL" ]; then
+  echo "ERROR: Failed to create Channel."
   exit 1
 fi
-echo "  Control Channel: ${CONTROL_CHANNEL}"
+echo "  Channel: ${CHANNEL}"
 
-# Step 4: Create Data Channel
+# Step 4: Connect Client to Channel
 echo ""
-echo "Step 4: Creating Data Channel..."
-DATA_CH_RESPONSE=$(curl -sSL -X POST "${CLIENTS_URL}/${DOMAIN_ID}/channels" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -d '{
-    "name": "agent-data-channel",
-    "metadata": {
-      "type": "data",
-      "description": "Data channel for agent sensor data and Node-RED flow output"
-    }
-  }')
-
-DATA_CHANNEL=$(echo "$DATA_CH_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
-
-if [ -z "$DATA_CHANNEL" ]; then
-  echo "ERROR: Failed to create Data Channel."
-  exit 1
-fi
-echo "  Data Channel: ${DATA_CHANNEL}"
-
-# Step 5: Connect Client to Channels
-echo ""
-echo "Step 5: Connecting Client to Channels..."
-curl -sSL -X POST "${CLIENTS_URL}/${DOMAIN_ID}/channels/${CONTROL_CHANNEL}/connect" \
+echo "Step 4: Connecting Client to Channel..."
+curl -sSL -X POST "${DOMAIN_API}/channels/${CHANNEL}/connect" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${TOKEN}" \
   -d "{\"client_ids\": [\"${CLIENT_ID}\"], \"types\": [\"publish\", \"subscribe\"]}" > /dev/null 2>&1
-echo "  Connected to Control Channel."
+echo "  Connected."
 
-curl -sSL -X POST "${CLIENTS_URL}/${DOMAIN_ID}/channels/${DATA_CHANNEL}/connect" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -d "{\"client_ids\": [\"${CLIENT_ID}\"], \"types\": [\"publish\", \"subscribe\"]}" > /dev/null 2>&1
-echo "  Connected to Data Channel."
-
-# Step 6: Create Bootstrap configuration
+# Step 5: Create Bootstrap configuration
 echo ""
-echo "Step 6: Creating Bootstrap configuration..."
-BOOTSTRAP_RESPONSE=$(curl -sSL -X POST "${BOOTSTRAP_URL}/${DOMAIN_ID}/clients/configs" \
+echo "Step 5: Creating Bootstrap configuration..."
+curl -sSL -X POST "${DOMAIN_API}/clients/configs" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${TOKEN}" \
   -d "{
@@ -147,72 +114,83 @@ BOOTSTRAP_RESPONSE=$(curl -sSL -X POST "${BOOTSTRAP_URL}/${DOMAIN_ID}/clients/co
     \"external_id\": \"agent-mock-device\",
     \"external_key\": \"agent-mock-device-key\",
     \"name\": \"agent-mock-device-config\",
-    \"channels\": [\"${CONTROL_CHANNEL}\", \"${DATA_CHANNEL}\"],
+    \"channels\": [\"${CHANNEL}\"],
     \"content\": \"{}\",
     \"state\": 1
-  }" 2>/dev/null || echo "{}")
-
+  }" > /dev/null 2>&1
 echo "  Bootstrap configuration created."
 
-# Step 7: Set up Rule Engine to store messages
+# Step 6: Set up Rule Engine to store messages as SenML
 echo ""
-echo "Step 7: Configuring Rule Engine to store messages..."
-RE_RESPONSE=$(curl -sSL -X POST "${RE_URL}/rules" \
+echo "Step 6: Configuring Rule Engine (save_senml)..."
+RE_RESPONSE=$(curl -sSL -o /dev/null -w "%{http_code}" -X POST "${DOMAIN_API}/rules" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${TOKEN}" \
   -d "{
     \"name\": \"agent-mock-device-storage\",
-    \"input_channel\": \"${DATA_CHANNEL}\",
-    \"input_topic\": \"channels/${DATA_CHANNEL}/messages/>\",
-    \"logic_type\": \"passthrough\",
-    \"output_channel\": \"\",
+    \"input_channel\": \"${CHANNEL}\",
+    \"input_topic\": \">\",
+    \"logic\": {
+      \"type\": 0,
+      \"value\": \"return true\"
+    },
+    \"outputs\": [
+      {\"type\": \"save_senml\"}
+    ],
     \"metadata\": {
-      \"description\": \"Store all messages from mock agent device\"
+      \"description\": \"Save all SenML messages from mock agent device\"
     }
-  }" 2>/dev/null || echo "{}")
-echo "  Rule Engine configured (messages from data channel will be stored)."
+  }" 2>/dev/null || echo "000")
+if [ "$RE_RESPONSE" = "201" ] || [ "$RE_RESPONSE" = "200" ]; then
+  echo "  Rule Engine configured (save_senml)."
+else
+  echo "  WARNING: Rule Engine returned HTTP ${RE_RESPONSE}. Check manually if needed."
+fi
 
-# Write .env file
+# Step 7: Update docker/.env with provisioned values
 echo ""
-echo "Step 8: Writing .env file..."
-cat > "$(dirname "$0")/.env" << EOF
-# Auto-generated by provision.sh on $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-# Pre-set Magistrala resources for mock device
+echo "Step 7: Updating docker/.env..."
+ENV_FILE="$(dirname "$0")/../.env"
 
-# Client credentials
-MG_AGENT_CLIENT_ID=${CLIENT_ID}
-MG_AGENT_CLIENT_SECRET=${CLIENT_SECRET}
+if [ ! -f "$ENV_FILE" ]; then
+  echo "ERROR: $ENV_FILE not found. Run from the project root or ensure docker/.env exists."
+  exit 1
+fi
 
-# Channels
-MG_AGENT_CONTROL_CHANNEL=${CONTROL_CHANNEL}
-MG_AGENT_DATA_CHANNEL=${DATA_CHANNEL}
+update_env() {
+  local key="$1"
+  local value="$2"
+  if grep -q "^${key}=" "$ENV_FILE"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+  else
+    echo "${key}=${value}" >> "$ENV_FILE"
+  fi
+}
 
-# Bootstrap
-MG_AGENT_BOOTSTRAP_URL=${BOOTSTRAP_URL}/clients/bootstrap
-MG_AGENT_BOOTSTRAP_ID=agent-mock-device
-MG_AGENT_BOOTSTRAP_KEY=agent-mock-device-key
-EOF
-echo "  .env file written."
+update_env "MG_AGENT_CLIENT_ID"     "${CLIENT_ID}"
+update_env "MG_AGENT_CLIENT_SECRET" "${CLIENT_SECRET}"
+update_env "MG_AGENT_DOMAIN_ID"     "${DOMAIN_ID}"
+update_env "MG_AGENT_CHANNEL"       "${CHANNEL}"
+
+echo "  docker/.env updated."
 
 # Summary
 echo ""
 echo "=== Provisioning Complete ==="
 echo ""
 echo "Resources created:"
-echo "  Client ID:        ${CLIENT_ID}"
-echo "  Client Secret:    ${CLIENT_SECRET}"
-echo "  Control Channel:  ${CONTROL_CHANNEL}"
-echo "  Data Channel:     ${DATA_CHANNEL}"
+echo "  Client ID:     ${CLIENT_ID}"
+echo "  Client Secret: ${CLIENT_SECRET}"
+echo "  Channel:       ${CHANNEL}"
 echo ""
-echo "To start the mock device:"
-echo "  cd docker/nodered && docker compose up -d"
+echo "Next steps:"
+echo "  1. Run:  make run"
+echo "  2. Open: http://localhost:1880  (Node-RED UI)"
 echo ""
-echo "To deploy a Node-RED flow via agent:"
-echo "  curl -X POST http://localhost:9999/nodered \\"
+echo "Deploy a Node-RED flow via HTTP:"
+echo "  FLOWS=\$(cat examples/nodered/speed-flow.json | base64 -w 0)"
+echo "  curl -s -X POST http://localhost:9999/nodered \\"
 echo "    -H 'Content-Type: application/json' \\"
-echo "    -d '{\"command\": \"nodered-deploy\", \"flows\": \"<base64-encoded-flow-json>\"}'"
-echo ""
-echo "To check Node-RED status via agent:"
-echo "  curl -X POST http://localhost:9999/nodered \\"
-echo "    -H 'Content-Type: application/json' \\"
-echo "    -d '{\"command\": \"nodered-ping\"}'"
+echo "    -d \"{\\\"command\\\":\\\"nodered-deploy\\\",\\\"flows\\\":\\\"\$FLOWS\\\"}\""
+
+

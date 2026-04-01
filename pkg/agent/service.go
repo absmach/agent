@@ -494,18 +494,14 @@ func (a *agent) Publish(t, payload string) error {
 
 func (a *agent) getTopic(topic string) (t string) {
 	domainID := a.config.DomainID
-	ctrlChan := a.config.Channels.Control
-	dataChan := a.config.Channels.Data
-	if dataChan == "" {
-		dataChan = ctrlChan
-	}
+	chan_ := a.config.Channels.ID
 	switch topic {
 	case control:
-		t = fmt.Sprintf("m/%s/c/%s/res", domainID, ctrlChan)
+		t = fmt.Sprintf("m/%s/c/%s/res", domainID, chan_)
 	case data:
-		t = fmt.Sprintf("m/%s/c/%s/res", domainID, dataChan)
+		t = fmt.Sprintf("m/%s/c/%s/res", domainID, chan_)
 	default:
-		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, ctrlChan, topic)
+		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, chan_, topic)
 	}
 	return t
 }

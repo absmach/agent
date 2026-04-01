@@ -94,17 +94,9 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 		return agent.ErrMalformedEntity
 	}
 
-	ctrlChan := dc.Channels[0].ID
-	dataChan := dc.Channels[1].ID
-	if dc.Channels[0].Metadata["type"] == "data" {
-		ctrlChan = dc.Channels[1].ID
-		dataChan = dc.Channels[0].ID
-	}
-
 	sc := dc.SvcsConf.Agent.Server
 	cc := agent.ChanConfig{
-		Control: ctrlChan,
-		Data:    dataChan,
+		ID: dc.Channels[0].ID,
 	}
 	ec := dc.SvcsConf.Agent.Edgex
 	lc := dc.SvcsConf.Agent.Log
@@ -150,7 +142,7 @@ func fillExportConfig(econf export.Config, c agent.Config) export.Config {
 	}
 	for i, route := range econf.Routes {
 		if route.MqttTopic == "" {
-			econf.Routes[i].MqttTopic = "channels/" + c.Channels.Data + "/messages"
+			econf.Routes[i].MqttTopic = "channels/" + c.Channels.ID + "/messages"
 		}
 	}
 	return econf
