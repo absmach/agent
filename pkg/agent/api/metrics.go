@@ -22,8 +22,8 @@ type metricsMiddleware struct {
 	svc     agent.Service
 }
 
-// MetricsMiddleware instruments core service by tracking request count and latency.
-func MetricsMiddleware(svc agent.Service, counter metrics.Counter, latency metrics.Histogram) agent.Service {
+// NewMetrics returns a new metrics middleware wrapper.
+func NewMetrics(svc agent.Service, counter metrics.Counter, latency metrics.Histogram) agent.Service {
 	return &metricsMiddleware{
 		svc:     svc,
 		counter: counter,

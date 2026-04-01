@@ -10,8 +10,8 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/edgexfoundry/go-mod-core-contracts v0.1.70
+	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-kit/kit v0.13.0
-	github.com/go-zoo/bone v1.3.0
 	github.com/mainflux/export v0.1.1-0.20230724124847-67d0bc7f38cb
 	github.com/nats-io/nats.go v1.49.0
 	github.com/pelletier/go-toml v1.9.5
@@ -37,7 +37,6 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/go-chi/chi/v5 v5.2.5 // indirect
 	github.com/go-gorp/gorp/v3 v3.1.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

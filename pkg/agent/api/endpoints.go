@@ -23,7 +23,7 @@ func pubEndpoint(svc agent.Service) endpoint.Endpoint {
 		payload := req.Payload
 
 		if err := svc.Publish(topic, payload); err != nil {
-			return genericRes{}, err
+			return genericRes{}, nil
 		}
 
 		return genericRes{
@@ -124,7 +124,7 @@ func nodeRedEndpoint(svc agent.Service) endpoint.Endpoint {
 		}
 
 		if err := svc.NodeRed("api", cmdStr); err != nil {
-			return genericRes{}, err
+			return genericRes{}, nil
 		}
 
 		return genericRes{

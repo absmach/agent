@@ -26,10 +26,9 @@ import (
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/supermq/pkg/errors"
 	"github.com/absmach/supermq/pkg/messaging/brokers"
+	"github.com/absmach/supermq/pkg/prometheus"
 	"github.com/caarlos0/env/v9"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	kitprometheus "github.com/go-kit/kit/metrics/prometheus"
-	stdprometheus "github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -115,27 +114,14 @@ func main() {
 		return
 	}
 
-	svc = api.LoggingMiddleware(svc, logger)
-	svc = api.MetricsMiddleware(
-		svc,
-		kitprometheus.NewCounterFrom(stdprometheus.CounterOpts{
-			Namespace: "agent",
-			Subsystem: "api",
-			Name:      "request_count",
-			Help:      "Number of requests received.",
-		}, []string{"method"}),
-		kitprometheus.NewSummaryFrom(stdprometheus.SummaryOpts{
-			Namespace: "agent",
-			Subsystem: "api",
-			Name:      "request_latency_microseconds",
-			Help:      "Total duration of requests in microseconds.",
-		}, []string{"method"}),
-	)
+	svc = api.NewLogging(svc, logger)
+	counter, latency := prometheus.MakeMetrics("agent", "api")
+	svc = api.NewMetrics(svc, counter, latency)
 	b := conn.NewBroker(svc, mqttClient, cfg.Channels.Control, cfg.DomainID, pubsub, logger)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", cfg.Server.Port),
-		Handler: api.MakeHandler(svc),
+		Handler: api.MakeHandler(svc, logger, ""),
 	}
 
 	g.Go(func() error {

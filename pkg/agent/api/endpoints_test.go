@@ -61,18 +61,18 @@ func newService(ctx context.Context, t *testing.T, nc *noderedmocks.Client) (age
 	config := agent.Config{}
 	config.Heartbeat.Interval = time.Second
 
-	logger, err := logger.New(os.Stdout, "debug")
+	log, err := logger.New(os.Stdout, "debug")
 	if err != nil {
 		return nil, err
 	}
 
-	pubsub, err := brokers.NewPubSub(ctx, brokerAddress, logger)
+	pubsub, err := brokers.NewPubSub(ctx, brokerAddress, log)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to connect to Broker: %s %s", err, brokerAddress)
 	}
 	t.Cleanup(func() { pubsub.Close() })
 
-	agentSvc, err := agent.New(ctx, mqttClient, &config, edgexClient, nc, pubsub, logger)
+	agentSvc, err := agent.New(ctx, mqttClient, &config, edgexClient, nc, pubsub, log)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,8 @@ func newService(ctx context.Context, t *testing.T, nc *noderedmocks.Client) (age
 }
 
 func newServer(svc agent.Service) *httptest.Server {
-	mux := api.MakeHandler(svc)
+	log, _ := logger.New(os.Stdout, "debug")
+	mux := api.MakeHandler(svc, log, "")
 	return httptest.NewServer(mux)
 }
 
