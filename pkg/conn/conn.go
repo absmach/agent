@@ -39,6 +39,8 @@ var _ MqttBroker = (*broker)(nil)
 type MqttBroker interface {
 	// Subscribes to given topic and receives events.
 	Subscribe(ctx context.Context) error
+	// Resubscribe re-runs topic subscriptions after a reconnect.
+	Resubscribe()
 }
 
 type broker struct {
@@ -65,8 +67,12 @@ func NewBroker(svc agent.Service, client mqtt.Client, chann, domainID string, me
 
 // Subscribe subscribes to the MQTT message broker.
 func (b *broker) Subscribe(ctx context.Context) error {
-	topic := fmt.Sprintf("m/%s/c/%s/%s", b.domainID, b.channel, reqTopic)
 	b.ctx = ctx
+	return b.subscribe()
+}
+
+func (b *broker) subscribe() error {
+	topic := fmt.Sprintf("m/%s/c/%s/%s", b.domainID, b.channel, reqTopic)
 	s := b.client.Subscribe(topic, 0, b.handleMsg)
 	if err := s.Error(); s.Wait() && err != nil {
 		return err
@@ -78,8 +84,14 @@ func (b *broker) Subscribe(ctx context.Context) error {
 			return err
 		}
 	}
-
 	return nil
+}
+
+// Resubscribe re-runs the topic subscriptions after a reconnect.
+func (b *broker) Resubscribe() {
+	if err := b.subscribe(); err != nil {
+		b.logger.Warn("Failed to re-subscribe after reconnect", slog.Any("error", err))
+	}
 }
 
 // handleNatsMsg triggered when new message is received on MQTT broker.

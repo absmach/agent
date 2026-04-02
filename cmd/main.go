@@ -99,7 +99,14 @@ func main() {
 	}
 	defer pubsub.Close()
 
-	mqttClient, err := connectToMQTTBroker(cfg.MQTT, logger)
+	// onReconnect is called by the MQTT connect handler on every (re)connect.
+	// It is assigned after the broker is created so the closure captures it by reference.
+	var onReconnect func()
+	mqttClient, err := connectToMQTTBroker(cfg.MQTT, logger, func() {
+		if onReconnect != nil {
+			onReconnect()
+		}
+	})
 	if err != nil {
 		logger.Error(err.Error())
 		return
@@ -117,6 +124,7 @@ func main() {
 	counter, latency := prometheus.MakeMetrics("agent", "api")
 	svc = api.NewMetrics(svc, counter, latency)
 	b := conn.NewBroker(svc, mqttClient, cfg.Channels.ID, cfg.DomainID, pubsub, logger)
+	onReconnect = b.Resubscribe
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", cfg.Server.Port),
@@ -258,10 +266,11 @@ func loadBootConfig(cfg config, c agent.Config, logger *slog.Logger) (agent.Conf
 	return bsc, nil
 }
 
-func connectToMQTTBroker(conf agent.MQTTConfig, logger *slog.Logger) (mqtt.Client, error) {
+func connectToMQTTBroker(conf agent.MQTTConfig, logger *slog.Logger, onConnect func()) (mqtt.Client, error) {
 	name := conf.Username
 	conn := func(client mqtt.Client) {
 		logger.Info("Client connected", slog.String("client_name", name))
+		onConnect()
 	}
 
 	lost := func(client mqtt.Client, err error) {

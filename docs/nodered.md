@@ -154,8 +154,8 @@ FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
 mosquitto_pub \
   -h <mqtt-host> -p 8883 \
   --capath /etc/ssl/certs \
+  -I "Client" \
   -u <client-id> -P <client-secret> \
-  --id "deploy-$(date +%s)" \
   -t "m/<domain-id>/c/<channel-id>/req" \
   -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-deploy,$FLOWS\"}]"
 ```
@@ -173,8 +173,8 @@ The agent will:
 mosquitto_pub \
   -h <mqtt-host> -p 8883 \
   --capath /etc/ssl/certs \
+  -I "Client" \
   -u <client-id> -P <client-secret> \
-  --id "list-$(date +%s)" \
   -t "m/<domain-id>/c/<channel-id>/req" \
   -m '[{"bn":"req-2:", "n":"nodered", "vs":"nodered-flows"}]'
 ```
