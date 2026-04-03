@@ -23,7 +23,7 @@ func pubEndpoint(svc agent.Service) endpoint.Endpoint {
 		payload := req.Payload
 
 		if err := svc.Publish(topic, payload); err != nil {
-			return genericRes{}, err
+			return genericRes{}, nil
 		}
 
 		return genericRes{
@@ -66,10 +66,10 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 
 		sc := agent.ServerConfig{Port: req.Agent.Server.Port}
 		cc := agent.ChanConfig{
-			Control: req.Agent.Channels.Control,
-			Data:    req.Agent.Channels.Data,
+			ID: req.Agent.Channels.ID,
 		}
 		ec := agent.EdgexConfig{URL: req.Agent.Edgex.Url}
+		nc := agent.NodeRedConfig{URL: req.Agent.NodeRed.Url}
 		lc := agent.LogConfig{Level: req.Agent.Log.Level}
 		mc := agent.MQTTConfig{
 			URL:      req.Agent.Mqtt.Url,
@@ -80,6 +80,7 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 			Server:   sc,
 			Channels: cc,
 			Edgex:    ec,
+			NodeRed:  nc,
 			Log:      lc,
 			MQTT:     mc,
 		}
@@ -105,5 +106,30 @@ func viewConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 func viewServicesEndpoint(svc agent.Service) endpoint.Endpoint {
 	return func(_ context.Context, request interface{}) (interface{}, error) {
 		return svc.Services(), nil
+	}
+}
+
+func nodeRedEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request interface{}) (interface{}, error) {
+		req := request.(nodeRedReq)
+
+		if err := req.validate(); err != nil {
+			return nil, err
+		}
+
+		cmdStr := req.Command
+		if req.Flows != "" {
+			cmdStr = req.Command + "," + req.Flows
+		}
+
+		resp, err := svc.NodeRed("api", cmdStr)
+		if err != nil {
+			return genericRes{}, nil
+		}
+
+		return genericRes{
+			Service:  "agent",
+			Response: resp,
+		}, nil
 	}
 }

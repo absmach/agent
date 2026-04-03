@@ -1,0 +1,99 @@
+[
+    {
+        "id": "flow-modbus",
+        "type": "tab",
+        "label": "Modbus Holding Registers",
+        "disabled": false,
+        "info": "Polls Modbus TCP holding registers every 10s and publishes SenML to Magistrala cloud. Simulates a Modbus TCP slave with a function node when no real device is present."
+    },
+    {
+        "id": "mqtt-broker-modbus",
+        "type": "mqtt-broker",
+        "name": "Magistrala Cloud MQTT",
+        "broker": "messaging.magistrala.absmach.eu",
+        "port": "8883",
+        "clientid": "91e9aff0-b934-48f9-917c-2524e9f25729",
+        "autoConnect": true,
+        "usetls": true,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "credentials": {
+            "user": "91e9aff0-b934-48f9-917c-2524e9f25729",
+            "password": "ec557975-fa05-419d-ba49-4cb07ce73735"
+        },
+        "birthTopic": "",
+        "closeTopic": "",
+        "willTopic": "",
+        "z": ""
+    },
+    {
+        "id": "inject-modbus",
+        "type": "inject",
+        "z": "flow-modbus",
+        "name": "Every 10s",
+        "props": [{"p": "payload", "v": "", "vt": "date"}],
+        "repeat": "10",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 3,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 150,
+        "y": 160,
+        "wires": [["sim-modbus-read"]]
+    },
+    {
+        "id": "sim-modbus-read",
+        "type": "function",
+        "z": "flow-modbus",
+        "name": "Simulate Modbus Read (FC03 HR0-HR3)",
+        "func": "// Simulate reading 4 holding registers (FC03) from a Modbus TCP slave.\n// Replace this node with a real modbus-read node when a device is available.\n// Holding registers:\n//   HR0 - Voltage (V)  : 220-240\n//   HR1 - Current (A)  : 0-25 (scaled x10, raw=0..250)\n//   HR2 - Power (W)    : 0-6000\n//   HR3 - Temperature  : 20-80 (°C)\nvar voltage   = 220 + Math.random() * 20;\nvar currentRaw = Math.round((Math.random() * 25) * 10); // scaled\nvar power     = Math.round(voltage * (currentRaw / 10));\nvar temp      = 20 + Math.random() * 60;\n\nmsg.registers = {\n    hr0: Math.round(voltage),\n    hr1: currentRaw,\n    hr2: power,\n    hr3: Math.round(temp)\n};\nreturn msg;",
+        "outputs": 1,
+        "x": 380,
+        "y": 160,
+        "wires": [["build-modbus-senml"]]
+    },
+    {
+        "id": "build-modbus-senml",
+        "type": "function",
+        "z": "flow-modbus",
+        "name": "Build SenML",
+        "func": "var r = msg.registers;\nvar now = Date.now() * 1e6;\nmsg.payload = JSON.stringify([\n    {\"bn\": \"modbus-device:\", \"bt\": now,\n     \"n\": \"hr0\", \"u\": \"V\",   \"v\": r.hr0},\n    {\"n\": \"hr1\", \"u\": \"A\",   \"v\": r.hr1 / 10},\n    {\"n\": \"hr2\", \"u\": \"W\",   \"v\": r.hr2},\n    {\"n\": \"hr3\", \"u\": \"Cel\", \"v\": r.hr3}\n]);\nmsg.topic = \"m/a1c51744-3317-48e2-9eef-4df37f68b9d1/c/82f1d080-b1ce-41b7-aef2-62b270e551e7/data\";\nreturn msg;",
+        "outputs": 1,
+        "x": 600,
+        "y": 160,
+        "wires": [["mqtt-pub-modbus", "debug-modbus"]]
+    },
+    {
+        "id": "mqtt-pub-modbus",
+        "type": "mqtt out",
+        "z": "flow-modbus",
+        "name": "Publish to Magistrala",
+        "topic": "",
+        "qos": "0",
+        "retain": "false",
+        "broker": "mqtt-broker-modbus",
+        "x": 820,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "debug-modbus",
+        "type": "debug",
+        "z": "flow-modbus",
+        "name": "Debug",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 820,
+        "y": 200,
+        "wires": []
+    }
+]

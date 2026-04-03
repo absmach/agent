@@ -17,12 +17,13 @@ import (
 
 	"github.com/absmach/agent/pkg/agent"
 	"github.com/absmach/agent/pkg/agent/api"
-	"github.com/absmach/agent/pkg/agent/mocks"
+	edgexmocks "github.com/absmach/agent/pkg/edgex/mocks"
+	noderedmocks "github.com/absmach/agent/pkg/nodered/mocks"
+	"github.com/absmach/supermq/logger"
+	"github.com/absmach/supermq/pkg/messaging/brokers"
 	paho "github.com/eclipse/paho.mqtt.golang"
-
-	"github.com/absmach/magistrala/logger"
-	"github.com/absmach/magistrala/pkg/messaging/brokers"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 type testRequest struct {
@@ -41,7 +42,7 @@ func (tr testRequest) make() (*http.Response, error) {
 	return tr.client.Do(req)
 }
 
-func newService(ctx context.Context) (agent.Service, error) {
+func newService(ctx context.Context, t *testing.T, nc *noderedmocks.Client) (agent.Service, error) {
 	opts := paho.NewClientOptions().
 		SetUsername(username).
 		AddBroker(mqttAddress).
@@ -53,22 +54,25 @@ func newService(ctx context.Context) (agent.Service, error) {
 		return nil, token.Error()
 	}
 
-	edgexClient := mocks.NewEdgexClient()
+	edgexClient := edgexmocks.NewClient(t)
+	if nc == nil {
+		nc = noderedmocks.NewClient(t)
+	}
 	config := agent.Config{}
 	config.Heartbeat.Interval = time.Second
 
-	logger, err := logger.New(os.Stdout, "debug")
+	log, err := logger.New(os.Stdout, "debug")
 	if err != nil {
 		return nil, err
 	}
 
-	pubsub, err := brokers.NewPubSub(ctx, brokerAddress, logger)
+	pubsub, err := brokers.NewPubSub(ctx, brokerAddress, log)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to connect to Broker: %s %s", err, brokerAddress)
 	}
-	defer pubsub.Close()
+	t.Cleanup(func() { pubsub.Close() })
 
-	agentSvc, err := agent.New(ctx, mqttClient, &config, edgexClient, pubsub, logger)
+	agentSvc, err := agent.New(ctx, mqttClient, &config, edgexClient, nc, pubsub, log)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +81,8 @@ func newService(ctx context.Context) (agent.Service, error) {
 }
 
 func newServer(svc agent.Service) *httptest.Server {
-	mux := api.MakeHandler(svc)
+	log, _ := logger.New(os.Stdout, "debug")
+	mux := api.MakeHandler(svc, log, "")
 	return httptest.NewServer(mux)
 }
 
@@ -87,7 +92,7 @@ func toJSON(data interface{}) string {
 }
 
 func TestPublish(t *testing.T) {
-	svc, err := newService(context.TODO())
+	svc, err := newService(context.TODO(), t, nil)
 	if err != nil {
 		t.Errorf("failed to create service: %v", err)
 		return
@@ -117,6 +122,73 @@ func TestPublish(t *testing.T) {
 			client: client,
 			method: http.MethodPost,
 			url:    fmt.Sprintf("%s/pub", ts.URL),
+			body:   strings.NewReader(tc.req),
+		}
+		res, err := req.make()
+		assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %s", tc.desc, err))
+		assert.Equal(t, tc.status, res.StatusCode, fmt.Sprintf("%s: expected status code %d got %d", tc.desc, tc.status, res.StatusCode))
+	}
+}
+
+func TestNodeRed(t *testing.T) {
+	nc := noderedmocks.NewClient(t)
+	nc.On("Ping").Return("", nil)
+	nc.On("FetchFlows").Return("", nil)
+	nc.On("DeployFlows", mock.Anything).Return("", nil)
+
+	svc, err := newService(context.TODO(), t, nc)
+	if err != nil {
+		t.Errorf("failed to create service: %v", err)
+		return
+	}
+
+	ts := newServer(svc)
+	defer ts.Close()
+	client := ts.Client()
+
+	validPing := toJSON(struct {
+		Command string `json:"command"`
+	}{
+		Command: "nodered-ping",
+	})
+
+	validFlows := toJSON(struct {
+		Command string `json:"command"`
+	}{
+		Command: "nodered-flows",
+	})
+
+	validDeploy := toJSON(struct {
+		Command string `json:"command"`
+		Flows   string `json:"flows"`
+	}{
+		Command: "nodered-deploy",
+		Flows:   "W10=", // base64 of "[]"
+	})
+
+	emptyCommand := toJSON(struct {
+		Command string `json:"command"`
+	}{
+		Command: "",
+	})
+
+	cases := []struct {
+		desc   string
+		req    string
+		status int
+	}{
+		{"nodered ping", validPing, http.StatusOK},
+		{"nodered fetch flows", validFlows, http.StatusOK},
+		{"nodered deploy flow", validDeploy, http.StatusOK},
+		{"nodered empty command", emptyCommand, http.StatusInternalServerError},
+		{"nodered invalid json", "}", http.StatusInternalServerError},
+	}
+
+	for _, tc := range cases {
+		req := testRequest{
+			client: client,
+			method: http.MethodPost,
+			url:    fmt.Sprintf("%s/nodered", ts.URL),
 			body:   strings.NewReader(tc.req),
 		}
 		res, err := req.make()

@@ -16,11 +16,12 @@ import (
 
 	"github.com/absmach/agent/pkg/edgex"
 	"github.com/absmach/agent/pkg/encoder"
+	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/terminal"
 	paho "github.com/eclipse/paho.mqtt.golang"
 
-	"github.com/absmach/magistrala/pkg/errors"
-	"github.com/absmach/magistrala/pkg/messaging"
+	"github.com/absmach/supermq/pkg/errors"
+	"github.com/absmach/supermq/pkg/messaging"
 	exp "github.com/mainflux/export/pkg/config"
 )
 
@@ -80,6 +81,9 @@ var (
 
 	// errNoSuchTerminalSession terminal session doesnt exist error on closing.
 	errNoSuchTerminalSession = errors.New("no such terminal session")
+
+	// errNodeRedFailed.
+	errNodeRedFailed = errors.New("failed to execute node-red operation")
 )
 
 // Service specifies API for publishing messages and subscribing to topics.
@@ -107,18 +111,22 @@ type Service interface {
 
 	// Publish message.
 	Publish(string, string) error
+
+	// NodeRed manages Node-RED flow operations.
+	NodeRed(string, string) (string, error)
 }
 
 var _ Service = (*agent)(nil)
 
 type agent struct {
-	mqttClient  paho.Client
-	config      *Config
-	edgexClient edgex.Client
-	logger      *slog.Logger
-	broker      messaging.PubSub
-	svcs        map[string]Heartbeat
-	terminals   map[string]terminal.Session
+	mqttClient    paho.Client
+	config        *Config
+	edgexClient   edgex.Client
+	noderedClient nodered.Client
+	logger        *slog.Logger
+	broker        messaging.PubSub
+	svcs          map[string]Heartbeat
+	terminals     map[string]terminal.Session
 }
 
 func (ag *agent) handle(ctx context.Context, pub messaging.Publisher, logger *slog.Logger, cfg HeartbeatConfig) handleFunc {
@@ -156,15 +164,16 @@ func (h handleFunc) Cancel() error {
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, ec edgex.Client, broker messaging.PubSub, logger *slog.Logger) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, ec edgex.Client, nc nodered.Client, broker messaging.PubSub, logger *slog.Logger) (Service, error) {
 	ag := &agent{
-		mqttClient:  mc,
-		edgexClient: ec,
-		config:      cfg,
-		broker:      broker,
-		logger:      logger,
-		svcs:        make(map[string]Heartbeat),
-		terminals:   make(map[string]terminal.Session),
+		mqttClient:    mc,
+		edgexClient:   ec,
+		noderedClient: nc,
+		config:        cfg,
+		broker:        broker,
+		logger:        logger,
+		svcs:          make(map[string]Heartbeat),
+		terminals:     make(map[string]terminal.Session),
 	}
 
 	if cfg.Heartbeat.Interval <= 0 {
@@ -228,6 +237,16 @@ func (a *agent) Control(uuid, cmdStr string) error {
 		resp, err = a.edgexClient.FetchMetrics(cmdArgs[1:])
 	case "edgex-ping":
 		resp, err = a.edgexClient.Ping()
+	case "nodered-deploy":
+		resp, err = a.NodeRed(uuid, cmdStr)
+	case "nodered-add-flow":
+		resp, err = a.NodeRed(uuid, cmdStr)
+	case "nodered-flows":
+		resp, err = a.NodeRed(uuid, cmdStr)
+	case "nodered-state":
+		resp, err = a.NodeRed(uuid, cmdStr)
+	case "nodered-ping":
+		resp, err = a.NodeRed(uuid, cmdStr)
 	default:
 		err = errUnknownCommand
 	}
@@ -346,6 +365,63 @@ func (a *agent) terminalWrite(uuid, cmd string) error {
 	return term.Send(p)
 }
 
+func (a *agent) NodeRed(uuid, cmdStr string) (string, error) {
+	cmdArgs := strings.Split(strings.ReplaceAll(cmdStr, " ", ""), ",")
+
+	cmd := cmdArgs[0]
+	if cmd == "" {
+		return "", errInvalidCommand
+	}
+
+	var resp string
+	var err error
+
+	switch cmd {
+	case "nodered-deploy":
+		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
+			return "", errInvalidCommand
+		}
+		flowData, decErr := base64.StdEncoding.DecodeString(cmdArgs[1])
+		if decErr != nil {
+			return "", errors.Wrap(errNodeRedFailed, decErr)
+		}
+		resp, err = a.noderedClient.DeployFlows(a.patchNodeRedClientID(string(flowData)))
+	case "nodered-add-flow":
+		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
+			return "", errInvalidCommand
+		}
+		flowData, decErr := base64.StdEncoding.DecodeString(cmdArgs[1])
+		if decErr != nil {
+			return "", errors.Wrap(errNodeRedFailed, decErr)
+		}
+		resp, err = a.noderedClient.AddFlow(a.patchNodeRedClientID(string(flowData)))
+	case "nodered-flows":
+		resp, err = a.noderedClient.FetchFlows()
+	case "nodered-state":
+		resp, err = a.noderedClient.FlowState()
+	case "nodered-ping":
+		resp, err = a.noderedClient.Ping()
+	default:
+		err = errUnknownCommand
+	}
+
+	if err != nil {
+		return "", errors.Wrap(errNodeRedFailed, err)
+	}
+
+	return resp, nil
+}
+
+// patchNodeRedClientID replaces the agent's MQTT clientid with a "-nr" suffixed
+// version in flow JSON so Node-RED does not steal the agent's MQTT session.
+func (a *agent) patchNodeRedClientID(flowJSON string) string {
+	clientID := a.config.MQTT.Username
+	if clientID == "" {
+		return flowJSON
+	}
+	return strings.ReplaceAll(flowJSON, `"clientid": "`+clientID+`"`, `"clientid": "`+clientID+`-nr"`)
+}
+
 func (a *agent) processResponse(uuid, cmd, resp string) error {
 	payload, err := encoder.EncodeSenML(uuid, cmd, resp)
 	if err != nil {
@@ -416,13 +492,15 @@ func (a *agent) Publish(t, payload string) error {
 }
 
 func (a *agent) getTopic(topic string) (t string) {
+	domainID := a.config.DomainID
+	chan_ := a.config.Channels.ID
 	switch topic {
 	case control:
-		t = fmt.Sprintf("channels/%s/messages/res", a.config.Channels.Control)
+		t = fmt.Sprintf("m/%s/c/%s/res", domainID, chan_)
 	case data:
-		t = fmt.Sprintf("channels/%s/messages/res", a.config.Channels.Data)
+		t = fmt.Sprintf("m/%s/c/%s/res", domainID, chan_)
 	default:
-		t = fmt.Sprintf("channels/%s/messages/res/%s", a.config.Channels.Control, topic)
+		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, chan_, topic)
 	}
 	return t
 }

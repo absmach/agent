@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/absmach/agent/pkg/agent"
-	"github.com/absmach/magistrala/pkg/messaging"
 	"github.com/absmach/senml"
+	"github.com/absmach/supermq/pkg/messaging"
 	"robpike.io/filter"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -28,9 +28,10 @@ const (
 	config  = "config"
 	service = "service"
 	term    = "term"
+	nred    = "nodered"
 )
 
-var channelPartRegExp = regexp.MustCompile(`^channels/([\w\-]+)/messages/services(/[^?]*)?(\?.*)?$`)
+var channelPartRegExp = regexp.MustCompile(`^m/([\w\-]+)/c/([\w\-]+)/services(/[^?]*)?(\?.*)?$`)
 
 var _ MqttBroker = (*broker)(nil)
 
@@ -38,6 +39,8 @@ var _ MqttBroker = (*broker)(nil)
 type MqttBroker interface {
 	// Subscribes to given topic and receives events.
 	Subscribe(ctx context.Context) error
+	// Resubscribe re-runs topic subscriptions after a reconnect.
+	Resubscribe()
 }
 
 type broker struct {
@@ -46,37 +49,49 @@ type broker struct {
 	logger        *slog.Logger
 	messageBroker messaging.PubSub
 	channel       string
+	domainID      string
 	ctx           context.Context
 }
 
 // NewBroker returns new MQTT broker instance.
-func NewBroker(svc agent.Service, client mqtt.Client, chann string, messBroker messaging.PubSub, log *slog.Logger) MqttBroker {
+func NewBroker(svc agent.Service, client mqtt.Client, chann, domainID string, messBroker messaging.PubSub, log *slog.Logger) MqttBroker {
 	return &broker{
 		svc:           svc,
 		client:        client,
 		logger:        log,
 		messageBroker: messBroker,
 		channel:       chann,
+		domainID:      domainID,
 	}
 }
 
 // Subscribe subscribes to the MQTT message broker.
 func (b *broker) Subscribe(ctx context.Context) error {
-	topic := fmt.Sprintf("channels/%s/messages/%s", b.channel, reqTopic)
 	b.ctx = ctx
+	return b.subscribe()
+}
+
+func (b *broker) subscribe() error {
+	topic := fmt.Sprintf("m/%s/c/%s/%s", b.domainID, b.channel, reqTopic)
 	s := b.client.Subscribe(topic, 0, b.handleMsg)
 	if err := s.Error(); s.Wait() && err != nil {
 		return err
 	}
-	topic = fmt.Sprintf("channels/%s/messages/%s/#", b.channel, servTopic)
+	topic = fmt.Sprintf("m/%s/c/%s/%s/#", b.domainID, b.channel, servTopic)
 	if b.messageBroker != nil {
 		n := b.client.Subscribe(topic, 0, b.handleNatsMsg)
 		if err := n.Error(); n.Wait() && err != nil {
 			return err
 		}
 	}
-
 	return nil
+}
+
+// Resubscribe re-runs the topic subscriptions after a reconnect.
+func (b *broker) Resubscribe() {
+	if err := b.subscribe(); err != nil {
+		b.logger.Warn("Failed to re-subscribe after reconnect", slog.Any("error", err))
+	}
 }
 
 // handleNatsMsg triggered when new message is received on MQTT broker.
@@ -97,10 +112,11 @@ func extractNatsTopic(topic string) string {
 		return (len(s) == 0)
 	}
 	channelParts := channelPartRegExp.FindStringSubmatch(topic)
-	if len(channelParts) < 3 {
+	if len(channelParts) < 4 {
 		return ""
 	}
-	filtered := filter.Drop(strings.Split(channelParts[2], "/"), isEmpty).([]string)
+	// channelParts[3] is the subtopic after /services
+	filtered := filter.Drop(strings.Split(channelParts[3], "/"), isEmpty).([]string)
 	natsTopic := strings.Join(filtered, ".")
 
 	return fmt.Sprintf("%s.%s", commands, natsTopic)
@@ -147,6 +163,11 @@ func (b *broker) handleMsg(mc mqtt.Client, msg mqtt.Message) {
 		b.logger.Info("Term view command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if err := b.svc.Terminal(uuid, cmdStr); err != nil {
 			b.logger.Warn("Term view operation failed", slog.Any("error", err))
+		}
+	case nred:
+		b.logger.Info("NodeRed command", slog.String("uuid", uuid), slog.String("command", cmdStr))
+		if err := b.svc.Control(uuid, cmdStr); err != nil {
+			b.logger.Warn("NodeRed operation failed", slog.Any("error", err))
 		}
 	}
 }

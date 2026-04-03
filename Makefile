@@ -10,6 +10,8 @@ GOARCH ?= amd64
 VERSION ?= $(shell git describe --abbrev=0 --tags)
 COMMIT ?= $(shell git rev-parse HEAD)
 TIME ?= $(shell date +%F_%T)
+MOCKERY = $(GOBIN)/mockery
+MOCKERY_VERSION = 3.7.0
 
 ifneq ($(MG_BROKER_TYPE),)
     MG_BROKER_TYPE := $(MG_BROKER_TYPE)
@@ -19,7 +21,7 @@ endif
 
 define compile_service
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) GOARM=$(GOARM) \
-	go build -mod=vendor -tags $(MG_BROKER_TYPE) -ldflags "-s -w \
+	go build -tags $(MG_BROKER_TYPE) -ldflags "-s -w \
 	-X 'github.com/absmach/agent.BuildTime=$(TIME)' \
 	-X 'github.com/absmach/agent.Version=$(VERSION)' \
 	-X 'github.com/absmach/agent.Commit=$(COMMIT)'" \
@@ -53,7 +55,7 @@ endef
 
 all: $(SERVICES) 
 
-.PHONY: all $(SERVICES) dockers dockers_dev latest release
+.PHONY: all $(SERVICES) dockers docker_dev latest release mocks
 
 clean:
 	rm -rf ${BUILD_DIR}
@@ -64,6 +66,17 @@ install:
 
 test:
 	go test -v -race -count 1 -tags test $(shell go list ./... | grep -v 'vendor\|cmd')
+
+$(MOCKERY):
+	@mkdir -p $(GOBIN)
+	@mkdir -p mockery-tmp
+	@echo ">> downloading mockery $(MOCKERY_VERSION)..."
+	@curl -sL https://github.com/vektra/mockery/releases/download/v$(MOCKERY_VERSION)/mockery_$(MOCKERY_VERSION)_Linux_x86_64.tar.gz | tar -xz -C mockery-tmp
+	@mv mockery-tmp/mockery $(GOBIN)
+	@rm -r mockery-tmp
+
+mocks: $(MOCKERY)
+	@$(MOCKERY) --config ./tools/config/.mockery.yaml
 
 
 $(SERVICES):
@@ -77,7 +90,7 @@ $(DOCKERS_DEV):
 
 dockers: $(DOCKERS)
 
-dockers_dev: $(DOCKERS_DEV)
+docker_dev: $(DOCKERS_DEV)
 
 
 define docker_push
@@ -101,8 +114,14 @@ release:
 	done
 	$(call docker_push,$(version))
 
-rundev:
-	cd scripts && ./run.sh
+run_provision:
+	@MG_API="$(MG_API)" MG_DOMAIN_ID="$(MG_DOMAIN_ID)" MG_PAT="$(MG_PAT)" bash docker/nodered/provision.sh
 
 run:
-	docker-compose -f docker/docker-compose.yml up
+	docker compose -f docker/docker-compose.yml --env-file docker/.env up -d
+
+stop:
+	docker compose -f docker/docker-compose.yml --env-file docker/.env down
+
+clean_volumes:
+	docker compose -f docker/docker-compose.yml --env-file docker/.env down -v

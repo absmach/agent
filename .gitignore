@@ -1,2 +1,10 @@
 build
 cmd/config.toml
+
+# Node-RED runtime-generated files (do not commit)
+docker/nodered/.config.nodes.json
+docker/nodered/.config.runtime.json
+docker/nodered/.config.users.json
+docker/nodered/.config.nodes.json.backup
+docker/nodered/.config.users.json.backup
+docker/nodered/node_modules/

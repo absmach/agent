@@ -16,9 +16,8 @@ import (
 	"time"
 
 	"github.com/absmach/agent/pkg/agent"
-
 	"github.com/absmach/magistrala/bootstrap"
-	errors "github.com/absmach/magistrala/pkg/errors"
+	"github.com/absmach/supermq/pkg/errors"
 	export "github.com/mainflux/export/pkg/config"
 )
 
@@ -45,13 +44,13 @@ type ConfigContent struct {
 }
 
 type deviceConfig struct {
-	MainfluxID       string              `json:"mainflux_id"`
-	MainfluxKey      string              `json:"mainflux_key"`
-	MainfluxChannels []bootstrap.Channel `json:"mainflux_channels"`
-	ClientKey        string              `json:"client_key"`
-	ClientCert       string              `json:"client_cert"`
-	CaCert           string              `json:"ca_cert"`
-	SvcsConf         ServicesConfig      `json:"-"`
+	ClientID     string              `json:"client_id"`
+	ClientSecret string              `json:"client_secret"`
+	Channels     []bootstrap.Channel `json:"channels"`
+	ClientKey    string              `json:"client_key"`
+	ClientCert   string              `json:"client_cert"`
+	CaCert       string              `json:"ca_cert"`
+	SvcsConf     ServicesConfig      `json:"-"`
 }
 
 // Bootstrap - Retrieve device config.
@@ -91,35 +90,28 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 		}
 	}
 
-	if len(dc.MainfluxChannels) < 2 {
+	if len(dc.Channels) < 2 {
 		return agent.ErrMalformedEntity
-	}
-
-	ctrlChan := dc.MainfluxChannels[0].ID
-	dataChan := dc.MainfluxChannels[1].ID
-	if dc.MainfluxChannels[0].Metadata["type"] == "data" {
-		ctrlChan = dc.MainfluxChannels[1].ID
-		dataChan = dc.MainfluxChannels[0].ID
 	}
 
 	sc := dc.SvcsConf.Agent.Server
 	cc := agent.ChanConfig{
-		Control: ctrlChan,
-		Data:    dataChan,
+		ID: dc.Channels[0].ID,
 	}
 	ec := dc.SvcsConf.Agent.Edgex
 	lc := dc.SvcsConf.Agent.Log
+	nc := dc.SvcsConf.Agent.NodeRed
 
 	mc := dc.SvcsConf.Agent.MQTT
-	mc.Password = dc.MainfluxKey
-	mc.Username = dc.MainfluxID
+	mc.Password = dc.ClientSecret
+	mc.Username = dc.ClientID
 	mc.ClientCert = dc.ClientCert
 	mc.ClientKey = dc.ClientKey
 	mc.CaCert = dc.CaCert
 
 	hc := dc.SvcsConf.Agent.Heartbeat
 	tc := dc.SvcsConf.Agent.Terminal
-	c := agent.NewConfig(sc, cc, ec, lc, mc, hc, tc, file)
+	c := agent.NewConfig(sc, cc, ec, nc, lc, mc, hc, tc, file)
 
 	dc.SvcsConf.Export = fillExportConfig(dc.SvcsConf.Export, c)
 
@@ -150,7 +142,7 @@ func fillExportConfig(econf export.Config, c agent.Config) export.Config {
 	}
 	for i, route := range econf.Routes {
 		if route.MqttTopic == "" {
-			econf.Routes[i].MqttTopic = "channels/" + c.Channels.Data + "/messages"
+			econf.Routes[i].MqttTopic = "channels/" + c.Channels.ID + "/messages"
 		}
 	}
 	return econf
@@ -196,7 +188,7 @@ func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) 
 		return deviceConfig{}, err
 	}
 
-	req.Header.Add("Authorization", fmt.Sprintf("Thing %s", bsKey))
+	req.Header.Add("Authorization", fmt.Sprintf("Client %s", bsKey))
 	resp, err := client.Do(req)
 	if err != nil {
 		return deviceConfig{}, err

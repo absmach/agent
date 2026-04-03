@@ -1,29 +1,85 @@
 # Copyright (c) Abstract Machines
 # SPDX-License-Identifier: Apache-2.0
-# Do not use docker if using remote terminal
-
-version: "3.7"
+#
+# Mock Linux device environment for testing Agent with Node-RED.
+# This docker-compose simulates an IoT gateway device running:
+#   - Magistrala Agent (manages the device, connects to cloud MQTT over TLS)
+#   - Node-RED (flow-based IoT programming, publishes directly to cloud MQTT over TLS)
+#   - NATS (internal message broker for agent heartbeat)
 
 networks:
-  docker_magistrala-base-net:
-    external: true
+  magistrala-agent-base-net:
+    driver: bridge
 
 volumes:
-  magistrala-agent-volume:
+  nats-data:
+  nodered-data:
 
 services:
-  magistrala-agent:
-    image: magistrala/agent:latest
+  # NATS broker for agent internal heartbeat/service management
+  nats:
+    image: nats:2.10-alpine
+    container_name: agent-nats
+    restart: on-failure
+    command: "--config=/etc/nats/nats.conf"
+    networks:
+      - magistrala-agent-base-net
+    volumes:
+      - nats-data:/data
+      - ./nats/nats.conf:/etc/nats/nats.conf
+
+  # Node-RED flow engine
+  nodered:
+    image: nodered/node-red:latest
+    container_name: agent-nodered
+    restart: on-failure
+    entrypoint: ["/seed/entrypoint.sh"]
+    ports:
+      - "1880:1880"
+    networks:
+      - magistrala-agent-base-net
+    volumes:
+      - ./nodered:/seed:ro
+      - nodered-data:/data
+      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
+    environment:
+      TZ: UTC
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
+      MG_AGENT_CLIENT_ID: ${MG_AGENT_CLIENT_ID}
+      MG_AGENT_CLIENT_SECRET: ${MG_AGENT_CLIENT_SECRET}
+      MG_AGENT_DOMAIN_ID: ${MG_AGENT_DOMAIN_ID}
+      MG_AGENT_CHANNEL: ${MG_AGENT_CHANNEL}
+  agent:
+    image: ${MG_AGENT_IMAGE}
     container_name: magistrala-agent
     restart: on-failure
+    depends_on:
+      - nats
+      - nodered
+    ports:
+      - "${MG_AGENT_HTTP_PORT}:${MG_AGENT_HTTP_PORT}"
+    networks:
+      - magistrala-agent-base-net
     environment:
+      MG_AGENT_CONFIG_FILE: /config.toml
+      MG_AGENT_LOG_LEVEL: debug
+      MG_AGENT_HTTP_PORT: ${MG_AGENT_HTTP_PORT}
+      MG_AGENT_MQTT_URL: ${MG_AGENT_MQTT_URL}
+      MG_AGENT_MQTT_USERNAME: ${MG_AGENT_CLIENT_ID}
+      MG_AGENT_MQTT_PASSWORD: ${MG_AGENT_CLIENT_SECRET}
+      MG_AGENT_MQTT_SKIP_TLS: ${MG_AGENT_MQTT_SKIP_TLS}
+      MG_AGENT_MQTT_MTLS: ${MG_AGENT_MQTT_MTLS}
+      MG_AGENT_CHANNEL: ${MG_AGENT_CHANNEL}
+      MG_AGENT_DOMAIN_ID: ${MG_AGENT_DOMAIN_ID}
+      MG_AGENT_NATS_URL: ${MG_AGENT_NATS_URL}
+      MG_AGENT_NODERED_URL: ${MG_AGENT_NODERED_URL}
+      MG_AGENT_EDGEX_URL: ${MG_AGENT_EDGEX_URL}
+      MG_AGENT_HEARTBEAT_INTERVAL: ${MG_AGENT_HEARTBEAT_INTERVAL}
+      MG_AGENT_TERMINAL_SESSION_TIMEOUT: ${MG_AGENT_TERMINAL_SESSION_TIMEOUT}
+      MG_AGENT_BOOTSTRAP_URL: ${MG_AGENT_BOOTSTRAP_URL}
       MG_AGENT_BOOTSTRAP_ID: ${MG_AGENT_BOOTSTRAP_ID}
       MG_AGENT_BOOTSTRAP_KEY: ${MG_AGENT_BOOTSTRAP_KEY}
-      MG_AGENT_BOOTSTRAP_URL: ${MG_AGENT_BOOTSTRAP_URL}
-    ports:
-      - ${MG_AGENT_PORT}:${MG_AGENT_PORT}
-    networks:
-      - docker_magistrala-base-net
+      MG_AGENT_BOOTSTRAP_RETRIES: ${MG_AGENT_BOOTSTRAP_RETRIES}
     volumes:
       - ../configs/config.toml:/config.toml
-      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt
+      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
