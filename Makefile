@@ -55,7 +55,10 @@ endef
 
 all: $(SERVICES) 
 
-.PHONY: all $(SERVICES) dockers docker_dev latest release mocks
+arm: GOARCH=arm64
+arm: all
+
+.PHONY: all arm $(SERVICES) dockers docker_dev latest release mocks
 
 clean:
 	rm -rf ${BUILD_DIR}
