@@ -64,4 +64,3 @@ func handleInterrupt(pool *dockertest.Pool, container *dockertest.Resource) {
 		os.Exit(0)
 	}()
 }
-
