@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	username      = "mainflux-mqtt"
+	username      = "magistrala-mqtt"
 	broker        = "eclipse-mosquitto"
 	brokerVersion = "1.6.13"
 	poolMaxWait   = 120 * time.Second

@@ -4,8 +4,6 @@
 version: "2"
 run:
   timeout: 10m
-  build-tags:
-    - msg_nats
 linters:
   default: none
   enable:

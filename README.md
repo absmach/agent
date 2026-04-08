@@ -30,7 +30,7 @@ The binary is written to `build/magistrala-agent`.
 
 ## Running with Docker
 
-The recommended way to run agent is with the provided Docker Compose stack, which also starts Node-RED, NATS, and Mosquitto.
+The recommended way to run agent is with the provided Docker Compose stack, which also starts Node-RED, FluxMQ, and Mosquitto.
 
 ### 1. Provision Magistrala resources
 
@@ -89,7 +89,7 @@ Example configuration:
 ```toml
 [server]
   port = "9999"
-  broker_url = "nats://localhost:4222"
+  broker_url = "amqp://guest:guest@localhost:5682/"
 
 [channels]
   id = "<channel-id>"
@@ -116,7 +116,7 @@ Environment variables:
 | `MG_AGENT_CONFIG_FILE` | Location of configuration file | `config.toml` |
 | `MG_AGENT_LOG_LEVEL` | Log level | `info` |
 | `MG_AGENT_HTTP_PORT` | Agent HTTP port | `9999` |
-| `MG_AGENT_BROKER_URL` | NATS broker URL | `nats://localhost:4222` |
+| `MG_AGENT_BROKER_URL` | FluxMQ (AMQP) broker URL | `amqp://guest:guest@localhost:5682/` |
 | `MG_AGENT_MQTT_URL` | MQTT broker URL | `localhost:1883` |
 | `MG_AGENT_MQTT_USERNAME` | MQTT username (Magistrala client ID) | |
 | `MG_AGENT_MQTT_PASSWORD` | MQTT password (Magistrala client secret) | |
@@ -127,7 +127,7 @@ Environment variables:
 | `MG_AGENT_MQTT_RETAIN` | MQTT retain flag | `false` |
 | `MG_AGENT_CHANNEL` | Channel ID (req/data/res subtopics) | |
 | `MG_AGENT_DOMAIN_ID` | Magistrala domain ID | |
-| `MG_AGENT_BROKER_URL` | Internal FluxMQ (AMQP) broker URL | `amqp://guest:guest@localhost:5672/` |
+
 | `MG_AGENT_NODERED_URL` | Node-RED API URL | `http://localhost:1880/` |
 | `MG_AGENT_HEARTBEAT_INTERVAL` | Expected heartbeat interval | `30s` |
 | `MG_AGENT_TERMINAL_SESSION_TIMEOUT` | Terminal session timeout | `30s` |
@@ -237,7 +237,7 @@ See [docs/nodered.md](docs/nodered.md) for the full setup guide, Docker Compose 
 Services running on the same host can publish to `heartbeat.<service-name>.<service-type>` to register with the agent.
 
 ```bash
-go run -tags nats ./examples/publish/main.go -s nats://localhost:4222 heartbeat.myservice.sensor ""
+go run ./examples/publish/main.go -s amqp://guest:guest@localhost:5682/ heartbeat.myservice.sensor ""
 ```
 
 Check registered services:
@@ -271,11 +271,9 @@ payload := base64.StdEncoding.EncodeToString(b)
 
 [grc-badge]: https://goreportcard.com/badge/github.com/absmach/agent
 [grc-url]: https://goreportcard.com/report/github.com/absmach/agent
-[gitter]: https://gitter.im/mainflux/mainflux?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
-[gitter-badge]: https://badges.gitter.im/Join%20Chat.svg
 [license]: https://img.shields.io/badge/license-Apache%20v2.0-blue.svg
-[export]: https://github.com/mainflux/export
-[provision]: https://github.com/mainflux/mainflux/tree/master/provision
+[export]: https://github.com/absmach/export
+[provision]: https://github.com/absmach/magistrala/tree/main/cli
 [magistrala]: https://github.com/absmach/magistrala
 [senml]: https://tools.ietf.org/html/rfc8428
 [ci]: https://github.com/absmach/agent/actions/workflows/ci.yml/badge.svg

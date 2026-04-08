@@ -2,8 +2,7 @@
 <html>
   <head>
     <meta charset="UTF-8">
-    <title>Main</title>
-    <link rel="stylesheet" href="css/mainflux.css">
+    <title>Magistrala Agent</title>
     <script src="main.js"></script>
   </head>
 
@@ -13,8 +12,11 @@
       var app = Elm.Main.init({
         node: document.getElementById('elm')
       });
-      var MF = {}
+      var MG = {};
+      app.ports.fileToBase64.subscribe(function(content) {
+        var encoded = btoa(unescape(encodeURIComponent(content)));
+        app.ports.base64Result.send(encoded);
+      });
     </script>
-    <script src="src/Websocket.js"></script>
   </body>
 </html>

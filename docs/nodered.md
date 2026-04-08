@@ -24,7 +24,7 @@ make all && make docker_dev
 make run
 ```
 
-This starts: Agent (:9999), Node-RED (:1880), NATS (:4222).
+This starts: Agent (:9999), Node-RED (:1880), FluxMQ (:5682).
 
 ### 3. Verify services
 

@@ -2,8 +2,7 @@
 The GitHub issue tracker is for bug reports and feature requests. General support can be found at
 the following locations:
 
-- Google group - https://groups.google.com/forum/#!forum/mainflux
-- Gitter - https://gitter.im/mainflux/mainflux
+- GitHub Discussions - https://github.com/absmach/magistrala/discussions
 -->
 
 **FEATURE REQUEST**

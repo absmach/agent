@@ -12,14 +12,13 @@ import (
 	"github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/messaging"
 	"github.com/absmach/magistrala/pkg/messaging/brokers"
-	"github.com/nats-io/nats.go"
 )
 
 func main() {
 	ctx := context.Background()
 
 	var (
-		urls     = flag.String("s", nats.DefaultURL, "The nats server URLs (separated by comma)")
+		urls     = flag.String("s", "amqp://guest:guest@localhost:5682/", "The broker URL")
 		showHelp = flag.Bool("h", false, "Show help message")
 	)
 

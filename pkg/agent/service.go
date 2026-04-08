@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -20,7 +21,7 @@ import (
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/messaging"
 	paho "github.com/eclipse/paho.mqtt.golang"
-	exp "github.com/mainflux/export/pkg/config"
+	toml "github.com/pelletier/go-toml"
 )
 
 const (
@@ -56,8 +57,8 @@ var (
 	// errUnknownCommand indicates that command is not found.
 	errUnknownCommand = errors.New("Unknown command")
 
-	// errNatsSubscribing indicates problem with sub to topic for heartbeat.
-	errNatsSubscribing = errors.New("failed to subscribe to heartbeat topic")
+	// errSubscribing indicates problem with sub to topic for heartbeat.
+	errSubscribing = errors.New("failed to subscribe to heartbeat topic")
 
 	// errNoSuchService indicates service not supported.
 	errNoSuchService = errors.New("no such service")
@@ -182,7 +183,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, br
 
 	err := ag.broker.Subscribe(ctx, subConfig)
 	if err != nil {
-		return ag, errors.Wrap(errNatsSubscribing, err)
+		return ag, errors.Wrap(errSubscribing, err)
 	}
 
 	return ag, nil
@@ -417,13 +418,8 @@ func (a *agent) saveConfig(ctx context.Context, service, fileName, fileCont stri
 		if err != nil {
 			return errors.New(err.Error())
 		}
-		c, err := exp.ReadBytes([]byte(content))
-		if err != nil {
-			return errors.New(err.Error())
-		}
-		c.File = fileName
-		if err := exp.Save(c); err != nil {
-			return errors.New(err.Error())
+		if err := saveExportConfig(fileName, content); err != nil {
+			return err
 		}
 
 	default:
@@ -431,6 +427,23 @@ func (a *agent) saveConfig(ctx context.Context, service, fileName, fileCont stri
 	}
 
 	return a.broker.Publish(ctx, fmt.Sprintf("%s.%s.%s", Commands, service, config), &messaging.Message{})
+}
+
+func saveExportConfig(fileName string, content []byte) error {
+	var data map[string]interface{}
+	if err := toml.Unmarshal(content, &data); err != nil {
+		if err2 := json.Unmarshal(content, &data); err2 != nil {
+			return errors.New("failed to unmarshal export config content")
+		}
+	}
+	b, err := toml.Marshal(data)
+	if err != nil {
+		return errors.New("failed to marshal export config content")
+	}
+	if err := os.WriteFile(fileName, b, 0o644); err != nil {
+		return errors.New(err.Error())
+	}
+	return nil
 }
 
 func (a *agent) AddConfig(c Config) error {

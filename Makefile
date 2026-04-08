@@ -58,11 +58,25 @@ all: $(SERVICES)
 arm: GOARCH=arm64
 arm: all
 
-.PHONY: all arm $(SERVICES) dockers docker_dev latest release mocks
+.PHONY: all arm $(SERVICES) dockers dockers_dev ui ui_prod ui_run latest release mocks
 
 clean:
 	rm -rf ${BUILD_DIR}
-	
+	rm -f ui/main.js
+
+
+ui:
+	elm make ui/src/Main.elm --output=ui/main.js
+
+ui_prod:
+	elm make --optimize ui/src/Main.elm --output=ui/main.js
+
+ui_run:
+	cd ui && elm reactor
+
+ui_clean:
+	rm -f ui/main.js
+	rm -rf ui/elm-stuff
 
 install:
 	cp ${BUILD_DIR}/* $(GOBIN)
@@ -93,7 +107,12 @@ $(DOCKERS_DEV):
 
 dockers: $(DOCKERS)
 
-docker_dev: $(DOCKERS_DEV)
+dockers_dev: $(DOCKERS_DEV)
+ifeq ($(GOARCH), arm)
+	docker build --tag=magistrala/ui-arm -f ui/docker/Dockerfile.arm ui
+else
+	docker build --tag=magistrala/ui -f ui/docker/Dockerfile ui
+endif
 
 
 define docker_push

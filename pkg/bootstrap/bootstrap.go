@@ -18,10 +18,32 @@ import (
 	"github.com/absmach/agent/pkg/agent"
 	"github.com/absmach/magistrala/bootstrap"
 	"github.com/absmach/magistrala/pkg/errors"
-	export "github.com/mainflux/export/pkg/config"
+	toml "github.com/pelletier/go-toml"
 )
 
 const exportConfigFile = "/configs/export/config.toml"
+
+type exportMQTT struct {
+	Username          string `json:"username" toml:"username"`
+	Password          string `json:"password" toml:"password"`
+	ClientCert        string `json:"client_cert" toml:"client_cert"`
+	ClientCertKey     string `json:"client_cert_key" toml:"client_cert_key"`
+	ClientCertPath    string `json:"client_cert_path" toml:"client_cert_path"`
+	ClientPrivKeyPath string `json:"client_priv_key_path" toml:"client_priv_key_path"`
+}
+
+type exportRoute struct {
+	MqttTopic string `json:"mqtt_topic" toml:"mqtt_topic"`
+	SubTopic  string `json:"subtopic" toml:"subtopic"`
+	Type      string `json:"type" toml:"type"`
+	Workers   int    `json:"workers" toml:"workers"`
+}
+
+type exportConfig struct {
+	MQTT   exportMQTT    `json:"mqtt" toml:"mqtt"`
+	Routes []exportRoute `json:"routes" toml:"routes"`
+	File   string        `json:"file" toml:"-"`
+}
 
 // Config represents the parameters for bootstrapping.
 type Config struct {
@@ -35,8 +57,8 @@ type Config struct {
 }
 
 type ServicesConfig struct {
-	Agent  agent.Config  `json:"agent"`
-	Export export.Config `json:"export"`
+	Agent  agent.Config `json:"agent"`
+	Export exportConfig `json:"export"`
 }
 
 type ConfigContent struct {
@@ -120,7 +142,7 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 }
 
 // if export config isnt filled use agent configs.
-func fillExportConfig(econf export.Config, c agent.Config) export.Config {
+func fillExportConfig(econf exportConfig, c agent.Config) exportConfig {
 	if econf.MQTT.Username == "" {
 		econf.MQTT.Username = c.MQTT.Username
 	}
@@ -147,20 +169,23 @@ func fillExportConfig(econf export.Config, c agent.Config) export.Config {
 	return econf
 }
 
-func saveExportConfig(econf export.Config, logger *slog.Logger) {
-	if econf.File == "" {
-		econf.File = exportConfigFile
+func saveExportConfig(econf exportConfig, logger *slog.Logger) {
+	file := econf.File
+	if file == "" {
+		file = exportConfigFile
 	}
-	exConfFileExist := false
-	if _, err := os.Stat(econf.File); err == nil {
-		exConfFileExist = true
-		logger.Info("Export config file exists", slog.Any("file", econf.File))
+	if _, err := os.Stat(file); err == nil {
+		logger.Info("Export config file exists", slog.Any("file", file))
+		return
 	}
-	if !exConfFileExist {
-		logger.Info("Saving export config file", slog.Any("file", econf.File))
-		if err := export.Save(econf); err != nil {
-			logger.Warn("Failed to save export config file", slog.Any("error", err))
-		}
+	logger.Info("Saving export config file", slog.Any("file", file))
+	b, err := toml.Marshal(econf)
+	if err != nil {
+		logger.Warn("Failed to marshal export config", slog.Any("error", err))
+		return
+	}
+	if err := os.WriteFile(file, b, 0o644); err != nil {
+		logger.Warn("Failed to save export config file", slog.Any("error", err))
 	}
 }
 

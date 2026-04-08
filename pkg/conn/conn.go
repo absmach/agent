@@ -78,7 +78,7 @@ func (b *broker) subscribe() error {
 	}
 	topic = fmt.Sprintf("m/%s/c/%s/%s/#", b.domainID, b.channel, servTopic)
 	if b.messageBroker != nil {
-		n := b.client.Subscribe(topic, 0, b.handleNatsMsg)
+		n := b.client.Subscribe(topic, 0, b.handleBrokerMsg)
 		if err := n.Error(); n.Wait() && err != nil {
 			return err
 		}
@@ -93,20 +93,20 @@ func (b *broker) Resubscribe() {
 	}
 }
 
-// handleNatsMsg triggered when new message is received on MQTT broker.
-func (b *broker) handleNatsMsg(mc mqtt.Client, msg mqtt.Message) {
+// handleBrokerMsg triggered when new message is received on MQTT broker.
+func (b *broker) handleBrokerMsg(mc mqtt.Client, msg mqtt.Message) {
 	ctx := context.Background()
 	message := messaging.Message{
 		Payload: msg.Payload(),
 	}
-	if topic := extractNatsTopic(msg.Topic()); topic != "" {
+		if topic := extractBrokerTopic(msg.Topic()); topic != "" {
 		if err := b.messageBroker.Publish(ctx, topic, &message); err != nil {
 			b.logger.Warn("Error publishing message", slog.Any("error", err))
 		}
 	}
 }
 
-func extractNatsTopic(topic string) string {
+func extractBrokerTopic(topic string) string {
 	isEmpty := func(s string) bool {
 		return (len(s) == 0)
 	}
@@ -116,9 +116,9 @@ func extractNatsTopic(topic string) string {
 	}
 	// channelParts[3] is the subtopic after /services
 	filtered := filter.Drop(strings.Split(channelParts[3], "/"), isEmpty).([]string)
-	natsTopic := strings.Join(filtered, ".")
+	brokerTopic := strings.Join(filtered, ".")
 
-	return fmt.Sprintf("%s.%s", commands, natsTopic)
+	return fmt.Sprintf("%s.%s", commands, brokerTopic)
 }
 
 // handleMsg triggered when new message is received on MQTT broker.

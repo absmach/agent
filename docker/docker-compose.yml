@@ -73,3 +73,14 @@ services:
     volumes:
       - ../configs/config.toml:/config.toml
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
+
+  ui:
+    image: magistrala/ui:latest
+    container_name: agent-ui
+    restart: on-failure
+    ports:
+      - "${MG_UI_PORT}:${MG_UI_PORT}"
+    networks:
+      - magistrala-agent-base-net
+    environment:
+      MG_UI_PORT: ${MG_UI_PORT}
