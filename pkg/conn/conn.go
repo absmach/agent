@@ -99,7 +99,7 @@ func (b *broker) handleBrokerMsg(mc mqtt.Client, msg mqtt.Message) {
 	message := messaging.Message{
 		Payload: msg.Payload(),
 	}
-		if topic := extractBrokerTopic(msg.Topic()); topic != "" {
+	if topic := extractBrokerTopic(msg.Topic()); topic != "" {
 		if err := b.messageBroker.Publish(ctx, topic, &message); err != nil {
 			b.logger.Warn("Error publishing message", slog.Any("error", err))
 		}
