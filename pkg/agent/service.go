@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	Path     = "./config.toml"
-	Hearbeat = "channels.heartbeat.>"
-	Commands = "commands"
-	config   = "config"
+	Path           = "./config.toml"
+	HeartbeatTopic = "channels.heartbeat.>"
+	Commands       = "commands"
+	config         = "config"
 
 	view = "view"
 	save = "save"
@@ -108,7 +108,7 @@ type Service interface {
 	Publish(string, string) error
 
 	// NodeRed manages Node-RED flow operations.
-	NodeRed(string, string) (string, error)
+	NodeRed(string) (string, error)
 }
 
 var _ Service = (*agent)(nil)
@@ -123,7 +123,7 @@ type agent struct {
 	terminals     map[string]terminal.Session
 }
 
-func (ag *agent) handle(ctx context.Context, pub messaging.Publisher, logger *slog.Logger, cfg HeartbeatConfig) handleFunc {
+func (ag *agent) handle(cfg HeartbeatConfig) handleFunc {
 	return func(msg *messaging.Message) error {
 		sub := msg.Channel
 		tok := strings.Split(sub, ".")
@@ -175,8 +175,8 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, br
 
 	subConfig := messaging.SubscriberConfig{
 		ID:             pubSubID,
-		Topic:          Hearbeat,
-		Handler:        ag.handle(ctx, ag.broker, logger, cfg.Heartbeat),
+		Topic:          HeartbeatTopic,
+		Handler:        ag.handle(cfg.Heartbeat),
 		DeliveryPolicy: messaging.DeliverAllPolicy,
 	}
 
@@ -221,17 +221,9 @@ func (a *agent) Control(uuid, cmdStr string) error {
 	var err error
 
 	cmd := cmdArgs[0]
-	switch cmd {
-	case "nodered-deploy":
-		resp, err = a.NodeRed(uuid, cmdStr)
-	case "nodered-add-flow":
-		resp, err = a.NodeRed(uuid, cmdStr)
-	case "nodered-flows":
-		resp, err = a.NodeRed(uuid, cmdStr)
-	case "nodered-state":
-		resp, err = a.NodeRed(uuid, cmdStr)
-	case "nodered-ping":
-		resp, err = a.NodeRed(uuid, cmdStr)
+	switch {
+	case strings.HasPrefix(cmd, "nodered-"):
+		resp, err = a.NodeRed(cmdStr)
 	default:
 		err = errUnknownCommand
 	}
@@ -350,7 +342,7 @@ func (a *agent) terminalWrite(uuid, cmd string) error {
 	return term.Send(p)
 }
 
-func (a *agent) NodeRed(uuid, cmdStr string) (string, error) {
+func (a *agent) NodeRed(cmdStr string) (string, error) {
 	cmdArgs := strings.Split(strings.ReplaceAll(cmdStr, " ", ""), ",")
 
 	cmd := cmdArgs[0]
@@ -442,8 +434,7 @@ func (a *agent) saveConfig(ctx context.Context, service, fileName, fileCont stri
 }
 
 func (a *agent) AddConfig(c Config) error {
-	err := SaveConfig(c)
-	return errors.New(err.Error())
+	return SaveConfig(c)
 }
 
 func (a *agent) Config() Config {
@@ -483,7 +474,7 @@ func (a *agent) getTopic(topic string) (t string) {
 	case control:
 		t = fmt.Sprintf("m/%s/c/%s/res", domainID, chan_)
 	case data:
-		t = fmt.Sprintf("m/%s/c/%s/res", domainID, chan_)
+		t = fmt.Sprintf("m/%s/c/%s/msg", domainID, chan_)
 	default:
 		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, chan_, topic)
 	}

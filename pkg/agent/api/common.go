@@ -22,7 +22,7 @@ type logConfig struct {
 type mqttConfig struct {
 	Url      string `json:"url"`
 	Username string `json:"username"`
-	Password string `json:"json"`
+	Password string `json:"password"`
 	QoS      byte   `json:"qos"`
 }
 

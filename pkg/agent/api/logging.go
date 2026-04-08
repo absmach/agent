@@ -146,11 +146,10 @@ func (lm *loggingMiddleware) Terminal(uuid, cmdStr string) (err error) {
 	return lm.svc.Terminal(uuid, cmdStr)
 }
 
-func (lm *loggingMiddleware) NodeRed(uuid, cmdStr string) (resp string, err error) {
+func (lm *loggingMiddleware) NodeRed(cmdStr string) (resp string, err error) {
 	defer func(begin time.Time) {
 		args := []any{
 			slog.String("duration", time.Since(begin).String()),
-			slog.String("uuid", uuid),
 		}
 		if err != nil {
 			args = append(args, slog.String("error", err.Error()))
@@ -160,5 +159,5 @@ func (lm *loggingMiddleware) NodeRed(uuid, cmdStr string) (resp string, err erro
 		lm.logger.Info(fmt.Sprintf("NodeRed command %q completed successfully.", cmdStr), args...)
 	}(time.Now())
 
-	return lm.svc.NodeRed(uuid, cmdStr)
+	return lm.svc.NodeRed(cmdStr)
 }

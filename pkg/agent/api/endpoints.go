@@ -23,7 +23,7 @@ func pubEndpoint(svc agent.Service) endpoint.Endpoint {
 		payload := req.Payload
 
 		if err := svc.Publish(topic, payload); err != nil {
-			return genericRes{}, nil
+			return nil, err
 		}
 
 		return genericRes{
@@ -44,7 +44,7 @@ func execEndpoint(svc agent.Service) endpoint.Endpoint {
 		uuid := strings.TrimSuffix(req.BaseName, ":")
 		out, err := svc.Execute(uuid, req.Value)
 		if err != nil {
-			return execRes{}, nil
+			return nil, err
 		}
 
 		resp := execRes{
@@ -84,7 +84,7 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 		}
 
 		if err := svc.AddConfig(c); err != nil {
-			return genericRes{}, nil
+			return nil, err
 		}
 
 		return genericRes{
@@ -120,9 +120,9 @@ func nodeRedEndpoint(svc agent.Service) endpoint.Endpoint {
 			cmdStr = req.Command + "," + req.Flows
 		}
 
-		resp, err := svc.NodeRed("api", cmdStr)
+		resp, err := svc.NodeRed(cmdStr)
 		if err != nil {
-			return genericRes{}, nil
+			return nil, err
 		}
 
 		return genericRes{
