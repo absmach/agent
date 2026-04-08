@@ -84,9 +84,12 @@ func newServer(svc agent.Service) *httptest.Server {
 	return httptest.NewServer(mux)
 }
 
-func toJSON(data interface{}) string {
-	jsonData, _ := json.Marshal(data)
-	return string(jsonData)
+func toJSON(data interface{}) (string, error) {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return "", err
+	}
+	return string(jsonData), nil
 }
 
 func TestPublish(t *testing.T) {
@@ -98,13 +101,14 @@ func TestPublish(t *testing.T) {
 	ts := newServer(svc)
 	defer ts.Close()
 	client := ts.Client()
-	data := toJSON(struct {
+	data, err := toJSON(struct {
 		Payload string
 		Topic   string
 	}{
 		"payload",
 		"topic",
 	})
+	assert.Nil(t, err, "failed to marshal test data")
 
 	cases := []struct {
 		desc   string
@@ -144,31 +148,35 @@ func TestNodeRed(t *testing.T) {
 	defer ts.Close()
 	client := ts.Client()
 
-	validPing := toJSON(struct {
+	validPing, err := toJSON(struct {
 		Command string `json:"command"`
 	}{
 		Command: "nodered-ping",
 	})
+	assert.Nil(t, err, "failed to marshal test data")
 
-	validFlows := toJSON(struct {
+	validFlows, err := toJSON(struct {
 		Command string `json:"command"`
 	}{
 		Command: "nodered-flows",
 	})
+	assert.Nil(t, err, "failed to marshal test data")
 
-	validDeploy := toJSON(struct {
+	validDeploy, err := toJSON(struct {
 		Command string `json:"command"`
 		Flows   string `json:"flows"`
 	}{
 		Command: "nodered-deploy",
 		Flows:   "W10=", // base64 of "[]"
 	})
+	assert.Nil(t, err, "failed to marshal test data")
 
-	emptyCommand := toJSON(struct {
+	emptyCommand, err := toJSON(struct {
 		Command string `json:"command"`
 	}{
 		Command: "",
 	})
+	assert.Nil(t, err, "failed to marshal test data")
 
 	cases := []struct {
 		desc   string

@@ -18,8 +18,10 @@ import (
 func main() {
 	ctx := context.Background()
 
-	var urls = flag.String("s", nats.DefaultURL, "The nats server URLs (separated by comma)")
-	var showHelp = flag.Bool("h", false, "Show help message")
+	var (
+		urls     = flag.String("s", nats.DefaultURL, "The nats server URLs (separated by comma)")
+		showHelp = flag.Bool("h", false, "Show help message")
+	)
 
 	log.SetFlags(0)
 	flag.Usage = usage

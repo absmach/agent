@@ -17,10 +17,9 @@ import (
 	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/terminal"
-	paho "github.com/eclipse/paho.mqtt.golang"
-
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/messaging"
+	paho "github.com/eclipse/paho.mqtt.golang"
 	exp "github.com/mainflux/export/pkg/config"
 )
 

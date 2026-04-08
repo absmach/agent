@@ -59,8 +59,8 @@ func NewHeartbeat(name, svcType string, interval time.Duration) Heartbeat {
 func (s *svc) listen() {
 	go func() {
 		for range s.ticker.C {
-			// TODO - we can disable ticker when the status gets OFFLINE
-			// and on the next heartbeat enable it again.
+			// Consider disabling the ticker when the status is OFFLINE
+			// and re-enabling it on the next heartbeat.
 			s.mu.Lock()
 			if time.Now().After(s.info.LastSeen.Add(s.interval)) {
 				s.info.Status = offline

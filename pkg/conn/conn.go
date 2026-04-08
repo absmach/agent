@@ -11,11 +11,10 @@ import (
 	"strings"
 
 	"github.com/absmach/agent/pkg/agent"
-	"github.com/absmach/senml"
 	"github.com/absmach/magistrala/pkg/messaging"
-	"robpike.io/filter"
-
+	"github.com/absmach/senml"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"robpike.io/filter"
 )
 
 const (

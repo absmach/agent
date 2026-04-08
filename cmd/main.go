@@ -68,12 +68,12 @@ func main() {
 
 	cfg, err := loadEnvConfig(c)
 	if err != nil {
-		log.Fatalf(fmt.Sprintf("Failed to load config: %s", err))
+		log.Fatalf("Failed to load config: %s", err)
 	}
 
 	logger, err := initLogger(c.LogLevel)
 	if err != nil {
-		log.Fatalf(fmt.Sprintf("Failed to create logger: %s", err))
+		log.Fatalf("Failed to create logger: %s", err)
 	}
 
 	pubsub, err := brokers.NewPubSub(ctx, cfg.Server.BrokerURL, logger)

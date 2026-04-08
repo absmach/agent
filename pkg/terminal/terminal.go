@@ -13,10 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/creack/pty"
-
 	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/magistrala/pkg/errors"
+	"github.com/creack/pty"
 )
 
 const (
