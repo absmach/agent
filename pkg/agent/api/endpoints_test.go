@@ -19,7 +19,7 @@ import (
 	"github.com/absmach/agent/pkg/agent/api"
 	noderedmocks "github.com/absmach/agent/pkg/nodered/mocks"
 	"github.com/absmach/magistrala/logger"
-	"github.com/absmach/magistrala/pkg/messaging/brokers"
+	mgmocks "github.com/absmach/magistrala/pkg/messaging/mocks"
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -64,11 +64,8 @@ func newService(ctx context.Context, t *testing.T, nc *noderedmocks.Client) (age
 		return nil, err
 	}
 
-	pubsub, err := brokers.NewPubSub(ctx, brokerAddress, log)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to connect to Broker: %s %s", err, brokerAddress)
-	}
-	t.Cleanup(func() { pubsub.Close() })
+	pubsub := mgmocks.NewPubSub(t)
+	pubsub.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	agentSvc, err := agent.New(ctx, mqttClient, &config, nc, pubsub, log)
 	if err != nil {
