@@ -4,9 +4,6 @@ domain_id = "a1c51744-3317-48e2-9eef-4df37f68b9d1"
 [channels]
   id = "82f1d080-b1ce-41b7-aef2-62b270e551e7"
 
-[edgex]
-  url = "http://localhost:48090/api/v1/"
-
 [heartbeat]
   interval = "10s"
 
@@ -32,7 +29,7 @@ domain_id = "a1c51744-3317-48e2-9eef-4df37f68b9d1"
   url = "http://nodered:1880/"
 
 [server]
-  broker_url = "nats://nats:4222"
+  broker_url = "amqp://guest:guest@fluxmq:5682/"
   port = "9999"
 
 [terminal]

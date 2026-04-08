@@ -68,7 +68,6 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 		cc := agent.ChanConfig{
 			ID: req.Agent.Channels.ID,
 		}
-		ec := agent.EdgexConfig{URL: req.Agent.Edgex.Url}
 		nc := agent.NodeRedConfig{URL: req.Agent.NodeRed.Url}
 		lc := agent.LogConfig{Level: req.Agent.Log.Level}
 		mc := agent.MQTTConfig{
@@ -79,7 +78,6 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 		c := agent.Config{
 			Server:   sc,
 			Channels: cc,
-			Edgex:    ec,
 			NodeRed:  nc,
 			Log:      lc,
 			MQTT:     mc,

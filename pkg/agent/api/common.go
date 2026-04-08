@@ -11,10 +11,6 @@ type chanConfig struct {
 	ID string `json:"id"`
 }
 
-type edgexConfig struct {
-	Url string `json:"url"`
-}
-
 type noderedConfig struct {
 	Url string `json:"url"`
 }
@@ -34,7 +30,6 @@ type mqttConfig struct {
 type agentConfig struct {
 	Server   serverConfig  `json:"server"`
 	Channels chanConfig    `json:"channels"`
-	Edgex    edgexConfig   `json:"edgex"`
 	NodeRed  noderedConfig `json:"nodered"`
 	Log      logConfig     `json:"log"`
 	Mqtt     mqttConfig    `json:"mqtt"`

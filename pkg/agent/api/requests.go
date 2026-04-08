@@ -44,7 +44,6 @@ func (req addConfigReq) validate() error {
 		req.Agent.Mqtt.Password == "" ||
 		req.Agent.Channels.ID == "" ||
 		req.Agent.Log.Level == "" ||
-		req.Agent.Edgex.Url == "" ||
 		req.Agent.Mqtt.Url == "" {
 		return agent.ErrMalformedEntity
 	}

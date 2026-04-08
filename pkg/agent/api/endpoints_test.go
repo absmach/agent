@@ -17,10 +17,9 @@ import (
 
 	"github.com/absmach/agent/pkg/agent"
 	"github.com/absmach/agent/pkg/agent/api"
-	edgexmocks "github.com/absmach/agent/pkg/edgex/mocks"
 	noderedmocks "github.com/absmach/agent/pkg/nodered/mocks"
-	"github.com/absmach/supermq/logger"
-	"github.com/absmach/supermq/pkg/messaging/brokers"
+	"github.com/absmach/magistrala/logger"
+	"github.com/absmach/magistrala/pkg/messaging/brokers"
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -54,7 +53,6 @@ func newService(ctx context.Context, t *testing.T, nc *noderedmocks.Client) (age
 		return nil, token.Error()
 	}
 
-	edgexClient := edgexmocks.NewClient(t)
 	if nc == nil {
 		nc = noderedmocks.NewClient(t)
 	}
@@ -72,7 +70,7 @@ func newService(ctx context.Context, t *testing.T, nc *noderedmocks.Client) (age
 	}
 	t.Cleanup(func() { pubsub.Close() })
 
-	agentSvc, err := agent.New(ctx, mqttClient, &config, edgexClient, nc, pubsub, log)
+	agentSvc, err := agent.New(ctx, mqttClient, &config, nc, pubsub, log)
 	if err != nil {
 		return nil, err
 	}

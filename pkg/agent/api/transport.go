@@ -10,10 +10,10 @@ import (
 	"net/http"
 
 	"github.com/absmach/agent/pkg/agent"
-	"github.com/absmach/supermq"
-	smqapi "github.com/absmach/supermq/api/http"
-	apiutil "github.com/absmach/supermq/api/http/util"
-	"github.com/absmach/supermq/pkg/uuid"
+	"github.com/absmach/magistrala"
+	mgapi "github.com/absmach/magistrala/api/http"
+	apiutil "github.com/absmach/magistrala/api/http/util"
+	"github.com/absmach/magistrala/pkg/uuid"
 	"github.com/go-chi/chi/v5"
 	kithttp "github.com/go-kit/kit/transport/http"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -22,57 +22,57 @@ import (
 // MakeHandler returns a HTTP handler for API endpoints.
 func MakeHandler(svc agent.Service, logger *slog.Logger, instanceID string) http.Handler {
 	opts := []kithttp.ServerOption{
-		kithttp.ServerErrorEncoder(apiutil.LoggingErrorEncoder(logger, smqapi.EncodeError)),
+		kithttp.ServerErrorEncoder(apiutil.LoggingErrorEncoder(logger, mgapi.EncodeError)),
 	}
 
 	idp := uuid.New()
 	r := chi.NewRouter()
-	r.Use(smqapi.RequestIDMiddleware(idp))
+	r.Use(mgapi.RequestIDMiddleware(idp))
 
 	r.Post("/pub", kithttp.NewServer(
 		pubEndpoint(svc),
 		decodePublishRequest,
-		smqapi.EncodeResponse,
+		mgapi.EncodeResponse,
 		opts...,
 	).ServeHTTP)
 
 	r.Post("/exec", kithttp.NewServer(
 		execEndpoint(svc),
 		decodeExecRequest,
-		smqapi.EncodeResponse,
+		mgapi.EncodeResponse,
 		opts...,
 	).ServeHTTP)
 
 	r.Post("/config", kithttp.NewServer(
 		addConfigEndpoint(svc),
 		decodeAddConfigRequest,
-		smqapi.EncodeResponse,
+		mgapi.EncodeResponse,
 		opts...,
 	).ServeHTTP)
 
 	r.Get("/config", kithttp.NewServer(
 		viewConfigEndpoint(svc),
 		decodeRequest,
-		smqapi.EncodeResponse,
+		mgapi.EncodeResponse,
 		opts...,
 	).ServeHTTP)
 
 	r.Get("/services", kithttp.NewServer(
 		viewServicesEndpoint(svc),
 		decodeRequest,
-		smqapi.EncodeResponse,
+		mgapi.EncodeResponse,
 		opts...,
 	).ServeHTTP)
 
 	r.Post("/nodered", kithttp.NewServer(
 		nodeRedEndpoint(svc),
 		decodeNodeRedRequest,
-		smqapi.EncodeResponse,
+		mgapi.EncodeResponse,
 		opts...,
 	).ServeHTTP)
 
 	r.Handle("/metrics", promhttp.Handler())
-	r.Get("/health", supermq.Health("agent", instanceID))
+	r.Get("/health", magistrala.Health("agent", instanceID))
 
 	return r
 }

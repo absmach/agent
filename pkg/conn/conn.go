@@ -12,7 +12,7 @@ import (
 
 	"github.com/absmach/agent/pkg/agent"
 	"github.com/absmach/senml"
-	"github.com/absmach/supermq/pkg/messaging"
+	"github.com/absmach/magistrala/pkg/messaging"
 	"robpike.io/filter"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"

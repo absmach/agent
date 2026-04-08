@@ -11,7 +11,7 @@
   <img width="30%" height="30%" src="./docs/img/agent.png">
 </p>
 
-Magistrala IoT Agent is a communication, execution and software management agent for the [Magistrala][magistrala] IoT platform. It runs on edge devices and bridges local services (Node-RED, terminal, EdgeX) with the Magistrala cloud over MQTT and NATS.
+Magistrala IoT Agent is a communication, execution and software management agent for the [Magistrala][magistrala] IoT platform. It runs on edge devices and bridges local services (Node-RED, terminal) with the Magistrala cloud over MQTT.
 
 ## Install
 
@@ -42,7 +42,7 @@ export MG_DOMAIN_ID=<domain-id>
 make run_provision
 ```
 
-This writes credentials directly into `docker/.env`.
+This creates the necessary Magistrala clients and channels, then writes the resulting IDs and configuration into `docker/.env`.
 
 ### 2. Build the dev Docker image
 
@@ -56,7 +56,7 @@ make all && make docker_dev
 make run
 ```
 
-Starts: Agent (:9999), Node-RED (:1880), NATS (:4222).
+Starts: Agent (:9999), Node-RED (:1880).
 
 ### Stopping
 
@@ -67,23 +67,9 @@ make clean_volumes
 
 ## Running without Docker
 
-Start NATS:
+Start FluxMQ (or use an existing Magistrala FluxMQ instance).
 
-```bash
-go install github.com/nats-io/nats-server/v2@latest
-nats-server
-```
-
-Start agent with bootstrap:
-
-```bash
-MG_AGENT_BOOTSTRAP_ID=<bootstrap_id> \
-MG_AGENT_BOOTSTRAP_KEY=<bootstrap_key> \
-MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/clients/bootstrap \
-build/magistrala-agent
-```
-
-Or with environment variables directly (no bootstrap):
+Start agent with environment variables:
 
 ```bash
 MG_AGENT_MQTT_URL=mqtts://messaging.example.com:8883 \
@@ -141,14 +127,8 @@ Environment variables:
 | `MG_AGENT_MQTT_RETAIN` | MQTT retain flag | `false` |
 | `MG_AGENT_CHANNEL` | Channel ID (req/data/res subtopics) | |
 | `MG_AGENT_DOMAIN_ID` | Magistrala domain ID | |
-| `MG_AGENT_EDGEX_URL` | EdgeX base URL | `http://localhost:48090/api/v1/` |
+| `MG_AGENT_BROKER_URL` | Internal FluxMQ (AMQP) broker URL | `amqp://guest:guest@localhost:5672/` |
 | `MG_AGENT_NODERED_URL` | Node-RED API URL | `http://localhost:1880/` |
-| `MG_AGENT_BOOTSTRAP_URL` | Magistrala bootstrap URL | `http://localhost:9013/clients/bootstrap` |
-| `MG_AGENT_BOOTSTRAP_ID` | Bootstrap client ID | |
-| `MG_AGENT_BOOTSTRAP_KEY` | Bootstrap client key | |
-| `MG_AGENT_BOOTSTRAP_RETRIES` | Bootstrap retry count | `5` |
-| `MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS` | Seconds between retries | `10` |
-| `MG_AGENT_BOOTSTRAP_SKIP_TLS` | Skip TLS for bootstrap | `true` |
 | `MG_AGENT_HEARTBEAT_INTERVAL` | Expected heartbeat interval | `30s` |
 | `MG_AGENT_TERMINAL_SESSION_TIMEOUT` | Terminal session timeout | `30s` |
 

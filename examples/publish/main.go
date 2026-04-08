@@ -9,9 +9,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/absmach/supermq/logger"
-	"github.com/absmach/supermq/pkg/messaging"
-	"github.com/absmach/supermq/pkg/messaging/brokers"
+	"github.com/absmach/magistrala/logger"
+	"github.com/absmach/magistrala/pkg/messaging"
+	"github.com/absmach/magistrala/pkg/messaging/brokers"
 	"github.com/nats-io/nats.go"
 )
 

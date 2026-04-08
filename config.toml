@@ -1,39 +1,36 @@
 File = "config.toml"
+domain_id = ""
 
 [channels]
-  control = "ccac0540-6f71-4a3e-af84-28f7bdccfab5"
-  data = "b356be74-9b89-4f33-bb73-c6e17fe3ed77"
-
-[edgex]
-  url = "http://localhost:48090/api/v1/"
+  id = ""
 
 [nodered]
   url = "http://localhost:1880/"
 
 [heartbeat]
-  interval = "30s"
+  interval = "10s"
 
 [log]
-  level = "debug"
+  level = "info"
 
 [mqtt]
-  ca_cert = "wee"
-  ca_path = ""
-  cert_path = ""
-  client_cert = "rt"
-  client_key = "we"
+  ca_cert = ""
+  ca_path = "ca.crt"
+  cert_path = "client.cert"
+  client_cert = ""
+  client_key = ""
   mtls = false
-  password = "0f6bc453-4e5f-40f6-bc94-de8238b60c19"
-  priv_key_path = ""
+  password = ""
+  priv_key_path = "client.key"
   qos = 0
   retain = false
-  skip_tls_ver = true
+  skip_tls_ver = false
   url = "tcp://localhost:1883"
-  username = "77d74527-7457-4dc2-9b36-01f01ce62726"
+  username = ""
 
 [server]
-  broker_url = "localhost:4222"
+  broker_url = "amqp://guest:guest@localhost:5682/"
   port = "9999"
 
 [terminal]
-  session_timeout = "30s"
+  session_timeout = "60s"

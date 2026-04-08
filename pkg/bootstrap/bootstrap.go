@@ -17,7 +17,7 @@ import (
 
 	"github.com/absmach/agent/pkg/agent"
 	"github.com/absmach/magistrala/bootstrap"
-	"github.com/absmach/supermq/pkg/errors"
+	"github.com/absmach/magistrala/pkg/errors"
 	export "github.com/mainflux/export/pkg/config"
 )
 
@@ -98,7 +98,6 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 	cc := agent.ChanConfig{
 		ID: dc.Channels[0].ID,
 	}
-	ec := dc.SvcsConf.Agent.Edgex
 	lc := dc.SvcsConf.Agent.Log
 	nc := dc.SvcsConf.Agent.NodeRed
 
@@ -111,7 +110,7 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 
 	hc := dc.SvcsConf.Agent.Heartbeat
 	tc := dc.SvcsConf.Agent.Terminal
-	c := agent.NewConfig(sc, cc, ec, nc, lc, mc, hc, tc, file)
+	c := agent.NewConfig(sc, cc, nc, lc, mc, hc, tc, file)
 
 	dc.SvcsConf.Export = fillExportConfig(dc.SvcsConf.Export, c)
 

@@ -16,7 +16,7 @@ MOCKERY_VERSION = 3.7.0
 ifneq ($(MG_BROKER_TYPE),)
     MG_BROKER_TYPE := $(MG_BROKER_TYPE)
 else
-    MG_BROKER_TYPE=nats
+    MG_BROKER_TYPE=msg_fluxmq
 endif
 
 define compile_service

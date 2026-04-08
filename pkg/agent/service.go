@@ -14,14 +14,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/absmach/agent/pkg/edgex"
 	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/terminal"
 	paho "github.com/eclipse/paho.mqtt.golang"
 
-	"github.com/absmach/supermq/pkg/errors"
-	"github.com/absmach/supermq/pkg/messaging"
+	"github.com/absmach/magistrala/pkg/errors"
+	"github.com/absmach/magistrala/pkg/messaging"
 	exp "github.com/mainflux/export/pkg/config"
 )
 
@@ -69,9 +68,6 @@ var (
 
 	// errFailedToPublish.
 	errFailedToPublish = errors.New("failed to publish")
-
-	// errEdgexFailed.
-	errEdgexFailed = errors.New("failed to execute edgex operation")
 
 	// errFailedExecute.
 	errFailedExecute = errors.New("failed to execute command")
@@ -121,7 +117,6 @@ var _ Service = (*agent)(nil)
 type agent struct {
 	mqttClient    paho.Client
 	config        *Config
-	edgexClient   edgex.Client
 	noderedClient nodered.Client
 	logger        *slog.Logger
 	broker        messaging.PubSub
@@ -164,10 +159,9 @@ func (h handleFunc) Cancel() error {
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, ec edgex.Client, nc nodered.Client, broker messaging.PubSub, logger *slog.Logger) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, broker messaging.PubSub, logger *slog.Logger) (Service, error) {
 	ag := &agent{
 		mqttClient:    mc,
-		edgexClient:   ec,
 		noderedClient: nc,
 		config:        cfg,
 		broker:        broker,
@@ -220,7 +214,7 @@ func (a *agent) Execute(uuid, cmd string) (string, error) {
 
 func (a *agent) Control(uuid, cmdStr string) error {
 	cmdArgs := strings.Split(strings.ReplaceAll(cmdStr, " ", ""), ",")
-	if len(cmdArgs) < 2 {
+	if len(cmdArgs) < 1 || cmdArgs[0] == "" {
 		return errInvalidCommand
 	}
 
@@ -229,14 +223,6 @@ func (a *agent) Control(uuid, cmdStr string) error {
 
 	cmd := cmdArgs[0]
 	switch cmd {
-	case "edgex-operation":
-		resp, err = a.edgexClient.PushOperation(cmdArgs[1:])
-	case "edgex-config":
-		resp, err = a.edgexClient.FetchConfig(cmdArgs[1:])
-	case "edgex-metrics":
-		resp, err = a.edgexClient.FetchMetrics(cmdArgs[1:])
-	case "edgex-ping":
-		resp, err = a.edgexClient.Ping()
 	case "nodered-deploy":
 		resp, err = a.NodeRed(uuid, cmdStr)
 	case "nodered-add-flow":
@@ -252,7 +238,7 @@ func (a *agent) Control(uuid, cmdStr string) error {
 	}
 
 	if err != nil {
-		return errors.Wrap(errEdgexFailed, err)
+		return err
 	}
 
 	return a.processResponse(uuid, cmd, resp)

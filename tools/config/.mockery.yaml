@@ -13,9 +13,6 @@ template-data:
   boilerplate-file: ./tools/config/boilerplate.txt
 
 packages:
-  github.com/absmach/agent/pkg/edgex:
-    interfaces:
-      Client:
   github.com/absmach/agent/pkg/nodered:
     interfaces:
       Client:
