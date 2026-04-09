@@ -49,6 +49,7 @@ func newService(ctx context.Context, t *testing.T, nc *noderedmocks.Client) (age
 
 	mqttClient := paho.NewClient(opts)
 	token := mqttClient.Connect()
+	token.Wait()
 	if token.Error() != nil {
 		return nil, token.Error()
 	}

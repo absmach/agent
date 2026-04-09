@@ -6,6 +6,7 @@ package api_test
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -39,7 +40,11 @@ func TestMain(m *testing.M) {
 	pool.MaxWait = poolMaxWait
 	if err := pool.Retry(func() error {
 		mqttAddress = fmt.Sprintf("%s:%s", "localhost", mqttContainer.GetPort("1883/tcp"))
-		return nil
+		conn, err := net.DialTimeout("tcp", mqttAddress, time.Second)
+		if err != nil {
+			return err
+		}
+		return conn.Close()
 	}); err != nil {
 		log.Fatalf("Could not connect to docker: %s", err)
 	}
