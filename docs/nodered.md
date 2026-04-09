@@ -15,7 +15,7 @@ This guide explains how to run the Magistrala Agent with Node-RED support using 
 ### 1. Build the Agent Docker image
 
 ```bash
-make all && make docker_dev
+make all && make dockers_dev
 ```
 
 ### 2. Start the stack
@@ -24,7 +24,7 @@ make all && make docker_dev
 make run
 ```
 
-This starts: Agent (:9999), Node-RED (:1880), FluxMQ (:5682).
+This starts: Agent (:9999), Node-RED (:1880), FluxMQ (:5682), Agent UI (:3000).
 
 ### 3. Verify services
 
@@ -36,6 +36,9 @@ curl http://localhost:9999/health
 curl -s -X POST http://localhost:9999/nodered \
   -H 'Content-Type: application/json' \
   -d '{"command":"nodered-ping"}'
+
+# Open the Agent UI
+open http://localhost:3000
 
 # Open Node-RED UI
 open http://localhost:1880
@@ -80,6 +83,19 @@ docker compose up -d
 
 ## Deploying Node-RED Flows
 
+### Via Agent UI
+
+Open `http://localhost:3000` in a browser. The **Node-RED** panel lets you:
+
+- **Ping** — check that Node-RED is reachable
+- **State** — get the current runtime state
+- **Get Flows** — fetch and inspect the deployed flows (pretty-printed JSON)
+- **Select JSON File** — pick a local `.json` flow file
+- **Deploy Flows** — **replaces all currently running flows** in Node-RED with the selected file. Any flows that were running before will be stopped and removed.
+- **Add Flow** — **adds the selected file as a new flow tab** alongside existing flows without removing anything that is already running.
+
+All responses are shown inline with the command label. The file is base64-encoded in the browser before being sent to the agent.
+
 ### Via HTTP API
 
 ```bash
@@ -111,8 +127,10 @@ curl -s -X POST http://localhost:9999/nodered \
 Send a SenML array to `m/<domain-id>/c/<channel-id>/req`:
 
 Supported commands:
-- `nodered-deploy,<base64-flow>` — Deploy flows to Node-RED
+- `nodered-deploy,<base64-flow>` — **Replace all running flows** with the provided flow JSON
+- `nodered-add-flow,<base64-flow>` — **Add a new flow tab** alongside existing running flows
 - `nodered-flows` — Fetch current flows
+- `nodered-state` — Get runtime state
 - `nodered-ping` — Check Node-RED availability
 
 ### Via Control command
@@ -205,3 +223,4 @@ The Node-RED URL is configured via:
 | `MG_AGENT_CLIENT_ID` | (pre-set UUID) | Magistrala Client ID |
 | `MG_AGENT_CLIENT_SECRET` | (pre-set UUID) | Magistrala Client Secret |
 | `MG_AGENT_CHANNEL` | (pre-set UUID) | Channel ID (req/data/res subtopics) |
+| `MG_UI_PORT` | `3000` | Agent UI port |

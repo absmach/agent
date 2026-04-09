@@ -11,7 +11,7 @@
   <img width="30%" height="30%" src="./docs/img/agent.png">
 </p>
 
-Magistrala IoT Agent is a communication, execution and software management agent for the [Magistrala][magistrala] IoT platform. It runs on edge devices and bridges local services (Node-RED, terminal) with the Magistrala cloud over MQTT.
+Magistrala IoT Agent is a communication, execution and software management agent for the [Magistrala][magistrala] IoT platform. It runs on edge devices and bridges local services (Node-RED, terminal) with the Magistrala cloud over MQTT. A built-in web UI is included for local management.
 
 ## Install
 
@@ -47,7 +47,7 @@ This creates the necessary Magistrala clients and channels, then writes the resu
 ### 2. Build the dev Docker image
 
 ```bash
-make all && make docker_dev
+make all && make dockers_dev
 ```
 
 ### 3. Start the stack
@@ -56,13 +56,30 @@ make all && make docker_dev
 make run
 ```
 
-Starts: Agent (:9999), Node-RED (:1880).
+Starts: Agent (:9999), Node-RED (:1880), Agent UI (:3000).
 
 ### Stopping
 
 ```bash
 make stop
 make clean_volumes
+```
+
+## Agent UI
+
+A web-based management UI is included and served at `http://localhost:3000`. It provides:
+
+- **Configuration** — view and save the agent config (`server`, `channels`, `mqtt`, `nodered`, `log`)
+- **Node-RED** — ping, get state, fetch flows, deploy flows (replaces all running flows), and add a single flow tab (non-destructive) from a local JSON file
+- **Services** — view registered heartbeat services
+- **Execute Command** — run shell commands on the edge device and see terminal-style output
+
+The UI is built with [Elm](https://elm-lang.org/) and served via nginx as a Docker container.
+
+To build the UI image:
+
+```bash
+make dockers_dev
 ```
 
 ## Running without Docker
@@ -127,7 +144,6 @@ Environment variables:
 | `MG_AGENT_MQTT_RETAIN` | MQTT retain flag | `false` |
 | `MG_AGENT_CHANNEL` | Channel ID (req/data/res subtopics) | |
 | `MG_AGENT_DOMAIN_ID` | Magistrala domain ID | |
-
 | `MG_AGENT_NODERED_URL` | Node-RED API URL | `http://localhost:1880/` |
 | `MG_AGENT_HEARTBEAT_INTERVAL` | Expected heartbeat interval | `30s` |
 | `MG_AGENT_TERMINAL_SESSION_TIMEOUT` | Terminal session timeout | `30s` |
@@ -146,7 +162,7 @@ The `n` field selects the subsystem. Supported subsystems:
 
 | `n` | Description |
 |---|---|
-| `control` | EdgeX and Node-RED commands |
+| `control` | Node-RED commands |
 | `exec` | Execute a shell command |
 | `config` | View or save agent config |
 | `term` | Terminal session control |
@@ -156,13 +172,25 @@ The `n` field selects the subsystem. Supported subsystems:
 
 ### Execute a shell command
 
+Commands are passed as a comma-separated string: `command,arg1,arg2`. Commands with no arguments work as-is:
+
 ```bash
+# No-arg command
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
+  -t "m/<domain-id>/c/<channel-id>/req" \
+  -m '[{"bn":"req-1:", "n":"exec", "vs":"pwd"}]'
+
+# With arguments
 mosquitto_pub \
   -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
   -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
   -t "m/<domain-id>/c/<channel-id>/req" \
   -m '[{"bn":"req-1:", "n":"exec", "vs":"ls,-la"}]'
 ```
+
+Commands are executed via `sh -c` so shell builtins and pipelines are supported. Each invocation is stateless; use `&&` to chain commands: `ls,-la,/tmp,&&,cat,/etc/os-release`.
 
 ### View service config
 
