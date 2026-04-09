@@ -164,7 +164,7 @@ func TestNodeRed(t *testing.T) {
 		Flows   string `json:"flows"`
 	}{
 		Command: "nodered-deploy",
-		Flows:   "W10=", // base64 of "[]"
+		Flows:   "W10=",
 	})
 	assert.Nil(t, err, "failed to marshal test data")
 
