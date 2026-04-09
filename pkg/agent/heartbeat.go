@@ -14,7 +14,7 @@ const (
 )
 
 // svc keeps info on service live status.
-// Services send heartbeat to nats thus updating last seen.
+// Services send heartbeat to the broker thus updating last seen.
 // When service doesnt send heartbeat for some time gets marked offline.
 type svc struct {
 	info     Info
@@ -32,7 +32,7 @@ type Info struct {
 }
 
 // Heartbeat specifies api for updating status and keeping track on services
-// that are sending heartbeat to NATS.
+// that are sending heartbeat to the broker.
 type Heartbeat interface {
 	Update()
 	Info() Info
@@ -59,8 +59,8 @@ func NewHeartbeat(name, svcType string, interval time.Duration) Heartbeat {
 func (s *svc) listen() {
 	go func() {
 		for range s.ticker.C {
-			// TODO - we can disable ticker when the status gets OFFLINE
-			// and on the next heartbeat enable it again.
+			// Consider disabling the ticker when the status is OFFLINE
+			// and re-enabling it on the next heartbeat.
 			s.mu.Lock()
 			if time.Now().After(s.info.LastSeen.Add(s.interval)) {
 				s.info.Status = offline

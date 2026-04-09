@@ -9,26 +9,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/absmach/agent/pkg/edgex"
 	"github.com/absmach/agent/pkg/encoder"
+	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/terminal"
-	paho "github.com/eclipse/paho.mqtt.golang"
-
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/messaging"
-	exp "github.com/mainflux/export/pkg/config"
+	paho "github.com/eclipse/paho.mqtt.golang"
+	toml "github.com/pelletier/go-toml"
 )
 
 const (
-	Path     = "./config.toml"
-	Hearbeat = "channels.heartbeat.>"
-	Commands = "commands"
-	config   = "config"
+	Path           = "./config.toml"
+	HeartbeatTopic = "channels.heartbeat.>"
+	Commands       = "commands"
+	config         = "config"
 
 	view = "view"
 	save = "save"
@@ -57,8 +57,8 @@ var (
 	// errUnknownCommand indicates that command is not found.
 	errUnknownCommand = errors.New("Unknown command")
 
-	// errNatsSubscribing indicates problem with sub to topic for heartbeat.
-	errNatsSubscribing = errors.New("failed to subscribe to heartbeat topic")
+	// errSubscribing indicates problem with sub to topic for heartbeat.
+	errSubscribing = errors.New("failed to subscribe to heartbeat topic")
 
 	// errNoSuchService indicates service not supported.
 	errNoSuchService = errors.New("no such service")
@@ -69,9 +69,6 @@ var (
 	// errFailedToPublish.
 	errFailedToPublish = errors.New("failed to publish")
 
-	// errEdgexFailed.
-	errEdgexFailed = errors.New("failed to execute edgex operation")
-
 	// errFailedExecute.
 	errFailedExecute = errors.New("failed to execute command")
 
@@ -80,6 +77,9 @@ var (
 
 	// errNoSuchTerminalSession terminal session doesnt exist error on closing.
 	errNoSuchTerminalSession = errors.New("no such terminal session")
+
+	// errNodeRedFailed.
+	errNodeRedFailed = errors.New("failed to execute node-red operation")
 )
 
 // Service specifies API for publishing messages and subscribing to topics.
@@ -107,21 +107,25 @@ type Service interface {
 
 	// Publish message.
 	Publish(string, string) error
+
+	// NodeRed manages Node-RED flow operations.
+	NodeRed(string) (string, error)
 }
 
 var _ Service = (*agent)(nil)
 
 type agent struct {
-	mqttClient  paho.Client
-	config      *Config
-	edgexClient edgex.Client
-	logger      *slog.Logger
-	broker      messaging.PubSub
-	svcs        map[string]Heartbeat
-	terminals   map[string]terminal.Session
+	mqttClient    paho.Client
+	config        *Config
+	noderedClient nodered.Client
+	logger        *slog.Logger
+	broker        messaging.PubSub
+	svcs          map[string]Heartbeat
+	terminals     map[string]terminal.Session
+	workDir       string
 }
 
-func (ag *agent) handle(ctx context.Context, pub messaging.Publisher, logger *slog.Logger, cfg HeartbeatConfig) handleFunc {
+func (ag *agent) handle(cfg HeartbeatConfig) handleFunc {
 	return func(msg *messaging.Message) error {
 		sub := msg.Channel
 		tok := strings.Split(sub, ".")
@@ -156,15 +160,16 @@ func (h handleFunc) Cancel() error {
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, ec edgex.Client, broker messaging.PubSub, logger *slog.Logger) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, broker messaging.PubSub, logger *slog.Logger) (Service, error) {
 	ag := &agent{
-		mqttClient:  mc,
-		edgexClient: ec,
-		config:      cfg,
-		broker:      broker,
-		logger:      logger,
-		svcs:        make(map[string]Heartbeat),
-		terminals:   make(map[string]terminal.Session),
+		mqttClient:    mc,
+		noderedClient: nc,
+		config:        cfg,
+		broker:        broker,
+		logger:        logger,
+		svcs:          make(map[string]Heartbeat),
+		terminals:     make(map[string]terminal.Session),
+		workDir:       "/",
 	}
 
 	if cfg.Heartbeat.Interval <= 0 {
@@ -173,31 +178,55 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, ec edgex.Client, brok
 
 	subConfig := messaging.SubscriberConfig{
 		ID:             pubSubID,
-		Topic:          Hearbeat,
-		Handler:        ag.handle(ctx, ag.broker, logger, cfg.Heartbeat),
+		Topic:          HeartbeatTopic,
+		Handler:        ag.handle(cfg.Heartbeat),
 		DeliveryPolicy: messaging.DeliverAllPolicy,
 	}
 
 	err := ag.broker.Subscribe(ctx, subConfig)
 	if err != nil {
-		return ag, errors.Wrap(errNatsSubscribing, err)
+		return ag, errors.Wrap(errSubscribing, err)
 	}
 
 	return ag, nil
 }
 
+func (a *agent) changeDir(cmdArr []string) (string, error) {
+	var target string
+	if len(cmdArr) < 2 || cmdArr[1] == "~" {
+		target = "/root"
+	} else if strings.HasPrefix(cmdArr[1], "/") {
+		target = cmdArr[1]
+	} else {
+		target = a.workDir + "/" + cmdArr[1]
+	}
+	if info, statErr := os.Stat(target); statErr != nil || !info.IsDir() {
+		return "sh: cd: " + target + ": No such file or directory", nil
+	}
+	a.workDir = target
+	return "(no output)", nil
+}
+
 func (a *agent) Execute(uuid, cmd string) (string, error) {
 	cmdArr := strings.Split(strings.ReplaceAll(cmd, " ", ""), ",")
-	if len(cmdArr) < 2 {
+	if len(cmdArr) < 1 || cmdArr[0] == "" {
 		return "", errInvalidCommand
 	}
 
-	out, err := exec.Command(cmdArr[0], cmdArr[1:]...).CombinedOutput()
-	if err != nil {
+	shellCmd := strings.Join(cmdArr, " ")
+
+	if cmdArr[0] == "cd" {
+		return a.changeDir(cmdArr)
+	}
+
+	execCmd := exec.Command("sh", "-c", shellCmd)
+	execCmd.Dir = a.workDir
+	out, err := execCmd.CombinedOutput()
+	if err != nil && len(out) == 0 {
 		return "", errors.Wrap(errFailedExecute, err)
 	}
 
-	payload, err := encoder.EncodeSenML(uuid, cmdArr[0], string(out))
+	payload, err := encoder.EncodeSenML(uuid, shellCmd, string(out))
 	if err != nil {
 		return "", errors.Wrap(errFailedEncode, err)
 	}
@@ -206,12 +235,17 @@ func (a *agent) Execute(uuid, cmd string) (string, error) {
 		return "", errors.Wrap(errFailedToPublish, err)
 	}
 
-	return string(payload), nil
+	output := string(out)
+	if output == "" {
+		output = "(no output)"
+	}
+
+	return output, nil
 }
 
 func (a *agent) Control(uuid, cmdStr string) error {
 	cmdArgs := strings.Split(strings.ReplaceAll(cmdStr, " ", ""), ",")
-	if len(cmdArgs) < 2 {
+	if len(cmdArgs) < 1 || cmdArgs[0] == "" {
 		return errInvalidCommand
 	}
 
@@ -219,21 +253,15 @@ func (a *agent) Control(uuid, cmdStr string) error {
 	var err error
 
 	cmd := cmdArgs[0]
-	switch cmd {
-	case "edgex-operation":
-		resp, err = a.edgexClient.PushOperation(cmdArgs[1:])
-	case "edgex-config":
-		resp, err = a.edgexClient.FetchConfig(cmdArgs[1:])
-	case "edgex-metrics":
-		resp, err = a.edgexClient.FetchMetrics(cmdArgs[1:])
-	case "edgex-ping":
-		resp, err = a.edgexClient.Ping()
+	switch {
+	case strings.HasPrefix(cmd, "nodered-"):
+		resp, err = a.NodeRed(cmdStr)
 	default:
 		err = errUnknownCommand
 	}
 
 	if err != nil {
-		return errors.Wrap(errEdgexFailed, err)
+		return err
 	}
 
 	return a.processResponse(uuid, cmd, resp)
@@ -346,6 +374,63 @@ func (a *agent) terminalWrite(uuid, cmd string) error {
 	return term.Send(p)
 }
 
+func (a *agent) NodeRed(cmdStr string) (string, error) {
+	cmdArgs := strings.Split(strings.ReplaceAll(cmdStr, " ", ""), ",")
+
+	cmd := cmdArgs[0]
+	if cmd == "" {
+		return "", errInvalidCommand
+	}
+
+	var resp string
+	var err error
+
+	switch cmd {
+	case "nodered-deploy":
+		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
+			return "", errInvalidCommand
+		}
+		flowData, decErr := base64.StdEncoding.DecodeString(cmdArgs[1])
+		if decErr != nil {
+			return "", errors.Wrap(errNodeRedFailed, decErr)
+		}
+		resp, err = a.noderedClient.DeployFlows(a.patchNodeRedClientID(string(flowData)))
+	case "nodered-add-flow":
+		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
+			return "", errInvalidCommand
+		}
+		flowData, decErr := base64.StdEncoding.DecodeString(cmdArgs[1])
+		if decErr != nil {
+			return "", errors.Wrap(errNodeRedFailed, decErr)
+		}
+		resp, err = a.noderedClient.AddFlow(a.patchNodeRedClientID(string(flowData)))
+	case "nodered-flows":
+		resp, err = a.noderedClient.FetchFlows()
+	case "nodered-state":
+		resp, err = a.noderedClient.FlowState()
+	case "nodered-ping":
+		resp, err = a.noderedClient.Ping()
+	default:
+		err = errUnknownCommand
+	}
+
+	if err != nil {
+		return "", errors.Wrap(errNodeRedFailed, err)
+	}
+
+	return resp, nil
+}
+
+// patchNodeRedClientID replaces the agent's MQTT clientid with a "-nr" suffixed
+// version in flow JSON so Node-RED does not steal the agent's MQTT session.
+func (a *agent) patchNodeRedClientID(flowJSON string) string {
+	clientID := a.config.MQTT.Username
+	if clientID == "" {
+		return flowJSON
+	}
+	return strings.ReplaceAll(flowJSON, `"clientid": "`+clientID+`"`, `"clientid": "`+clientID+`-nr"`)
+}
+
 func (a *agent) processResponse(uuid, cmd, resp string) error {
 	payload, err := encoder.EncodeSenML(uuid, cmd, resp)
 	if err != nil {
@@ -364,13 +449,8 @@ func (a *agent) saveConfig(ctx context.Context, service, fileName, fileCont stri
 		if err != nil {
 			return errors.New(err.Error())
 		}
-		c, err := exp.ReadBytes([]byte(content))
-		if err != nil {
-			return errors.New(err.Error())
-		}
-		c.File = fileName
-		if err := exp.Save(c); err != nil {
-			return errors.New(err.Error())
+		if err := saveExportConfig(fileName, content); err != nil {
+			return err
 		}
 
 	default:
@@ -380,9 +460,25 @@ func (a *agent) saveConfig(ctx context.Context, service, fileName, fileCont stri
 	return a.broker.Publish(ctx, fmt.Sprintf("%s.%s.%s", Commands, service, config), &messaging.Message{})
 }
 
+func saveExportConfig(fileName string, content []byte) error {
+	var data map[string]any
+	if err := toml.Unmarshal(content, &data); err != nil {
+		if err2 := json.Unmarshal(content, &data); err2 != nil {
+			return errors.New("failed to unmarshal export config content")
+		}
+	}
+	b, err := toml.Marshal(data)
+	if err != nil {
+		return errors.New("failed to marshal export config content")
+	}
+	if err := os.WriteFile(fileName, b, 0o644); err != nil {
+		return errors.New(err.Error())
+	}
+	return nil
+}
+
 func (a *agent) AddConfig(c Config) error {
-	err := SaveConfig(c)
-	return errors.New(err.Error())
+	return SaveConfig(c)
 }
 
 func (a *agent) Config() Config {
@@ -416,13 +512,15 @@ func (a *agent) Publish(t, payload string) error {
 }
 
 func (a *agent) getTopic(topic string) (t string) {
+	domainID := a.config.DomainID
+	chan_ := a.config.Channels.ID
 	switch topic {
 	case control:
-		t = fmt.Sprintf("channels/%s/messages/res", a.config.Channels.Control)
+		t = fmt.Sprintf("m/%s/c/%s/res", domainID, chan_)
 	case data:
-		t = fmt.Sprintf("channels/%s/messages/res", a.config.Channels.Data)
+		t = fmt.Sprintf("m/%s/c/%s/msg", domainID, chan_)
 	default:
-		t = fmt.Sprintf("channels/%s/messages/res/%s", a.config.Channels.Control, topic)
+		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, chan_, topic)
 	}
 	return t
 }

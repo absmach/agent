@@ -6,62 +6,89 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
+	"net/http"
 
 	"github.com/absmach/agent/pkg/agent"
 	"github.com/absmach/magistrala"
-	"github.com/go-zoo/bone"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	"net/http"
-
+	mgapi "github.com/absmach/magistrala/api/http"
+	apiutil "github.com/absmach/magistrala/api/http/util"
+	"github.com/absmach/magistrala/pkg/uuid"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	kithttp "github.com/go-kit/kit/transport/http"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // MakeHandler returns a HTTP handler for API endpoints.
-func MakeHandler(svc agent.Service) http.Handler {
-	r := bone.New()
+func MakeHandler(svc agent.Service, logger *slog.Logger, instanceID string) http.Handler {
+	opts := []kithttp.ServerOption{
+		kithttp.ServerErrorEncoder(apiutil.LoggingErrorEncoder(logger, mgapi.EncodeError)),
+	}
+
+	idp := uuid.New()
+	r := chi.NewRouter()
+	r.Use(mgapi.RequestIDMiddleware(idp))
+	r.Use(middleware.SetHeader("Access-Control-Allow-Origin", "*"))
+	r.Use(middleware.SetHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS"))
+	r.Use(middleware.SetHeader("Access-Control-Allow-Headers", "Content-Type"))
+	r.MethodFunc(http.MethodOptions, "/*", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
 
 	r.Post("/pub", kithttp.NewServer(
 		pubEndpoint(svc),
 		decodePublishRequest,
-		encodeResponse,
-	))
+		mgapi.EncodeResponse,
+		opts...,
+	).ServeHTTP)
 
 	r.Post("/exec", kithttp.NewServer(
 		execEndpoint(svc),
 		decodeExecRequest,
-		encodeResponse,
-	))
+		mgapi.EncodeResponse,
+		opts...,
+	).ServeHTTP)
 
 	r.Post("/config", kithttp.NewServer(
 		addConfigEndpoint(svc),
 		decodeAddConfigRequest,
-		encodeResponse,
-	))
+		mgapi.EncodeResponse,
+		opts...,
+	).ServeHTTP)
 
 	r.Get("/config", kithttp.NewServer(
 		viewConfigEndpoint(svc),
 		decodeRequest,
-		encodeResponse,
-	))
+		mgapi.EncodeResponse,
+		opts...,
+	).ServeHTTP)
 
 	r.Get("/services", kithttp.NewServer(
 		viewServicesEndpoint(svc),
 		decodeRequest,
-		encodeResponse,
-	))
+		mgapi.EncodeResponse,
+		opts...,
+	).ServeHTTP)
+
+	r.Post("/nodered", kithttp.NewServer(
+		nodeRedEndpoint(svc),
+		decodeNodeRedRequest,
+		mgapi.EncodeResponse,
+		opts...,
+	).ServeHTTP)
 
 	r.Handle("/metrics", promhttp.Handler())
-	r.GetFunc("/health", magistrala.Health("agent", ""))
+	r.Get("/health", magistrala.Health("agent", instanceID))
 
 	return r
 }
 
-func decodeRequest(_ context.Context, r *http.Request) (interface{}, error) {
+func decodeRequest(_ context.Context, r *http.Request) (any, error) {
 	return nil, nil
 }
 
-func decodePublishRequest(_ context.Context, r *http.Request) (interface{}, error) {
+func decodePublishRequest(_ context.Context, r *http.Request) (any, error) {
 	req := pubReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, err
@@ -70,7 +97,7 @@ func decodePublishRequest(_ context.Context, r *http.Request) (interface{}, erro
 	return req, nil
 }
 
-func decodeExecRequest(_ context.Context, r *http.Request) (interface{}, error) {
+func decodeExecRequest(_ context.Context, r *http.Request) (any, error) {
 	req := execReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, err
@@ -79,7 +106,7 @@ func decodeExecRequest(_ context.Context, r *http.Request) (interface{}, error) 
 	return req, nil
 }
 
-func decodeAddConfigRequest(_ context.Context, r *http.Request) (interface{}, error) {
+func decodeAddConfigRequest(_ context.Context, r *http.Request) (any, error) {
 	req := addConfigReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, err
@@ -88,6 +115,11 @@ func decodeAddConfigRequest(_ context.Context, r *http.Request) (interface{}, er
 	return req, nil
 }
 
-func encodeResponse(_ context.Context, w http.ResponseWriter, response interface{}) error {
-	return json.NewEncoder(w).Encode(response)
+func decodeNodeRedRequest(_ context.Context, r *http.Request) (any, error) {
+	req := nodeRedReq{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }

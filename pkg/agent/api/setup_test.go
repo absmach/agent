@@ -16,16 +16,13 @@ import (
 )
 
 const (
-	username      = "mainflux-mqtt"
+	username      = "magistrala-mqtt"
 	broker        = "eclipse-mosquitto"
 	brokerVersion = "1.6.13"
 	poolMaxWait   = 120 * time.Second
 )
 
-var (
-	brokerAddress string
-	mqttAddress   string
-)
+var mqttAddress string
 
 func TestMain(m *testing.M) {
 	pool, err := dockertest.NewPool("")
@@ -33,41 +30,21 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Could not connect to docker: %s", err)
 	}
 
-	container, err := pool.Run("nats", "1.3.0", []string{})
-	if err != nil {
-		log.Fatalf("Could not start container: %s", err)
-	}
-	handleInterrupt(pool, container)
-
-	address := fmt.Sprintf("%s:%s", "localhost", container.GetPort("4222/tcp"))
-	if err := pool.Retry(func() error {
-		brokerAddress = address
-		return nil
-	}); err != nil {
-		log.Fatalf("Could not connect to docker: %s", err)
-	}
-
 	mqttContainer, err := pool.Run(broker, brokerVersion, []string{})
 	if err != nil {
 		log.Fatalf("Could not start container: %s", err)
 	}
-
 	handleInterrupt(pool, mqttContainer)
 
-	address2 := fmt.Sprintf("%s:%s", "localhost", mqttContainer.GetPort("1883/tcp"))
 	pool.MaxWait = poolMaxWait
-
 	if err := pool.Retry(func() error {
-		mqttAddress = address2
+		mqttAddress = fmt.Sprintf("%s:%s", "localhost", mqttContainer.GetPort("1883/tcp"))
 		return nil
 	}); err != nil {
 		log.Fatalf("Could not connect to docker: %s", err)
 	}
 
 	code := m.Run()
-	if err := pool.Purge(container); err != nil {
-		log.Fatalf("Could not purge container: %s", err)
-	}
 	if err := pool.Purge(mqttContainer); err != nil {
 		log.Fatalf("Could not purge container: %s", err)
 	}

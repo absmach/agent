@@ -1,0 +1,40 @@
+# Copyright (c) Abstract Machines
+# SPDX-License-Identifier: Apache-2.0
+
+server:
+  amqp:
+    plain:
+      addr: "0.0.0.0:5672"
+      max_connections: 1000
+  amqp091:
+    plain:
+      addr: "0.0.0.0:5682"
+  health_addr: "0.0.0.0:8081"
+  health_enabled: true
+  shutdown_timeout: 30s
+
+broker:
+  max_message_size: 1048576
+  max_retained_messages: 10000
+  retry_interval: 20s
+  max_retries: 0
+  max_qos: 2
+
+session:
+  max_sessions: 1000
+  default_expiry_interval: 300
+  max_offline_queue_size: 1000
+  max_inflight_messages: 100
+
+storage:
+  badger_dir: "/tmp/fluxmq/data"
+
+cluster:
+  enabled: false
+
+auth:
+  url: ""
+  transport: "none"
+  protocols:
+    amqp: false
+    amqp091: false

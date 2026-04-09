@@ -9,17 +9,18 @@ import (
 	"log"
 	"os"
 
-	mflog "github.com/absmach/magistrala/logger"
+	"github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/messaging"
 	"github.com/absmach/magistrala/pkg/messaging/brokers"
-	"github.com/nats-io/nats.go"
 )
 
 func main() {
 	ctx := context.Background()
 
-	var urls = flag.String("s", nats.DefaultURL, "The nats server URLs (separated by comma)")
-	var showHelp = flag.Bool("h", false, "Show help message")
+	var (
+		urls     = flag.String("s", "amqp://guest:guest@localhost:5682/", "The broker URL")
+		showHelp = flag.Bool("h", false, "Show help message")
+	)
 
 	log.SetFlags(0)
 	flag.Usage = usage
@@ -36,7 +37,7 @@ func main() {
 
 	subj, msg := args[0], []byte(args[1])
 
-	logger, err := mflog.New(os.Stdout, "info")
+	logger, err := logger.New(os.Stdout, "info")
 	if err != nil {
 		log.Fatalf("failed to init logger: %s", err)
 	}

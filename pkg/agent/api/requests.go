@@ -35,18 +35,29 @@ func (req execReq) validate() error {
 }
 
 type addConfigReq struct {
-	Agent agentConfig
+	agentConfig
 }
 
 func (req addConfigReq) validate() error {
-	if req.Agent.Server.Port == "" ||
-		req.Agent.Mqtt.Username == "" ||
-		req.Agent.Mqtt.Password == "" ||
-		req.Agent.Channels.Control == "" ||
-		req.Agent.Channels.Data == "" ||
-		req.Agent.Log.Level == "" ||
-		req.Agent.Edgex.Url == "" ||
-		req.Agent.Mqtt.Url == "" {
+	if req.Server.Port == "" ||
+		req.Mqtt.Username == "" ||
+		req.Mqtt.Password == "" ||
+		req.Channels.ID == "" ||
+		req.Log.Level == "" ||
+		req.Mqtt.Url == "" {
+		return agent.ErrMalformedEntity
+	}
+
+	return nil
+}
+
+type nodeRedReq struct {
+	Command string `json:"command"`
+	Flows   string `json:"flows"`
+}
+
+func (req nodeRedReq) validate() error {
+	if req.Command == "" {
 		return agent.ErrMalformedEntity
 	}
 

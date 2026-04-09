@@ -20,12 +20,11 @@ type ServerConfig struct {
 }
 
 type ChanConfig struct {
-	Control string `toml:"control"`
-	Data    string `toml:"data"`
+	ID string `toml:"id" json:"id"`
 }
 
-type EdgexConfig struct {
-	URL string `toml:"url"`
+type NodeRedConfig struct {
+	URL string `toml:"url" json:"url"`
 }
 
 type LogConfig struct {
@@ -63,17 +62,18 @@ type Config struct {
 	Terminal  TerminalConfig  `toml:"terminal" json:"terminal"`
 	Heartbeat HeartbeatConfig `toml:"heartbeat" json:"heartbeat"`
 	Channels  ChanConfig      `toml:"channels" json:"channels"`
-	Edgex     EdgexConfig     `toml:"edgex" json:"edgex"`
+	NodeRed   NodeRedConfig   `toml:"nodered" json:"nodered"`
 	Log       LogConfig       `toml:"log" json:"log"`
 	MQTT      MQTTConfig      `toml:"mqtt" json:"mqtt"`
+	DomainID  string          `toml:"domain_id" json:"domain_id"`
 	File      string
 }
 
-func NewConfig(sc ServerConfig, cc ChanConfig, ec EdgexConfig, lc LogConfig, mc MQTTConfig, hc HeartbeatConfig, tc TerminalConfig, file string) Config {
+func NewConfig(sc ServerConfig, cc ChanConfig, nc NodeRedConfig, lc LogConfig, mc MQTTConfig, hc HeartbeatConfig, tc TerminalConfig, file string) Config {
 	return Config{
 		Server:    sc,
 		Channels:  cc,
-		Edgex:     ec,
+		NodeRed:   nc,
 		Log:       lc,
 		MQTT:      mc,
 		Heartbeat: hc,
@@ -94,23 +94,9 @@ func SaveConfig(c Config) error {
 	return nil
 }
 
-// Read - retrieve config from a file.
-func ReadConfig(file string) (Config, error) {
-	data, err := os.ReadFile(file)
-	c := Config{}
-	if err != nil {
-		return c, errors.New(fmt.Sprintf("Error reading config file: %s", err))
-	}
-
-	if err := toml.Unmarshal(data, &c); err != nil {
-		return Config{}, errors.New(fmt.Sprintf("Error unmarshaling toml: %s", err))
-	}
-	return c, nil
-}
-
 // UnmarshalJSON parses the duration from JSON.
 func (d *HeartbeatConfig) UnmarshalJSON(b []byte) error {
-	var v map[string]interface{}
+	var v map[string]any
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
@@ -136,7 +122,7 @@ func (d *HeartbeatConfig) UnmarshalJSON(b []byte) error {
 
 // UnmarshalJSON parses the duration from JSON.
 func (d *TerminalConfig) UnmarshalJSON(b []byte) error {
-	var v map[string]interface{}
+	var v map[string]any
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}

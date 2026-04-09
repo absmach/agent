@@ -1,35 +1,35 @@
-File = "config.toml"
+File = "/config.toml"
+domain_id = "a1c51744-3317-48e2-9eef-4df37f68b9d1"
 
 [channels]
-  control = ""
-  data = ""
-
-[edgex]
-  url = "http://localhost:48090/api/v1/"
+  id = "82f1d080-b1ce-41b7-aef2-62b270e551e7"
 
 [heartbeat]
   interval = "10s"
 
 [log]
-  level = "info"
+  level = "debug"
 
 [mqtt]
   ca_cert = ""
   ca_path = "ca.crt"
-  cert_path = "thing.cert"
+  cert_path = "client.cert"
   client_cert = ""
   client_key = ""
   mtls = false
-  password = ""
-  priv_key_path = "thing.key"
+  password = "ec557975-fa05-419d-ba49-4cb07ce73735"
+  priv_key_path = "client.key"
   qos = 0
   retain = false
-  skip_tls_ver = true
-  url = "localhost:1883"
-  username = ""
+  skip_tls_ver = false
+  url = "ssl://messaging.magistrala.absmach.eu:8883"
+  username = "91e9aff0-b934-48f9-917c-2524e9f25729"
+
+[nodered]
+  url = "http://nodered:1880/"
 
 [server]
-  nats_url = "nats://127.0.0.1:4222"
+  broker_url = "amqp://guest:guest@fluxmq:5682/"
   port = "9999"
 
 [terminal]

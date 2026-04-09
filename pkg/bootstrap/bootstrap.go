@@ -16,13 +16,34 @@ import (
 	"time"
 
 	"github.com/absmach/agent/pkg/agent"
-
 	"github.com/absmach/magistrala/bootstrap"
-	errors "github.com/absmach/magistrala/pkg/errors"
-	export "github.com/mainflux/export/pkg/config"
+	"github.com/absmach/magistrala/pkg/errors"
+	toml "github.com/pelletier/go-toml"
 )
 
 const exportConfigFile = "/configs/export/config.toml"
+
+type exportMQTT struct {
+	Username          string `json:"username" toml:"username"`
+	Password          string `json:"password" toml:"password"`
+	ClientCert        string `json:"client_cert" toml:"client_cert"`
+	ClientCertKey     string `json:"client_cert_key" toml:"client_cert_key"`
+	ClientCertPath    string `json:"client_cert_path" toml:"client_cert_path"`
+	ClientPrivKeyPath string `json:"client_priv_key_path" toml:"client_priv_key_path"`
+}
+
+type exportRoute struct {
+	MqttTopic string `json:"mqtt_topic" toml:"mqtt_topic"`
+	SubTopic  string `json:"subtopic" toml:"subtopic"`
+	Type      string `json:"type" toml:"type"`
+	Workers   int    `json:"workers" toml:"workers"`
+}
+
+type exportConfig struct {
+	MQTT   exportMQTT    `json:"mqtt" toml:"mqtt"`
+	Routes []exportRoute `json:"routes" toml:"routes"`
+	File   string        `json:"file" toml:"-"`
+}
 
 // Config represents the parameters for bootstrapping.
 type Config struct {
@@ -36,8 +57,8 @@ type Config struct {
 }
 
 type ServicesConfig struct {
-	Agent  agent.Config  `json:"agent"`
-	Export export.Config `json:"export"`
+	Agent  agent.Config `json:"agent"`
+	Export exportConfig `json:"export"`
 }
 
 type ConfigContent struct {
@@ -45,13 +66,13 @@ type ConfigContent struct {
 }
 
 type deviceConfig struct {
-	MainfluxID       string              `json:"mainflux_id"`
-	MainfluxKey      string              `json:"mainflux_key"`
-	MainfluxChannels []bootstrap.Channel `json:"mainflux_channels"`
-	ClientKey        string              `json:"client_key"`
-	ClientCert       string              `json:"client_cert"`
-	CaCert           string              `json:"ca_cert"`
-	SvcsConf         ServicesConfig      `json:"-"`
+	ClientID     string              `json:"client_id"`
+	ClientSecret string              `json:"client_secret"`
+	Channels     []bootstrap.Channel `json:"channels"`
+	ClientKey    string              `json:"client_key"`
+	ClientCert   string              `json:"client_cert"`
+	CaCert       string              `json:"ca_cert"`
+	SvcsConf     ServicesConfig      `json:"-"`
 }
 
 // Bootstrap - Retrieve device config.
@@ -91,35 +112,27 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 		}
 	}
 
-	if len(dc.MainfluxChannels) < 2 {
+	if len(dc.Channels) < 2 {
 		return agent.ErrMalformedEntity
-	}
-
-	ctrlChan := dc.MainfluxChannels[0].ID
-	dataChan := dc.MainfluxChannels[1].ID
-	if dc.MainfluxChannels[0].Metadata["type"] == "data" {
-		ctrlChan = dc.MainfluxChannels[1].ID
-		dataChan = dc.MainfluxChannels[0].ID
 	}
 
 	sc := dc.SvcsConf.Agent.Server
 	cc := agent.ChanConfig{
-		Control: ctrlChan,
-		Data:    dataChan,
+		ID: dc.Channels[0].ID,
 	}
-	ec := dc.SvcsConf.Agent.Edgex
 	lc := dc.SvcsConf.Agent.Log
+	nc := dc.SvcsConf.Agent.NodeRed
 
 	mc := dc.SvcsConf.Agent.MQTT
-	mc.Password = dc.MainfluxKey
-	mc.Username = dc.MainfluxID
+	mc.Password = dc.ClientSecret
+	mc.Username = dc.ClientID
 	mc.ClientCert = dc.ClientCert
 	mc.ClientKey = dc.ClientKey
 	mc.CaCert = dc.CaCert
 
 	hc := dc.SvcsConf.Agent.Heartbeat
 	tc := dc.SvcsConf.Agent.Terminal
-	c := agent.NewConfig(sc, cc, ec, lc, mc, hc, tc, file)
+	c := agent.NewConfig(sc, cc, nc, lc, mc, hc, tc, file)
 
 	dc.SvcsConf.Export = fillExportConfig(dc.SvcsConf.Export, c)
 
@@ -129,7 +142,7 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 }
 
 // if export config isnt filled use agent configs.
-func fillExportConfig(econf export.Config, c agent.Config) export.Config {
+func fillExportConfig(econf exportConfig, c agent.Config) exportConfig {
 	if econf.MQTT.Username == "" {
 		econf.MQTT.Username = c.MQTT.Username
 	}
@@ -150,26 +163,29 @@ func fillExportConfig(econf export.Config, c agent.Config) export.Config {
 	}
 	for i, route := range econf.Routes {
 		if route.MqttTopic == "" {
-			econf.Routes[i].MqttTopic = "channels/" + c.Channels.Data + "/messages"
+			econf.Routes[i].MqttTopic = "channels/" + c.Channels.ID + "/messages"
 		}
 	}
 	return econf
 }
 
-func saveExportConfig(econf export.Config, logger *slog.Logger) {
-	if econf.File == "" {
-		econf.File = exportConfigFile
+func saveExportConfig(econf exportConfig, logger *slog.Logger) {
+	file := econf.File
+	if file == "" {
+		file = exportConfigFile
 	}
-	exConfFileExist := false
-	if _, err := os.Stat(econf.File); err == nil {
-		exConfFileExist = true
-		logger.Info("Export config file exists", slog.Any("file", econf.File))
+	if _, err := os.Stat(file); err == nil {
+		logger.Info("Export config file exists", slog.Any("file", file))
+		return
 	}
-	if !exConfFileExist {
-		logger.Info("Saving export config file", slog.Any("file", econf.File))
-		if err := export.Save(econf); err != nil {
-			logger.Warn("Failed to save export config file", slog.Any("error", err))
-		}
+	logger.Info("Saving export config file", slog.Any("file", file))
+	b, err := toml.Marshal(econf)
+	if err != nil {
+		logger.Warn("Failed to marshal export config", slog.Any("error", err))
+		return
+	}
+	if err := os.WriteFile(file, b, 0o644); err != nil {
+		logger.Warn("Failed to save export config file", slog.Any("error", err))
 	}
 }
 
@@ -196,7 +212,7 @@ func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) 
 		return deviceConfig{}, err
 	}
 
-	req.Header.Add("Authorization", fmt.Sprintf("Thing %s", bsKey))
+	req.Header.Add("Authorization", fmt.Sprintf("Client %s", bsKey))
 	resp, err := client.Do(req)
 	if err != nil {
 		return deviceConfig{}, err

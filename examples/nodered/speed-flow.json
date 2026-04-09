@@ -1,0 +1,85 @@
+[
+    {
+        "id": "flow-speed-sensor",
+        "type": "tab",
+        "label": "Speed Sensor Flow",
+        "disabled": false,
+        "info": "Publishes SenML speed data to Magistrala cloud every 15s via MQTT over TLS."
+    },
+    {
+        "id": "mqtt-broker-config",
+        "type": "mqtt-broker",
+        "name": "Magistrala Cloud MQTT",
+        "broker": "messaging.magistrala.absmach.eu",
+        "port": "8883",
+        "clientid": "91e9aff0-b934-48f9-917c-2524e9f25729",
+        "autoConnect": true,
+        "usetls": true,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "credentials": {
+            "user": "91e9aff0-b934-48f9-917c-2524e9f25729",
+            "password": "ec557975-fa05-419d-ba49-4cb07ce73735"
+        },
+        "birthTopic": "",
+        "closeTopic": "",
+        "willTopic": "",
+        "z": ""
+    },
+    {
+        "id": "inject-speed",
+        "type": "inject",
+        "z": "flow-speed-sensor",
+        "name": "Every 15s",
+        "props": [{"p": "payload", "v": "", "vt": "date"}],
+        "repeat": "15",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 3,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 150,
+        "y": 160,
+        "wires": [["build-speed-senml"]]
+    },
+    {
+        "id": "build-speed-senml",
+        "type": "function",
+        "z": "flow-speed-sensor",
+        "name": "Build Speed SenML",
+        "func": "var now = Date.now() * 1e6;\nmsg.payload = JSON.stringify([\n    {\"bn\": \"speed-sensor:\", \"bt\": now, \"n\": \"speed\", \"u\": \"km/h\", \"v\": 60 + Math.random() * 40},\n    {\"n\": \"rpm\", \"u\": \"rpm\", \"v\": 1500 + Math.random() * 1000},\n    {\"n\": \"gear\", \"u\": \"1\", \"v\": Math.floor(Math.random() * 6) + 1}\n]);\nmsg.topic = \"m/a1c51744-3317-48e2-9eef-4df37f68b9d1/c/82f1d080-b1ce-41b7-aef2-62b270e551e7/data\";\nreturn msg;",
+        "outputs": 1,
+        "x": 360,
+        "y": 160,
+        "wires": [["mqtt-pub-speed", "debug-speed"]]
+    },
+    {
+        "id": "mqtt-pub-speed",
+        "type": "mqtt out",
+        "z": "flow-speed-sensor",
+        "name": "Publish Speed to Magistrala",
+        "topic": "",
+        "qos": "0",
+        "retain": "false",
+        "broker": "mqtt-broker-config",
+        "x": 620,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "debug-speed",
+        "type": "debug",
+        "z": "flow-speed-sensor",
+        "name": "Debug",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "complete": "payload",
+        "x": 600,
+        "y": 200,
+        "wires": []
+    }
+]

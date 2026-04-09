@@ -24,7 +24,7 @@ Install [Elm](https://guide.elm-lang.org/install.html) and then run the
 following commands:
 
 ```
-git clone https://github.com/mainflux/agent
+git clone https://github.com/absmach/agent
 cd agent/ui
 make
 ```
@@ -55,4 +55,4 @@ Launch Magistrala without ui service, either natively or as a Docker composition
 If you have already launched Magistrala as a Docker composition, simply `cd` to
 Magistrala folder and run `docker-compose -f docker/docker-compose.yml stop ui`.
 Please follow the [guidelines for Magistrala
-contributors](https://mainflux.readthedocs.io/en/latest/CONTRIBUTING/).
+contributors](https://github.com/absmach/magistrala/blob/main/CONTRIBUTING.md).

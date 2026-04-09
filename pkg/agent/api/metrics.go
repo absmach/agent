@@ -22,8 +22,8 @@ type metricsMiddleware struct {
 	svc     agent.Service
 }
 
-// MetricsMiddleware instruments core service by tracking request count and latency.
-func MetricsMiddleware(svc agent.Service, counter metrics.Counter, latency metrics.Histogram) agent.Service {
+// NewMetrics returns a new metrics middleware wrapper.
+func NewMetrics(svc agent.Service, counter metrics.Counter, latency metrics.Histogram) agent.Service {
 	return &metricsMiddleware{
 		svc:     svc,
 		counter: counter,
@@ -96,9 +96,18 @@ func (ms *metricsMiddleware) Publish(topic, payload string) error {
 
 func (ms *metricsMiddleware) Terminal(topic, payload string) error {
 	defer func(begin time.Time) {
-		ms.counter.With("method", "publish").Add(1)
-		ms.latency.With("method", "publish").Observe(time.Since(begin).Seconds())
+		ms.counter.With("method", "terminal").Add(1)
+		ms.latency.With("method", "terminal").Observe(time.Since(begin).Seconds())
 	}(time.Now())
 
 	return ms.svc.Terminal(topic, payload)
+}
+
+func (ms *metricsMiddleware) NodeRed(cmdStr string) (string, error) {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "nodered").Add(1)
+		ms.latency.With("method", "nodered").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.NodeRed(cmdStr)
 }
