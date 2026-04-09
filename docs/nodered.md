@@ -76,6 +76,16 @@ This will:
 5. Configure a Rule Engine rule with `save_senml` output to persist all messages
 6. Update `docker/.env` with the provisioned IDs
 
+**Alternatively**, if you prefer to set up resources manually via the Magistrala UI or API, simply edit `docker/.env` directly with your values:
+
+```env
+MG_AGENT_MQTT_URL=ssl://messaging.example.com:8883
+MG_AGENT_CLIENT_ID=<client-id>
+MG_AGENT_CLIENT_SECRET=<client-secret>
+MG_AGENT_DOMAIN_ID=<domain-id>
+MG_AGENT_CHANNEL=<channel-id>
+```
+
 Then restart the agent:
 ```bash
 docker compose up -d

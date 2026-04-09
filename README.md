@@ -44,6 +44,16 @@ make run_provision
 
 This creates the necessary Magistrala clients and channels, then writes the resulting IDs and configuration into `docker/.env`.
 
+**Alternatively**, create a Client and Channel manually via the Magistrala UI or API, then edit `docker/.env` directly with the values:
+
+```env
+MG_AGENT_MQTT_URL=ssl://messaging.example.com:8883
+MG_AGENT_CLIENT_ID=<client-id>
+MG_AGENT_CLIENT_SECRET=<client-secret>
+MG_AGENT_DOMAIN_ID=<domain-id>
+MG_AGENT_CHANNEL=<channel-id>
+```
+
 ### 2. Build the dev Docker image
 
 ```bash
