@@ -99,8 +99,8 @@ func TestPublish(t *testing.T) {
 	defer ts.Close()
 	client := ts.Client()
 	data, err := toJSON(struct {
-		Payload string
-		Topic   string
+		Payload string `json:"payload"`
+		Topic   string `json:"topic"`
 	}{
 		"payload",
 		"topic",
