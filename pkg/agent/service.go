@@ -122,6 +122,7 @@ type agent struct {
 	broker        messaging.PubSub
 	svcs          map[string]Heartbeat
 	terminals     map[string]terminal.Session
+	workDir       string
 }
 
 func (ag *agent) handle(cfg HeartbeatConfig) handleFunc {
@@ -168,6 +169,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, br
 		logger:        logger,
 		svcs:          make(map[string]Heartbeat),
 		terminals:     make(map[string]terminal.Session),
+		workDir:       "/",
 	}
 
 	if cfg.Heartbeat.Interval <= 0 {
@@ -189,18 +191,42 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, br
 	return ag, nil
 }
 
+func (a *agent) changeDir(cmdArr []string) (string, error) {
+	var target string
+	if len(cmdArr) < 2 || cmdArr[1] == "~" {
+		target = "/root"
+	} else if strings.HasPrefix(cmdArr[1], "/") {
+		target = cmdArr[1]
+	} else {
+		target = a.workDir + "/" + cmdArr[1]
+	}
+	if info, statErr := os.Stat(target); statErr != nil || !info.IsDir() {
+		return "sh: cd: " + target + ": No such file or directory", nil
+	}
+	a.workDir = target
+	return "(no output)", nil
+}
+
 func (a *agent) Execute(uuid, cmd string) (string, error) {
 	cmdArr := strings.Split(strings.ReplaceAll(cmd, " ", ""), ",")
-	if len(cmdArr) < 2 {
+	if len(cmdArr) < 1 || cmdArr[0] == "" {
 		return "", errInvalidCommand
 	}
 
-	out, err := exec.Command(cmdArr[0], cmdArr[1:]...).CombinedOutput()
-	if err != nil {
+	shellCmd := strings.Join(cmdArr, " ")
+
+	if cmdArr[0] == "cd" {
+		return a.changeDir(cmdArr)
+	}
+
+	execCmd := exec.Command("sh", "-c", shellCmd)
+	execCmd.Dir = a.workDir
+	out, err := execCmd.CombinedOutput()
+	if err != nil && len(out) == 0 {
 		return "", errors.Wrap(errFailedExecute, err)
 	}
 
-	payload, err := encoder.EncodeSenML(uuid, cmdArr[0], string(out))
+	payload, err := encoder.EncodeSenML(uuid, shellCmd, string(out))
 	if err != nil {
 		return "", errors.Wrap(errFailedEncode, err)
 	}
@@ -209,7 +235,12 @@ func (a *agent) Execute(uuid, cmd string) (string, error) {
 		return "", errors.Wrap(errFailedToPublish, err)
 	}
 
-	return string(payload), nil
+	output := string(out)
+	if output == "" {
+		output = "(no output)"
+	}
+
+	return output, nil
 }
 
 func (a *agent) Control(uuid, cmdStr string) error {

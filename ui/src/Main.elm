@@ -75,6 +75,7 @@ type alias NodeRedState =
     , selectedFileName : String
     , response : String
     , loading : Bool
+    , lastCmd : String
     }
 
 
@@ -87,6 +88,7 @@ type alias Model =
     , services : String
     , execCmd : String
     , execResponse : String
+    , execLastCmd : String
     }
 
 
@@ -124,6 +126,8 @@ type Msg
     | SubmitExecCmd String
     | RunExec
     | GotExecResp (Result Http.Error String)
+    | ClearNodeRedResp
+    | ClearExecResp
 
 
 init : () -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
@@ -132,10 +136,11 @@ init _ url key =
       , config = emptyConfig
       , gotConfig = False
       , configResponse = ""
-      , nodeRed = NodeRedState "" "" "" False
+      , nodeRed = NodeRedState "" "" "" False ""
       , services = ""
       , execCmd = ""
       , execResponse = ""
+      , execLastCmd = ""
       }
     , Http.get
         { url = agentBase ++ "/config"
@@ -225,27 +230,27 @@ update msg model =
 
         -- Node-RED
         NodeRedPing ->
-            ( { model | nodeRed = { nr | loading = True } }
+            ( { model | nodeRed = { nr | loading = True, lastCmd = "Ping" } }
             , postNodeRed "nodered-ping" "" GotNodeRedResp
             )
 
         NodeRedFlows ->
-            ( { model | nodeRed = { nr | loading = True } }
+            ( { model | nodeRed = { nr | loading = True, lastCmd = "Get Flows" } }
             , postNodeRed "nodered-flows" "" GotNodeRedResp
             )
 
         NodeRedState_ ->
-            ( { model | nodeRed = { nr | loading = True } }
+            ( { model | nodeRed = { nr | loading = True, lastCmd = "State" } }
             , postNodeRed "nodered-state" "" GotNodeRedResp
             )
 
         NodeRedDeploy ->
-            ( { model | nodeRed = { nr | loading = True } }
+            ( { model | nodeRed = { nr | loading = True, lastCmd = "Deploy" } }
             , postNodeRed "nodered-deploy" nr.flows GotNodeRedResp
             )
 
         NodeRedAddFlow ->
-            ( { model | nodeRed = { nr | loading = True } }
+            ( { model | nodeRed = { nr | loading = True, lastCmd = "Add Flow" } }
             , postNodeRed "nodered-add-flow" nr.flows GotNodeRedResp
             )
 
@@ -285,7 +290,7 @@ update msg model =
         GotServices result ->
             case result of
                 Ok body ->
-                    ( { model | services = body }, Cmd.none )
+                    ( { model | services = prettyJson body }, Cmd.none )
 
                 Err err ->
                     ( { model | services = httpErrToString err }, Cmd.none )
@@ -295,7 +300,7 @@ update msg model =
             ( { model | execCmd = v }, Cmd.none )
 
         RunExec ->
-            ( model
+            ( { model | execLastCmd = model.execCmd }
             , Http.post
                 { url = agentBase ++ "/exec"
                 , body =
@@ -306,7 +311,7 @@ update msg model =
                             , ( "vs", E.string model.execCmd )
                             ]
                         )
-                , expect = Http.expectString GotExecResp
+                , expect = Http.expectJson GotExecResp (D.field "vs" D.string)
                 }
             )
 
@@ -317,6 +322,12 @@ update msg model =
 
                 Err err ->
                     ( { model | execResponse = httpErrToString err }, Cmd.none )
+
+        ClearNodeRedResp ->
+            ( { model | nodeRed = { nr | response = "" } }, Cmd.none )
+
+        ClearExecResp ->
+            ( { model | execResponse = "" }, Cmd.none )
 
 
 postNodeRed : String -> String -> (Result Http.Error String -> Msg) -> Cmd Msg
@@ -330,8 +341,18 @@ postNodeRed cmd flows toMsg =
                     , ( "flows", E.string flows )
                     ]
                 )
-        , expect = Http.expectString toMsg
+        , expect = Http.expectJson toMsg (D.field "response" D.string |> D.map prettyJson)
         }
+
+
+prettyJson : String -> String
+prettyJson raw =
+    case D.decodeString D.value raw of
+        Ok v ->
+            E.encode 2 v
+
+        Err _ ->
+            raw
 
 
 parseMaybe : Maybe String -> String
@@ -424,7 +445,48 @@ configCard model =
                         , Button.button [ Button.success, Button.attrs [ Spacing.ml2 ], Button.onClick PostConfig ] [ text "Save Config" ]
                         ]
                     , if model.configResponse /= "" then
-                        div [ style "margin-top" "8px", style "color" "#666" ] [ text ("Response: " ++ model.configResponse) ]
+                        let
+                            isOk =
+                                model.configResponse == "OK" || model.configResponse == "200"
+                        in
+                        div
+                            [ style "margin-top" "10px"
+                            , style "padding" "8px 12px"
+                            , style "border-radius" "4px"
+                            , style "font-size" "13px"
+                            , style "background"
+                                (if isOk then
+                                    "#d4edda"
+
+                                 else
+                                    "#f8d7da"
+                                )
+                            , style "color"
+                                (if isOk then
+                                    "#155724"
+
+                                 else
+                                    "#721c24"
+                                )
+                            , style "border"
+                                (if isOk then
+                                    "1px solid #c3e6cb"
+
+                                 else
+                                    "1px solid #f5c6cb"
+                                )
+                            ]
+                            [ text
+                                (if model.configResponse == "OK" then
+                                    "\u{2713} Config loaded"
+
+                                 else if model.configResponse == "200" then
+                                    "\u{2713} Config saved successfully"
+
+                                 else
+                                    "\u{2717} " ++ model.configResponse
+                                )
+                            ]
 
                       else
                         text ""
@@ -486,17 +548,45 @@ nodeRedCard model =
                             [ text "Add Flow" ]
                         ]
                     , if model.nodeRed.loading then
-                        div [] [ text "Loading..." ]
+                        div [ style "color" "#6c757d", style "margin-top" "10px" ]
+                            [ i [ class "fas fa-spinner fa-spin", style "margin-right" "6px" ] []
+                            , text "Loading..."
+                            ]
 
                       else if model.nodeRed.response /= "" then
-                        div []
-                            [ Form.label [] [ text "Response:" ]
+                        div [ style "margin-top" "10px" ]
+                            [ div
+                                [ style "display" "flex"
+                                , style "justify-content" "space-between"
+                                , style "align-items" "center"
+                                , style "margin-bottom" "4px"
+                                ]
+                                [ span
+                                    [ style "font-size" "11px"
+                                    , style "font-weight" "600"
+                                    , style "text-transform" "uppercase"
+                                    , style "letter-spacing" "0.5px"
+                                    , style "color" "#6c757d"
+                                    ]
+                                    [ text (model.nodeRed.lastCmd ++ " Response") ]
+                                , button
+                                    [ class "btn btn-link btn-sm"
+                                    , style "padding" "0 4px"
+                                    , style "font-size" "12px"
+                                    , style "color" "#adb5bd"
+                                    , onClick ClearNodeRedResp
+                                    ]
+                                    [ text "\u{2715} Clear" ]
+                                ]
                             , pre
                                 [ style "background" "#f8f9fa"
-                                , style "padding" "8px"
+                                , style "border" "1px solid #e9ecef"
+                                , style "border-radius" "4px"
+                                , style "padding" "10px"
                                 , style "font-size" "12px"
-                                , style "max-height" "150px"
+                                , style "max-height" "220px"
                                 , style "overflow-y" "auto"
+                                , style "margin" "0"
                                 ]
                                 [ text model.nodeRed.response ]
                             ]
@@ -524,15 +614,20 @@ servicesCard model =
                         pre
                             [ style "margin-top" "10px"
                             , style "background" "#f8f9fa"
-                            , style "padding" "8px"
+                            , style "border" "1px solid #e9ecef"
+                            , style "border-radius" "4px"
+                            , style "padding" "10px"
                             , style "font-size" "12px"
-                            , style "max-height" "200px"
+                            , style "max-height" "220px"
                             , style "overflow-y" "auto"
                             ]
                             [ text model.services ]
 
                       else
-                        p [ style "margin-top" "10px", style "color" "#999" ] [ text "No services registered yet." ]
+                        p [ style "margin-top" "10px", style "color" "#adb5bd" ]
+                            [ i [ class "fas fa-info-circle", style "margin-right" "6px" ] []
+                            , text "No services registered yet."
+                            ]
                     ]
                 )
             ]
@@ -561,15 +656,42 @@ execCard model =
                         ]
                     , Button.button [ Button.danger, Button.onClick RunExec ] [ text "Run" ]
                     , if model.execResponse /= "" then
-                        pre
-                            [ style "margin-top" "10px"
-                            , style "background" "#f8f9fa"
-                            , style "padding" "8px"
-                            , style "font-size" "12px"
-                            , style "max-height" "200px"
-                            , style "overflow-y" "auto"
+                        div [ style "margin-top" "12px" ]
+                            [ div
+                                [ style "display" "flex"
+                                , style "justify-content" "space-between"
+                                , style "align-items" "center"
+                                , style "margin-bottom" "4px"
+                                ]
+                                [ span
+                                    [ style "font-size" "12px"
+                                    , style "font-family" "monospace"
+                                    , style "color" "#6c757d"
+                                    ]
+                                    [ text ("$ " ++ model.execLastCmd) ]
+                                , button
+                                    [ class "btn btn-link btn-sm"
+                                    , style "padding" "0 4px"
+                                    , style "font-size" "12px"
+                                    , style "color" "#adb5bd"
+                                    , onClick ClearExecResp
+                                    ]
+                                    [ text "\u{2715} Clear" ]
+                                ]
+                            , pre
+                                [ style "background" "#1e1e1e"
+                                , style "color" "#d4d4d4"
+                                , style "border-radius" "4px"
+                                , style "padding" "12px"
+                                , style "font-size" "13px"
+                                , style "max-height" "250px"
+                                , style "overflow-y" "auto"
+                                , style "margin" "0"
+                                , style "white-space" "pre-wrap"
+                                , style "word-break" "break-all"
+                                ]
+                                [ text model.execResponse ]
                             ]
-                            [ text model.execResponse ]
 
                       else
                         text ""
