@@ -20,11 +20,11 @@ type ServerConfig struct {
 }
 
 type ChanConfig struct {
-	ID string `toml:"id"`
+	ID string `toml:"id" json:"id"`
 }
 
 type NodeRedConfig struct {
-	URL string `toml:"url"`
+	URL string `toml:"url" json:"url"`
 }
 
 type LogConfig struct {
@@ -96,7 +96,7 @@ func SaveConfig(c Config) error {
 
 // UnmarshalJSON parses the duration from JSON.
 func (d *HeartbeatConfig) UnmarshalJSON(b []byte) error {
-	var v map[string]interface{}
+	var v map[string]any
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func (d *HeartbeatConfig) UnmarshalJSON(b []byte) error {
 
 // UnmarshalJSON parses the duration from JSON.
 func (d *TerminalConfig) UnmarshalJSON(b []byte) error {
-	var v map[string]interface{}
+	var v map[string]any
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}

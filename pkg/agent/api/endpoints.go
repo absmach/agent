@@ -12,7 +12,7 @@ import (
 )
 
 func pubEndpoint(svc agent.Service) endpoint.Endpoint {
-	return func(_ context.Context, request interface{}) (interface{}, error) {
+	return func(_ context.Context, request any) (any, error) {
 		req := request.(pubReq)
 
 		if err := req.validate(); err != nil {
@@ -34,7 +34,7 @@ func pubEndpoint(svc agent.Service) endpoint.Endpoint {
 }
 
 func execEndpoint(svc agent.Service) endpoint.Endpoint {
-	return func(_ context.Context, request interface{}) (interface{}, error) {
+	return func(_ context.Context, request any) (any, error) {
 		req := request.(execReq)
 
 		if err := req.validate(); err != nil {
@@ -57,33 +57,24 @@ func execEndpoint(svc agent.Service) endpoint.Endpoint {
 }
 
 func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
-	return func(_ context.Context, request interface{}) (interface{}, error) {
+	return func(_ context.Context, request any) (any, error) {
 		req := request.(addConfigReq)
 
 		if err := req.validate(); err != nil {
 			return nil, err
 		}
 
-		sc := agent.ServerConfig{Port: req.Agent.Server.Port}
-		cc := agent.ChanConfig{
-			ID: req.Agent.Channels.ID,
-		}
-		nc := agent.NodeRedConfig{URL: req.Agent.NodeRed.Url}
-		lc := agent.LogConfig{Level: req.Agent.Log.Level}
-		mc := agent.MQTTConfig{
-			URL:      req.Agent.Mqtt.Url,
-			Username: req.Agent.Mqtt.Username,
-			Password: req.Agent.Mqtt.Password,
-		}
-		c := agent.Config{
-			Server:   sc,
-			Channels: cc,
-			NodeRed:  nc,
-			Log:      lc,
-			MQTT:     mc,
-		}
+		current := svc.Config()
 
-		if err := svc.AddConfig(c); err != nil {
+		current.Server.Port = req.Server.Port
+		current.Channels.ID = req.Channels.ID
+		current.NodeRed.URL = req.NodeRed.Url
+		current.Log.Level = req.Log.Level
+		current.MQTT.URL = req.Mqtt.Url
+		current.MQTT.Username = req.Mqtt.Username
+		current.MQTT.Password = req.Mqtt.Password
+
+		if err := svc.AddConfig(current); err != nil {
 			return nil, err
 		}
 
@@ -95,20 +86,20 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 }
 
 func viewConfigEndpoint(svc agent.Service) endpoint.Endpoint {
-	return func(_ context.Context, request interface{}) (interface{}, error) {
+	return func(_ context.Context, request any) (any, error) {
 		c := svc.Config()
 		return c, nil
 	}
 }
 
 func viewServicesEndpoint(svc agent.Service) endpoint.Endpoint {
-	return func(_ context.Context, request interface{}) (interface{}, error) {
+	return func(_ context.Context, request any) (any, error) {
 		return svc.Services(), nil
 	}
 }
 
 func nodeRedEndpoint(svc agent.Service) endpoint.Endpoint {
-	return func(_ context.Context, request interface{}) (interface{}, error) {
+	return func(_ context.Context, request any) (any, error) {
 		req := request.(nodeRedReq)
 
 		if err := req.validate(); err != nil {

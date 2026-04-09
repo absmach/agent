@@ -35,16 +35,16 @@ func (req execReq) validate() error {
 }
 
 type addConfigReq struct {
-	Agent agentConfig
+	agentConfig
 }
 
 func (req addConfigReq) validate() error {
-	if req.Agent.Server.Port == "" ||
-		req.Agent.Mqtt.Username == "" ||
-		req.Agent.Mqtt.Password == "" ||
-		req.Agent.Channels.ID == "" ||
-		req.Agent.Log.Level == "" ||
-		req.Agent.Mqtt.Url == "" {
+	if req.Server.Port == "" ||
+		req.Mqtt.Username == "" ||
+		req.Mqtt.Password == "" ||
+		req.Channels.ID == "" ||
+		req.Log.Level == "" ||
+		req.Mqtt.Url == "" {
 		return agent.ErrMalformedEntity
 	}
 

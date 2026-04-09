@@ -137,7 +137,10 @@ init _ url key =
       , execCmd = ""
       , execResponse = ""
       }
-    , Cmd.none
+    , Http.get
+        { url = agentBase ++ "/config"
+        , expect = expectJson GotConfig configDecoder
+        }
     )
 
 

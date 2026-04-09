@@ -1,6 +1,5 @@
 build
 cmd/config.toml
-
 # Node-RED runtime-generated files (do not commit)
 docker/nodered/.config.nodes.json
 docker/nodered/.config.runtime.json

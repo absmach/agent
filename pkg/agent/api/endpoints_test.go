@@ -81,7 +81,7 @@ func newServer(svc agent.Service) *httptest.Server {
 	return httptest.NewServer(mux)
 }
 
-func toJSON(data interface{}) (string, error) {
+func toJSON(data any) (string, error) {
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return "", err

@@ -430,7 +430,7 @@ func (a *agent) saveConfig(ctx context.Context, service, fileName, fileCont stri
 }
 
 func saveExportConfig(fileName string, content []byte) error {
-	var data map[string]interface{}
+	var data map[string]any
 	if err := toml.Unmarshal(content, &data); err != nil {
 		if err2 := json.Unmarshal(content, &data); err2 != nil {
 			return errors.New("failed to unmarshal export config content")

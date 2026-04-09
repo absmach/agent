@@ -15,6 +15,7 @@ import (
 	apiutil "github.com/absmach/magistrala/api/http/util"
 	"github.com/absmach/magistrala/pkg/uuid"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	kithttp "github.com/go-kit/kit/transport/http"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -28,6 +29,12 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, instanceID string) http
 	idp := uuid.New()
 	r := chi.NewRouter()
 	r.Use(mgapi.RequestIDMiddleware(idp))
+	r.Use(middleware.SetHeader("Access-Control-Allow-Origin", "*"))
+	r.Use(middleware.SetHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS"))
+	r.Use(middleware.SetHeader("Access-Control-Allow-Headers", "Content-Type"))
+	r.MethodFunc(http.MethodOptions, "/*", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
 
 	r.Post("/pub", kithttp.NewServer(
 		pubEndpoint(svc),
@@ -77,11 +84,11 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, instanceID string) http
 	return r
 }
 
-func decodeRequest(_ context.Context, r *http.Request) (interface{}, error) {
+func decodeRequest(_ context.Context, r *http.Request) (any, error) {
 	return nil, nil
 }
 
-func decodePublishRequest(_ context.Context, r *http.Request) (interface{}, error) {
+func decodePublishRequest(_ context.Context, r *http.Request) (any, error) {
 	req := pubReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, err
@@ -90,7 +97,7 @@ func decodePublishRequest(_ context.Context, r *http.Request) (interface{}, erro
 	return req, nil
 }
 
-func decodeExecRequest(_ context.Context, r *http.Request) (interface{}, error) {
+func decodeExecRequest(_ context.Context, r *http.Request) (any, error) {
 	req := execReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, err
@@ -99,7 +106,7 @@ func decodeExecRequest(_ context.Context, r *http.Request) (interface{}, error) 
 	return req, nil
 }
 
-func decodeAddConfigRequest(_ context.Context, r *http.Request) (interface{}, error) {
+func decodeAddConfigRequest(_ context.Context, r *http.Request) (any, error) {
 	req := addConfigReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, err
@@ -108,7 +115,7 @@ func decodeAddConfigRequest(_ context.Context, r *http.Request) (interface{}, er
 	return req, nil
 }
 
-func decodeNodeRedRequest(_ context.Context, r *http.Request) (interface{}, error) {
+func decodeNodeRedRequest(_ context.Context, r *http.Request) (any, error) {
 	req := nodeRedReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, err

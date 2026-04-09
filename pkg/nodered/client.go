@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 )
 
 // Client interface for Node-RED operations.
@@ -78,14 +79,21 @@ func (nc *noderedClient) DeployFlows(flows string) (string, error) {
 }
 
 // AddFlow adds a single new flow tab to Node-RED.
+// It accepts either the POST /flow object format or a flat array (POST /flows format),
+// automatically converting the array into the {id, label, nodes, configs} object
+// that the POST /flow endpoint requires.
+// Returns a clear error if a flow with the same id already exists — use Deploy Flows to overwrite.
 func (nc *noderedClient) AddFlow(flow string) (string, error) {
-	url := nc.url + "flow"
-
 	if !json.Valid([]byte(flow)) {
 		return "", fmt.Errorf("invalid JSON flow payload")
 	}
 
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte(flow)))
+	payload, err := normalizeAddFlowPayload(flow)
+	if err != nil {
+		return "", fmt.Errorf("failed to normalize flow payload: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, nc.url+"flow", bytes.NewReader(payload))
 	if err != nil {
 		return "", err
 	}
@@ -102,11 +110,65 @@ func (nc *noderedClient) AddFlow(flow string) (string, error) {
 		return "", err
 	}
 
+	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "duplicate id") {
+		return "", fmt.Errorf("flow already exists in Node-RED — use Deploy Flows to overwrite it")
+	}
+
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return "", fmt.Errorf("node-red add flow failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	return string(body), nil
+}
+
+func normalizeAddFlowPayload(flow string) ([]byte, error) {
+	trimmed := strings.TrimSpace(flow)
+	if !strings.HasPrefix(trimmed, "[") {
+		return []byte(flow), nil
+	}
+
+	var nodes []map[string]any
+	if err := json.Unmarshal([]byte(flow), &nodes); err != nil {
+		return nil, err
+	}
+
+	var tab map[string]any
+	for _, n := range nodes {
+		if n["type"] == "tab" {
+			tab = n
+			break
+		}
+	}
+	if tab == nil {
+		return nil, fmt.Errorf("no tab node found in flow array")
+	}
+
+	tabID, _ := tab["id"].(string)
+	label, _ := tab["label"].(string)
+
+	// Split remaining nodes into flow nodes (z == tabID) and config nodes (no z or z == "").
+	flowNodes := []map[string]any{}
+	configNodes := []map[string]any{}
+	for _, n := range nodes {
+		if n["type"] == "tab" {
+			continue
+		}
+		z, _ := n["z"].(string)
+		if z == tabID {
+			flowNodes = append(flowNodes, n)
+		} else {
+			configNodes = append(configNodes, n)
+		}
+	}
+
+	payload := map[string]any{
+		"id":      tabID,
+		"label":   label,
+		"nodes":   flowNodes,
+		"configs": configNodes,
+	}
+
+	return json.Marshal(payload)
 }
 
 // FlowState returns the runtime state of Node-RED flows.
