@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/absmach/agent/pkg/agent"
@@ -66,13 +67,16 @@ type ConfigContent struct {
 }
 
 type deviceConfig struct {
-	ClientID     string              `json:"client_id"`
-	ClientSecret string              `json:"client_secret"`
-	Channels     []bootstrap.Channel `json:"channels"`
-	ClientKey    string              `json:"client_key"`
-	ClientCert   string              `json:"client_cert"`
-	CaCert       string              `json:"ca_cert"`
-	SvcsConf     ServicesConfig      `json:"-"`
+	ClientID         string              `json:"client_id"`
+	ClientSecret     string              `json:"client_secret"`
+	Channels         []bootstrap.Channel `json:"channels"`
+	MainfluxID       string              `json:"mainflux_id"`
+	MainfluxKey      string              `json:"mainflux_key"`
+	MainfluxChannels []bootstrap.Channel `json:"mainflux_channels"`
+	ClientKey        string              `json:"client_key"`
+	ClientCert       string              `json:"client_cert"`
+	CaCert           string              `json:"ca_cert"`
+	SvcsConf         ServicesConfig      `json:"-"`
 }
 
 // Bootstrap - Retrieve device config.
@@ -112,7 +116,9 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 		}
 	}
 
-	if len(dc.Channels) < 2 {
+	dc.normalize()
+
+	if len(dc.Channels) < 1 {
 		return agent.ErrMalformedEntity
 	}
 
@@ -139,6 +145,18 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 	saveExportConfig(dc.SvcsConf.Export, logger)
 
 	return agent.SaveConfig(c)
+}
+
+func (dc *deviceConfig) normalize() {
+	if dc.ClientID == "" {
+		dc.ClientID = dc.MainfluxID
+	}
+	if dc.ClientSecret == "" {
+		dc.ClientSecret = dc.MainfluxKey
+	}
+	if len(dc.Channels) == 0 {
+		dc.Channels = dc.MainfluxChannels
+	}
 }
 
 // if export config isnt filled use agent configs.
@@ -212,7 +230,11 @@ func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) 
 		return deviceConfig{}, err
 	}
 
-	req.Header.Add("Authorization", fmt.Sprintf("Client %s", bsKey))
+	authScheme := "Client"
+	if strings.Contains(bsSvrURL, "/things/bootstrap") {
+		authScheme = "Thing"
+	}
+	req.Header.Add("Authorization", fmt.Sprintf("%s %s", authScheme, bsKey))
 	resp, err := client.Do(req)
 	if err != nil {
 		return deviceConfig{}, err

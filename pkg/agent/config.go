@@ -94,6 +94,21 @@ func SaveConfig(c Config) error {
 	return nil
 }
 
+// ReadConfig - read config from a file.
+func ReadConfig(file string) (Config, error) {
+	data, err := os.ReadFile(file)
+	c := Config{}
+	if err != nil {
+		return c, errors.New(fmt.Sprintf("Error reading config file: %s", err))
+	}
+
+	if err := toml.Unmarshal(data, &c); err != nil {
+		return Config{}, errors.New(fmt.Sprintf("Error unmarshaling toml: %s", err))
+	}
+	c.File = file
+	return c, nil
+}
+
 // UnmarshalJSON parses the duration from JSON.
 func (d *HeartbeatConfig) UnmarshalJSON(b []byte) error {
 	var v map[string]any

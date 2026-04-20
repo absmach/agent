@@ -28,48 +28,53 @@ services:
     image: nodered/node-red:latest
     container_name: agent-nodered
     restart: on-failure
-    entrypoint: ["/seed/entrypoint.sh"]
+    entrypoint: ["/seed/scripts/entrypoint.sh"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "1880:1880"
     networks:
       - magistrala-agent-base-net
     volumes:
-      - ./nodered:/seed:ro
+      - ../scripts:/seed/scripts:ro
+      - ./nodered:/seed/nodered:ro
+      - ../configs/config.toml:/seed/config.toml:ro
       - nodered-data:/data
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
     environment:
       TZ: UTC
       NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
-      MG_AGENT_CLIENT_ID: ${MG_AGENT_CLIENT_ID}
-      MG_AGENT_CLIENT_SECRET: ${MG_AGENT_CLIENT_SECRET}
-      MG_AGENT_DOMAIN_ID: ${MG_AGENT_DOMAIN_ID}
-      MG_AGENT_CHANNEL: ${MG_AGENT_CHANNEL}
   agent:
     image: ${MG_AGENT_IMAGE}
     container_name: magistrala-agent
     restart: on-failure
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "bootstrap:host-gateway"
     depends_on:
       - fluxmq
       - nodered
     ports:
-      - "${MG_AGENT_HTTP_PORT}:${MG_AGENT_HTTP_PORT}"
+      - "${MG_AGENT_PORT}:${MG_AGENT_PORT}"
     networks:
       - magistrala-agent-base-net
     environment:
       MG_AGENT_CONFIG_FILE: /config.toml
       MG_AGENT_LOG_LEVEL: debug
-      MG_AGENT_HTTP_PORT: ${MG_AGENT_HTTP_PORT}
+      MG_AGENT_HTTP_PORT: ${MG_AGENT_PORT}
       MG_AGENT_MQTT_URL: ${MG_AGENT_MQTT_URL}
-      MG_AGENT_MQTT_USERNAME: ${MG_AGENT_CLIENT_ID}
-      MG_AGENT_MQTT_PASSWORD: ${MG_AGENT_CLIENT_SECRET}
       MG_AGENT_MQTT_SKIP_TLS: ${MG_AGENT_MQTT_SKIP_TLS}
       MG_AGENT_MQTT_MTLS: ${MG_AGENT_MQTT_MTLS}
-      MG_AGENT_CHANNEL: ${MG_AGENT_CHANNEL}
-      MG_AGENT_DOMAIN_ID: ${MG_AGENT_DOMAIN_ID}
       MG_AGENT_BROKER_URL: ${MG_AGENT_BROKER_URL}
       MG_AGENT_NODERED_URL: ${MG_AGENT_NODERED_URL}
       MG_AGENT_HEARTBEAT_INTERVAL: ${MG_AGENT_HEARTBEAT_INTERVAL}
       MG_AGENT_TERMINAL_SESSION_TIMEOUT: ${MG_AGENT_TERMINAL_SESSION_TIMEOUT}
+      MG_AGENT_BOOTSTRAP_URL: ${MG_AGENT_BOOTSTRAP_URL:-}
+      MG_AGENT_BOOTSTRAP_ID: ${MG_AGENT_BOOTSTRAP_ID:-}
+      MG_AGENT_BOOTSTRAP_KEY: ${MG_AGENT_BOOTSTRAP_KEY:-}
+      MG_AGENT_BOOTSTRAP_RETRIES: ${MG_AGENT_BOOTSTRAP_RETRIES:-5}
+      MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS: ${MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS:-10}
+      MG_AGENT_BOOTSTRAP_SKIP_TLS: ${MG_AGENT_BOOTSTRAP_SKIP_TLS:-false}
     volumes:
       - ../configs/config.toml:/config.toml
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro

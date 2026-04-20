@@ -73,7 +73,7 @@ This will:
 2. Create a Channel
 3. Connect the Client to the Channel
 4. Set up Bootstrap configuration
-5. Configure a Rule Engine rule with `save_senml` output to persist all messages
+5. Configure a Rule Engine rule with `save_senml` output for the `data` subtopic
 6. Update `docker/.env` with the provisioned IDs
 
 **Alternatively**, if you prefer to set up resources manually via the Magistrala UI or API, simply edit `docker/.env` directly with your values:
