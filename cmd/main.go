@@ -23,6 +23,7 @@ import (
 	"github.com/absmach/agent/pkg/bootstrap"
 	"github.com/absmach/agent/pkg/conn"
 	"github.com/absmach/agent/pkg/nodered"
+	mglog "github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/messaging/brokers"
 	"github.com/absmach/magistrala/pkg/prometheus"
@@ -65,22 +66,31 @@ var (
 )
 
 func main() {
+	var exitCode int
+	defer mglog.ExitWithError(&exitCode)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 
 	c := config{}
 	if err := env.Parse(&c); err != nil {
-		log.Fatalf("failed to load configuration : %s", err.Error())
+		log.Printf("failed to load configuration : %s", err.Error())
+		exitCode = 1
+		return
 	}
 
 	cfg, err := loadEnvConfig(c)
 	if err != nil {
-		log.Fatalf("Failed to load config: %s", err)
+		log.Printf("Failed to load config: %s", err)
+		exitCode = 1
+		return
 	}
 
 	logger, err := initLogger(cfg.Log.Level)
 	if err != nil {
-		log.Fatalf("Failed to create logger: %s", err)
+		log.Printf("Failed to create logger: %s", err)
+		exitCode = 1
+		return
 	}
 
 	cfg, err = loadBootConfig(cfg, c, logger)
@@ -90,12 +100,15 @@ func main() {
 
 	if err := validateRuntimeConfig(cfg); err != nil {
 		logger.Error("Failed to validate config", slog.Any("error", err), slog.String("config_file", cfg.File))
-		os.Exit(1)
+		exitCode = 1
+		return
 	}
 
 	pubsub, err := brokers.NewPubSub(ctx, cfg.Server.BrokerURL, logger)
 	if err != nil {
-		log.Fatal("Failed to connect to Broker", slog.Any("error", err), slog.String("broker_url", cfg.Server.BrokerURL))
+		logger.Error("Failed to connect to Broker", slog.Any("error", err), slog.String("broker_url", cfg.Server.BrokerURL))
+		exitCode = 1
+		return
 	}
 	defer pubsub.Close()
 
@@ -109,13 +122,15 @@ func main() {
 	})
 	if err != nil {
 		logger.Error(err.Error())
-		os.Exit(1)
+		exitCode = 1
+		return
 	}
 	noderedClient := nodered.NewClient(cfg.NodeRed.URL, logger)
 
 	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, pubsub, logger)
 	if err != nil {
 		logger.Error("Error in agent service", slog.Any("error", err))
+		exitCode = 1
 		return
 	}
 
@@ -183,9 +198,6 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 		BrokerURL: cfg.BrokerURL,
 		Port:      httpPort,
 	}
-	cc := agent.ChanConfig{
-		ID: "", // Loaded from TOML
-	}
 	interval, err := time.ParseDuration(cfg.HeartbeatInterval)
 	if err != nil {
 		return agent.Config{}, errors.Wrap(errFailedToConfigHeartbeat, err)
@@ -226,8 +238,6 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 
 	mc := agent.MQTTConfig{
 		URL:         cfg.MqttURL,
-		Username:    "", // Loaded from TOML
-		Password:    "", // Loaded from TOML
 		MTLS:        mtls,
 		CAPath:      cfg.MqttCA,
 		CertPath:    cfg.MqttCert,
@@ -238,6 +248,7 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 	}
 
 	file := cfg.ConfigFile
+	cc := agent.ChanConfig{}
 	c := agent.NewConfig(sc, cc, nc, lc, mc, ch, ct, file)
 
 	if _, err := os.Stat(file); err == nil {
