@@ -54,6 +54,17 @@ export MG_DOMAIN_ID=<domain-id>
 make run_provision
 ```
 
+The PAT used for provisioning must be able to create bootstrap configs, rules, clients, and channels in the target domain. The script expects scopes such as:
+
+- `bootstrap:create`
+- `rules:create`
+- `clients:create`
+- `clients:view`
+- `clients:connect_to_channel`
+- `channels:create`
+- `channels:view`
+- `channels:connect_client`
+
 Or with a custom API URL:
 
 ```bash
@@ -65,16 +76,15 @@ Or run the script directly:
 ```bash
 export MG_PAT=<personal-access-token>
 export MG_DOMAIN_ID=<domain-id>
-bash docker/nodered/provision.sh
+bash scripts/provision.sh
 ```
 
 This will:
 1. Create a Client (device) with credentials
 2. Create a Channel
-3. Connect the Client to the Channel
-4. Set up Bootstrap configuration
-5. Configure a Rule Engine rule with `save_senml` output for the `data` subtopic
-6. Update `docker/.env` with the provisioned IDs
+3. Create a Bootstrap configuration with `external_id`, `external_key`, channel association, and the agent runtime config
+4. Configure a Rule Engine rule with `save_senml` output for the `data` subtopic
+5. Update `configs/config.toml` with the provisioned IDs and MQTT credentials
 
 **Alternatively**, if you prefer to set up resources manually via the Magistrala UI or API, simply edit `docker/.env` directly with your values:
 

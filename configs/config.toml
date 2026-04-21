@@ -1,8 +1,8 @@
 File = "/config.toml"
-domain_id = "6467ebf8-70a7-4f3b-8626-8ff324e34ec8"
+domain_id = "1f0eb7a0-1b50-46c1-a826-6dc695fbce4d"
 
 [channels]
-  id = "36de88eb-f4bc-45aa-9033-e9540154cd98"
+  id = "45f0b998-4118-4420-b602-a57604493ee6"
 
 [heartbeat]
   interval = "10s"
@@ -17,14 +17,13 @@ domain_id = "6467ebf8-70a7-4f3b-8626-8ff324e34ec8"
   client_cert = ""
   client_key = ""
   mtls = false
-  password = "cef7296a-d87f-42de-8743-de86511f9aa6"
+  password = "687fca0d-00dd-405b-97df-09a4b06a72eb"
   priv_key_path = "client.key"
   qos = 0
   retain = false
   skip_tls_ver = true
-  # Use "ssl://messaging.magistrala.absmach.eu:8883" for Magistrala cloud.
   url = "ssl://host.docker.internal:8883"
-  username = "ca5b266d-a0c4-4fd6-a164-c82c9909b7a6"
+  username = "3825ef9e-d206-44cb-8797-781cd61ba215"
 
 [nodered]
   url = "http://nodered:1880/"

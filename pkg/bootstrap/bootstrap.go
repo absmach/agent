@@ -139,6 +139,7 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 	hc := dc.SvcsConf.Agent.Heartbeat
 	tc := dc.SvcsConf.Agent.Terminal
 	c := agent.NewConfig(sc, cc, nc, lc, mc, hc, tc, file)
+	c.DomainID = dc.SvcsConf.Agent.DomainID
 
 	dc.SvcsConf.Export = fillExportConfig(dc.SvcsConf.Export, c)
 

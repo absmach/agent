@@ -34,7 +34,7 @@ The recommended way to run agent is with the provided Docker Compose stack, whic
 
 ### 1. Provision Magistrala resources
 
-If you have a running Magistrala instance, create the required clients and channels:
+If you have a running Magistrala instance, provision the required client, channel, bootstrap config, and `save_senml` rule:
 
 ```bash
 export MG_PAT=<personal-access-token>
@@ -42,16 +42,44 @@ export MG_DOMAIN_ID=<domain-id>
 make run_provision
 ```
 
-This creates the necessary Magistrala clients and channels, then writes the resulting IDs and configuration into `docker/.env`.
+This writes the resulting runtime configuration into `configs/config.toml`.
 
-**Alternatively**, create a Client and Channel manually via the Magistrala UI or API, then edit `docker/.env` directly with the values:
+The PAT used for provisioning must be able to create bootstrap configs, rules, clients, and channels in the target domain. In practice the provisioning flow expects scopes like:
+
+- `bootstrap:create`
+- `rules:create`
+- `clients:create`
+- `clients:view`
+- `clients:connect_to_channel`
+- `channels:create`
+- `channels:view`
+- `channels:connect_client`
+
+all scoped to the target `domain_id`.
+
+The provisioning script uses sensible defaults for local Docker:
+
+- MQTT: `ssl://host.docker.internal:8883`
+- Bootstrap API: `http://localhost:9013`
+
+Override them before provisioning when needed, for example:
+
+```bash
+export MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<device-external-id>
+export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<device-external-key>
+export MG_AGENT_MQTT_URL=ssl://messaging.magistrala.absmach.eu:8883
+export MG_AGENT_MQTT_SKIP_TLS=false
+make run_provision
+```
+
+**Alternatively**, create a Client, Channel, Bootstrap config, and Rule Engine rule manually via the Magistrala UI or API, then update `configs/config.toml` or set bootstrap runtime env vars in `docker/.env`.
+
+For bootstrap mode, the runtime env values are:
 
 ```env
-MG_AGENT_MQTT_URL=ssl://messaging.example.com:8883
-MG_AGENT_CLIENT_ID=<client-id>
-MG_AGENT_CLIENT_SECRET=<client-secret>
-MG_AGENT_DOMAIN_ID=<domain-id>
-MG_AGENT_CHANNEL=<channel-id>
+MG_AGENT_BOOTSTRAP_ID=<external-id>
+MG_AGENT_BOOTSTRAP_KEY=<external-key>
+MG_AGENT_BOOTSTRAP_URL=http://bootstrap:9013/<domain-id>/clients/bootstrap
 ```
 
 ### 2. Build the dev Docker image
@@ -94,16 +122,20 @@ make dockers_dev
 
 ## Running without Docker
 
-Start FluxMQ (or use an existing Magistrala FluxMQ instance).
+Start FluxMQ (or use an existing Magistrala FluxMQ instance), then provide a valid `config.toml` or bootstrap env vars.
 
-Start agent with environment variables:
+Start agent with a config file:
 
 ```bash
-MG_AGENT_MQTT_URL=mqtts://messaging.example.com:8883 \
-MG_AGENT_MQTT_USERNAME=<client-id> \
-MG_AGENT_MQTT_PASSWORD=<client-secret> \
-MG_AGENT_CHANNEL=<channel-id> \
-MG_AGENT_DOMAIN_ID=<domain-id> \
+MG_AGENT_CONFIG_FILE=configs/config.toml build/magistrala-agent
+```
+
+Or via bootstrap:
+
+```bash
+MG_AGENT_BOOTSTRAP_ID=<external-id> \
+MG_AGENT_BOOTSTRAP_KEY=<external-key> \
+MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/<domain-id>/clients/bootstrap \
 build/magistrala-agent
 ```
 
@@ -143,20 +175,25 @@ Environment variables:
 | `MG_AGENT_CONFIG_FILE` | Location of configuration file | `config.toml` |
 | `MG_AGENT_LOG_LEVEL` | Log level | `info` |
 | `MG_AGENT_HTTP_PORT` | Agent HTTP port | `9999` |
+| `MG_AGENT_PORT` | Alias for agent HTTP port | |
 | `MG_AGENT_BROKER_URL` | FluxMQ (AMQP) broker URL | `amqp://guest:guest@localhost:5682/` |
 | `MG_AGENT_MQTT_URL` | MQTT broker URL | `localhost:1883` |
-| `MG_AGENT_MQTT_USERNAME` | MQTT username (Magistrala client ID) | |
-| `MG_AGENT_MQTT_PASSWORD` | MQTT password (Magistrala client secret) | |
 | `MG_AGENT_MQTT_SKIP_TLS` | Skip TLS verification for MQTT | `true` |
 | `MG_AGENT_MQTT_MTLS` | Use mTLS for MQTT | `false` |
 | `MG_AGENT_MQTT_CA` | CA certificate path for mTLS | `ca.crt` |
+| `MG_AGENT_MQTT_CLIENT_CERT` | Client certificate path for mTLS | `client.cert` |
+| `MG_AGENT_MQTT_CLIENT_KEY` | Client private key path for mTLS | `client.key` |
 | `MG_AGENT_MQTT_QOS` | MQTT QoS level | `0` |
 | `MG_AGENT_MQTT_RETAIN` | MQTT retain flag | `false` |
-| `MG_AGENT_CHANNEL` | Channel ID (req/data/res subtopics) | |
-| `MG_AGENT_DOMAIN_ID` | Magistrala domain ID | |
 | `MG_AGENT_NODERED_URL` | Node-RED API URL | `http://localhost:1880/` |
-| `MG_AGENT_HEARTBEAT_INTERVAL` | Expected heartbeat interval | `30s` |
-| `MG_AGENT_TERMINAL_SESSION_TIMEOUT` | Terminal session timeout | `30s` |
+| `MG_AGENT_HEARTBEAT_INTERVAL` | Expected heartbeat interval | `10s` |
+| `MG_AGENT_TERMINAL_SESSION_TIMEOUT` | Terminal session timeout | `60s` |
+| `MG_AGENT_BOOTSTRAP_URL` | Bootstrap base URL | |
+| `MG_AGENT_BOOTSTRAP_ID` | Bootstrap external ID | |
+| `MG_AGENT_BOOTSTRAP_KEY` | Bootstrap external key | |
+| `MG_AGENT_BOOTSTRAP_RETRIES` | Bootstrap fetch retries | `5` |
+| `MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS` | Bootstrap retry delay in seconds | `10` |
+| `MG_AGENT_BOOTSTRAP_SKIP_TLS` | Skip TLS verification for bootstrap fetch | `false` |
 
 ## MQTT Message Format
 
@@ -286,7 +323,7 @@ curl -s http://localhost:9999/services
 
 ## How to Save Config via Agent
 
-Agent can push a config file for the [Export][export] service from cloud to gateway via MQTT:
+Agent can push an export config file from cloud to gateway via MQTT:
 
 ```bash
 mosquitto_pub \
@@ -310,11 +347,7 @@ payload := base64.StdEncoding.EncodeToString(b)
 [grc-badge]: https://goreportcard.com/badge/github.com/absmach/agent
 [grc-url]: https://goreportcard.com/report/github.com/absmach/agent
 [license]: https://img.shields.io/badge/license-Apache%20v2.0-blue.svg
-[export]: https://github.com/absmach/export
-[provision]: https://github.com/absmach/magistrala/tree/main/cli
 [magistrala]: https://github.com/absmach/magistrala
 [senml]: https://tools.ietf.org/html/rfc8428
 [ci]: https://github.com/absmach/agent/actions/workflows/ci.yml/badge.svg
 [release]: https://github.com/absmach/agent/actions/workflows/release.yml/badge.svg
-
-
