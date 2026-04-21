@@ -20,6 +20,7 @@ import (
 
 	"github.com/absmach/agent/pkg/agent"
 	"github.com/absmach/agent/pkg/agent/api"
+	"github.com/absmach/agent/pkg/agent/middleware"
 	"github.com/absmach/agent/pkg/bootstrap"
 	"github.com/absmach/agent/pkg/conn"
 	"github.com/absmach/agent/pkg/nodered"
@@ -134,9 +135,9 @@ func main() {
 		return
 	}
 
-	svc = api.NewLogging(svc, logger)
+	svc = middleware.NewLogging(svc, logger)
 	counter, latency := prometheus.MakeMetrics("agent", "api")
-	svc = api.NewMetrics(svc, counter, latency)
+	svc = middleware.NewMetrics(svc, counter, latency)
 	b := conn.NewBroker(svc, mqttClient, cfg.Channels.ID, cfg.DomainID, pubsub, logger)
 	onReconnect = b.Resubscribe
 

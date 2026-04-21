@@ -67,16 +67,13 @@ type ConfigContent struct {
 }
 
 type deviceConfig struct {
-	ClientID         string              `json:"client_id"`
-	ClientSecret     string              `json:"client_secret"`
-	Channels         []bootstrap.Channel `json:"channels"`
-	MainfluxID       string              `json:"mainflux_id"`
-	MainfluxKey      string              `json:"mainflux_key"`
-	MainfluxChannels []bootstrap.Channel `json:"mainflux_channels"`
-	ClientKey        string              `json:"client_key"`
-	ClientCert       string              `json:"client_cert"`
-	CaCert           string              `json:"ca_cert"`
-	SvcsConf         ServicesConfig      `json:"-"`
+	ClientID     string              `json:"client_id"`
+	ClientSecret string              `json:"client_secret"`
+	Channels     []bootstrap.Channel `json:"channels"`
+	ClientKey    string              `json:"client_key"`
+	ClientCert   string              `json:"client_cert"`
+	CaCert       string              `json:"ca_cert"`
+	SvcsConf     ServicesConfig      `json:"-"`
 }
 
 // Bootstrap - Retrieve device config.
@@ -116,8 +113,6 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 		}
 	}
 
-	dc.normalize()
-
 	if len(dc.Channels) < 1 {
 		return agent.ErrMalformedEntity
 	}
@@ -146,18 +141,6 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 	saveExportConfig(dc.SvcsConf.Export, logger)
 
 	return agent.SaveConfig(c)
-}
-
-func (dc *deviceConfig) normalize() {
-	if dc.ClientID == "" {
-		dc.ClientID = dc.MainfluxID
-	}
-	if dc.ClientSecret == "" {
-		dc.ClientSecret = dc.MainfluxKey
-	}
-	if len(dc.Channels) == 0 {
-		dc.Channels = dc.MainfluxChannels
-	}
 }
 
 // if export config isnt filled use agent configs.
