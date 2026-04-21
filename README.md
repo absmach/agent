@@ -79,7 +79,7 @@ For bootstrap mode, the runtime env values are:
 ```env
 MG_AGENT_BOOTSTRAP_ID=<external-id>
 MG_AGENT_BOOTSTRAP_KEY=<external-key>
-MG_AGENT_BOOTSTRAP_URL=http://bootstrap:9013/<domain-id>/clients/bootstrap
+MG_AGENT_BOOTSTRAP_URL=http://bootstrap:9013/clients/bootstrap
 ```
 
 ### 2. Build the dev Docker image
@@ -135,7 +135,7 @@ Or via bootstrap:
 ```bash
 MG_AGENT_BOOTSTRAP_ID=<external-id> \
 MG_AGENT_BOOTSTRAP_KEY=<external-key> \
-MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/<domain-id>/clients/bootstrap \
+MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/clients/bootstrap \
 build/magistrala-agent
 ```
 
