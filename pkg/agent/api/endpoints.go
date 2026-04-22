@@ -5,9 +5,12 @@ package api
 
 import (
 	"context"
+	"net/http"
 	"strings"
 
 	"github.com/absmach/agent/pkg/agent"
+	"github.com/absmach/agent/pkg/nodered"
+	mgerrors "github.com/absmach/magistrala/pkg/errors"
 	"github.com/go-kit/kit/endpoint"
 )
 
@@ -113,6 +116,9 @@ func nodeRedEndpoint(svc agent.Service) endpoint.Endpoint {
 
 		resp, err := svc.NodeRed(cmdStr)
 		if err != nil {
+			if mgerrors.Contains(err, nodered.ErrFlowConflict) {
+				return nil, mgerrors.NewSDKErrorWithStatus(err, http.StatusConflict)
+			}
 			return nil, err
 		}
 

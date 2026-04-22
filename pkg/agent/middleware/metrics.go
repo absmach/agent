@@ -4,7 +4,7 @@
 //go:build !test
 // +build !test
 
-package api
+package middleware
 
 import (
 	"context"

@@ -20,8 +20,11 @@ import (
 
 	"github.com/absmach/agent/pkg/agent"
 	"github.com/absmach/agent/pkg/agent/api"
+	"github.com/absmach/agent/pkg/agent/middleware"
+	"github.com/absmach/agent/pkg/bootstrap"
 	"github.com/absmach/agent/pkg/conn"
 	"github.com/absmach/agent/pkg/nodered"
+	mglog "github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/messaging/brokers"
 	"github.com/absmach/magistrala/pkg/prometheus"
@@ -31,54 +34,82 @@ import (
 )
 
 type config struct {
-	ConfigFile         string `env:"MG_AGENT_CONFIG_FILE" envDefault:"config.toml"`
-	LogLevel           string `env:"MG_AGENT_LOG_LEVEL" envDefault:"info"`
-	NodeRedURL         string `env:"MG_AGENT_NODERED_URL" envDefault:"http://localhost:1880/"`
-	MqttURL            string `env:"MG_AGENT_MQTT_URL" envDefault:"localhost:1883"`
-	HTTPPort           string `env:"MG_AGENT_HTTP_PORT" envDefault:"9999"`
-	Channel            string `env:"MG_AGENT_CHANNEL" envDefault:""`
-	BrokerURL          string `env:"MG_AGENT_BROKER_URL" envDefault:"amqp://guest:guest@localhost:5682/"`
-	MqttUsername       string `env:"MG_AGENT_MQTT_USERNAME" envDefault:""`
-	MqttPassword       string `env:"MG_AGENT_MQTT_PASSWORD" envDefault:""`
-	MqttSkipTLSVer     string `env:"MG_AGENT_MQTT_SKIP_TLS" envDefault:"true"`
-	MqttMTLS           string `env:"MG_AGENT_MQTT_MTLS" envDefault:"false"`
-	MqttCA             string `env:"MG_AGENT_MQTT_CA" envDefault:"ca.crt"`
-	MqttQoS            string `env:"MG_AGENT_MQTT_QOS" envDefault:"0"`
-	MqttRetain         string `env:"MG_AGENT_MQTT_RETAIN" envDefault:"false"`
-	MqttCert           string `env:"MG_AGENT_MQTT_CLIENT_CERT" envDefault:"client.cert"`
-	MqttPrivateKey     string `env:"MG_AGENT_MQTT_CLIENT_KEY" envDefault:"client.key"`
-	HeartbeatInterval  string `env:"MG_AGENT_HEARTBEAT_INTERVAL" envDefault:"10s"`
-	TermSessionTimeout string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT" envDefault:"60s"`
-	DomainID           string `env:"MG_AGENT_DOMAIN_ID" envDefault:""`
+	ConfigFile          string `env:"MG_AGENT_CONFIG_FILE" envDefault:"config.toml"`
+	LogLevel            string `env:"MG_AGENT_LOG_LEVEL" envDefault:"info"`
+	NodeRedURL          string `env:"MG_AGENT_NODERED_URL" envDefault:"http://localhost:1880/"`
+	MqttURL             string `env:"MG_AGENT_MQTT_URL" envDefault:"localhost:1883"`
+	HTTPPort            string `env:"MG_AGENT_HTTP_PORT" envDefault:"9999"`
+	AgentPort           string `env:"MG_AGENT_PORT" envDefault:""`
+	BrokerURL           string `env:"MG_AGENT_BROKER_URL" envDefault:"amqp://guest:guest@localhost:5682/"`
+	MqttSkipTLSVer      string `env:"MG_AGENT_MQTT_SKIP_TLS" envDefault:"true"`
+	MqttMTLS            string `env:"MG_AGENT_MQTT_MTLS" envDefault:"false"`
+	MqttCA              string `env:"MG_AGENT_MQTT_CA" envDefault:"ca.crt"`
+	MqttQoS             string `env:"MG_AGENT_MQTT_QOS" envDefault:"0"`
+	MqttRetain          string `env:"MG_AGENT_MQTT_RETAIN" envDefault:"false"`
+	MqttCert            string `env:"MG_AGENT_MQTT_CLIENT_CERT" envDefault:"client.cert"`
+	MqttPrivateKey      string `env:"MG_AGENT_MQTT_CLIENT_KEY" envDefault:"client.key"`
+	HeartbeatInterval   string `env:"MG_AGENT_HEARTBEAT_INTERVAL" envDefault:"10s"`
+	TermSessionTimeout  string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT" envDefault:"60s"`
+	BootstrapURL        string `env:"MG_AGENT_BOOTSTRAP_URL" envDefault:""`
+	BootstrapID         string `env:"MG_AGENT_BOOTSTRAP_ID" envDefault:""`
+	BootstrapKey        string `env:"MG_AGENT_BOOTSTRAP_KEY" envDefault:""`
+	BootstrapRetries    string `env:"MG_AGENT_BOOTSTRAP_RETRIES" envDefault:"5"`
+	BootstrapRetryDelay string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
+	BootstrapSkipTLS    string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS" envDefault:"false"`
 }
 
 var (
 	errFailedToSetupMTLS       = errors.New("Failed to set up mtls certs")
 	errFailedToConfigHeartbeat = errors.New("Failed to configure heartbeat")
+	errFetchingBootstrapFailed = errors.New("Fetching bootstrap failed with error")
+	errFailedToReadConfig      = errors.New("Failed to read config")
+	errInvalidRuntimeConfig    = errors.New("Invalid runtime config")
 )
 
 func main() {
+	var exitCode int
+	defer mglog.ExitWithError(&exitCode)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 
 	c := config{}
 	if err := env.Parse(&c); err != nil {
-		log.Fatalf("failed to load configuration : %s", err.Error())
+		log.Printf("failed to load configuration : %s", err.Error())
+		exitCode = 1
+		return
 	}
 
 	cfg, err := loadEnvConfig(c)
 	if err != nil {
-		log.Fatalf("Failed to load config: %s", err)
+		log.Printf("Failed to load config: %s", err)
+		exitCode = 1
+		return
 	}
 
-	logger, err := initLogger(c.LogLevel)
+	logger, err := initLogger(cfg.Log.Level)
 	if err != nil {
-		log.Fatalf("Failed to create logger: %s", err)
+		log.Printf("Failed to create logger: %s", err)
+		exitCode = 1
+		return
+	}
+
+	cfg, err = loadBootConfig(cfg, c, logger)
+	if err != nil {
+		logger.Error("Failed to load bootstrap config", slog.Any("error", err))
+	}
+
+	if err := validateRuntimeConfig(cfg); err != nil {
+		logger.Error("Failed to validate config", slog.Any("error", err), slog.String("config_file", cfg.File))
+		exitCode = 1
+		return
 	}
 
 	pubsub, err := brokers.NewPubSub(ctx, cfg.Server.BrokerURL, logger)
 	if err != nil {
-		log.Fatal("Failed to connect to Broker", slog.Any("error", err), slog.String("broker_url", cfg.Server.BrokerURL))
+		logger.Error("Failed to connect to Broker", slog.Any("error", err), slog.String("broker_url", cfg.Server.BrokerURL))
+		exitCode = 1
+		return
 	}
 	defer pubsub.Close()
 
@@ -92,6 +123,7 @@ func main() {
 	})
 	if err != nil {
 		logger.Error(err.Error())
+		exitCode = 1
 		return
 	}
 	noderedClient := nodered.NewClient(cfg.NodeRed.URL, logger)
@@ -99,12 +131,13 @@ func main() {
 	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, pubsub, logger)
 	if err != nil {
 		logger.Error("Error in agent service", slog.Any("error", err))
+		exitCode = 1
 		return
 	}
 
-	svc = api.NewLogging(svc, logger)
+	svc = middleware.NewLogging(svc, logger)
 	counter, latency := prometheus.MakeMetrics("agent", "api")
-	svc = api.NewMetrics(svc, counter, latency)
+	svc = middleware.NewMetrics(svc, counter, latency)
 	b := conn.NewBroker(svc, mqttClient, cfg.Channels.ID, cfg.DomainID, pubsub, logger)
 	onReconnect = b.Resubscribe
 
@@ -131,13 +164,40 @@ func main() {
 	}
 }
 
+func validateRuntimeConfig(cfg agent.Config) error {
+	missing := []string{}
+	if cfg.DomainID == "" {
+		missing = append(missing, "domain_id")
+	}
+	if cfg.Channels.ID == "" {
+		missing = append(missing, "channels.id")
+	}
+	if cfg.MQTT.URL == "" {
+		missing = append(missing, "mqtt.url")
+	}
+	if cfg.MQTT.Username == "" {
+		missing = append(missing, "mqtt.username")
+	}
+	if cfg.MQTT.Password == "" {
+		missing = append(missing, "mqtt.password")
+	}
+	if cfg.Server.BrokerURL == "" {
+		missing = append(missing, "server.broker_url")
+	}
+	if len(missing) > 0 {
+		return errors.New(fmt.Sprintf("%s: missing required TOML fields: %s", errInvalidRuntimeConfig, strings.Join(missing, ", ")))
+	}
+	return nil
+}
+
 func loadEnvConfig(cfg config) (agent.Config, error) {
+	httpPort := cfg.HTTPPort
+	if cfg.AgentPort != "" {
+		httpPort = cfg.AgentPort
+	}
 	sc := agent.ServerConfig{
 		BrokerURL: cfg.BrokerURL,
-		Port:      cfg.HTTPPort,
-	}
-	cc := agent.ChanConfig{
-		ID: cfg.Channel,
+		Port:      httpPort,
 	}
 	interval, err := time.ParseDuration(cfg.HeartbeatInterval)
 	if err != nil {
@@ -179,8 +239,6 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 
 	mc := agent.MQTTConfig{
 		URL:         cfg.MqttURL,
-		Username:    cfg.MqttUsername,
-		Password:    cfg.MqttPassword,
 		MTLS:        mtls,
 		CAPath:      cfg.MqttCA,
 		CertPath:    cfg.MqttCert,
@@ -191,18 +249,71 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 	}
 
 	file := cfg.ConfigFile
+	cc := agent.ChanConfig{}
 	c := agent.NewConfig(sc, cc, nc, lc, mc, ch, ct, file)
-	c.DomainID = cfg.DomainID
+
+	if _, err := os.Stat(file); err == nil {
+		fc, err := agent.ReadConfig(file)
+		if err != nil {
+			return c, errors.Wrap(errFailedToReadConfig, err)
+		}
+		c = mergeConfig(c, fc)
+	} else if os.IsNotExist(err) {
+		if err := agent.SaveConfig(c); err != nil {
+			return c, err
+		}
+	} else {
+		return c, err
+	}
+
 	mc, err = loadCertificate(c.MQTT)
 	if err != nil {
 		return c, errors.Wrap(errFailedToSetupMTLS, err)
 	}
 
 	c.MQTT = mc
-	if err = agent.SaveConfig(c); err != nil {
-		return c, err
-	}
 	return c, nil
+}
+
+func mergeConfig(defaults, file agent.Config) agent.Config {
+	c := file
+	c.File = defaults.File
+
+	if c.Server.Port == "" {
+		c.Server.Port = defaults.Server.Port
+	}
+	if c.Server.BrokerURL == "" {
+		c.Server.BrokerURL = defaults.Server.BrokerURL
+	}
+	if c.NodeRed.URL == "" {
+		c.NodeRed.URL = defaults.NodeRed.URL
+	}
+	if c.Log.Level == "" {
+		c.Log.Level = defaults.Log.Level
+	}
+	if c.MQTT.URL == "" {
+		c.MQTT.URL = defaults.MQTT.URL
+	}
+	if c.MQTT.CAPath == "" {
+		c.MQTT.CAPath = defaults.MQTT.CAPath
+	}
+	if c.MQTT.CertPath == "" {
+		c.MQTT.CertPath = defaults.MQTT.CertPath
+	}
+	if c.MQTT.PrivKeyPath == "" {
+		c.MQTT.PrivKeyPath = defaults.MQTT.PrivKeyPath
+	}
+	if c.MQTT.QoS == 0 {
+		c.MQTT.QoS = defaults.MQTT.QoS
+	}
+	if c.Heartbeat.Interval <= 0 {
+		c.Heartbeat.Interval = defaults.Heartbeat.Interval
+	}
+	if c.Terminal.SessionTimeout <= 0 {
+		c.Terminal.SessionTimeout = defaults.Terminal.SessionTimeout
+	}
+
+	return c
 }
 
 func connectToMQTTBroker(conf agent.MQTTConfig, logger *slog.Logger, onConnect func()) (mqtt.Client, error) {
@@ -352,4 +463,51 @@ func initLogger(levelText string) (*slog.Logger, error) {
 	})
 
 	return slog.New(logHandler), nil
+}
+
+func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Config, error) {
+	file := cfg.ConfigFile
+	if cfg.BootstrapURL == "" || cfg.BootstrapID == "" || cfg.BootstrapKey == "" {
+		return c, nil
+	}
+
+	skipTLS, err := strconv.ParseBool(cfg.BootstrapSkipTLS)
+	if err != nil {
+		skipTLS = false
+	}
+
+	bsConfig := bootstrap.Config{
+		URL:           cfg.BootstrapURL,
+		ID:            cfg.BootstrapID,
+		Key:           cfg.BootstrapKey,
+		Retries:       cfg.BootstrapRetries,
+		RetryDelaySec: cfg.BootstrapRetryDelay,
+		SkipTLS:       skipTLS,
+	}
+
+	if err := bootstrap.Bootstrap(bsConfig, logger, file); err != nil {
+		return c, errors.Wrap(errFetchingBootstrapFailed, err)
+	}
+
+	bsc, err := agent.ReadConfig(file)
+	if err != nil {
+		return c, errors.Wrap(errFailedToReadConfig, err)
+	}
+
+	mc, err := loadCertificate(bsc.MQTT)
+	if err != nil {
+		return bsc, errors.Wrap(errFailedToSetupMTLS, err)
+	}
+
+	// Preserve non-zero values from initial config
+	if bsc.Heartbeat.Interval <= 0 {
+		bsc.Heartbeat.Interval = c.Heartbeat.Interval
+	}
+
+	if bsc.Terminal.SessionTimeout <= 0 {
+		bsc.Terminal.SessionTimeout = c.Terminal.SessionTimeout
+	}
+
+	bsc.MQTT = mc
+	return bsc, nil
 }

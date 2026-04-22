@@ -5,13 +5,19 @@ package nodered
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+
+	mgerrors "github.com/absmach/magistrala/pkg/errors"
 )
+
+var ErrFlowConflict = mgerrors.New("node-red flow conflict")
 
 // Client interface for Node-RED operations.
 type Client interface {
@@ -81,8 +87,8 @@ func (nc *noderedClient) DeployFlows(flows string) (string, error) {
 // AddFlow adds a single new flow tab to Node-RED.
 // It accepts either the POST /flow object format or a flat array (POST /flows format),
 // automatically converting the array into the {id, label, nodes, configs} object
-// that the POST /flow endpoint requires.
-// Returns a clear error if a flow with the same id already exists — use Deploy Flows to overwrite.
+// that the POST /flow endpoint requires. Imported node ids are rekeyed so example
+// flows with fixed ids can be added alongside existing flows.
 func (nc *noderedClient) AddFlow(flow string) (string, error) {
 	if !json.Valid([]byte(flow)) {
 		return "", fmt.Errorf("invalid JSON flow payload")
@@ -111,7 +117,7 @@ func (nc *noderedClient) AddFlow(flow string) (string, error) {
 	}
 
 	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "duplicate id") {
-		return "", fmt.Errorf("flow already exists in Node-RED — use Deploy Flows to overwrite it")
+		return "", mgerrors.Wrap(ErrFlowConflict, fmt.Errorf("node-red rejected the flow due to duplicate ids even after rekeying: %s", string(body)))
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
@@ -122,21 +128,33 @@ func (nc *noderedClient) AddFlow(flow string) (string, error) {
 }
 
 func normalizeAddFlowPayload(flow string) ([]byte, error) {
-	trimmed := strings.TrimSpace(flow)
-	if !strings.HasPrefix(trimmed, "[") {
-		return []byte(flow), nil
-	}
-
-	var nodes []map[string]any
-	if err := json.Unmarshal([]byte(flow), &nodes); err != nil {
+	var payload any
+	if err := json.Unmarshal([]byte(flow), &payload); err != nil {
 		return nil, err
 	}
 
+	rekeyNodeRedIDs(payload)
+
+	trimmed := strings.TrimSpace(flow)
+	if !strings.HasPrefix(trimmed, "[") {
+		return json.Marshal(payload)
+	}
+
+	nodes, ok := payload.([]any)
+	if !ok {
+		return nil, fmt.Errorf("expected flow array payload")
+	}
+
 	var tab map[string]any
-	for _, n := range nodes {
+	parsedNodes := make([]map[string]any, 0, len(nodes))
+	for _, raw := range nodes {
+		n, ok := raw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("invalid flow node payload")
+		}
+		parsedNodes = append(parsedNodes, n)
 		if n["type"] == "tab" {
 			tab = n
-			break
 		}
 	}
 	if tab == nil {
@@ -149,7 +167,7 @@ func normalizeAddFlowPayload(flow string) ([]byte, error) {
 	// Split remaining nodes into flow nodes (z == tabID) and config nodes (no z or z == "").
 	flowNodes := []map[string]any{}
 	configNodes := []map[string]any{}
-	for _, n := range nodes {
+	for _, n := range parsedNodes {
 		if n["type"] == "tab" {
 			continue
 		}
@@ -161,14 +179,76 @@ func normalizeAddFlowPayload(flow string) ([]byte, error) {
 		}
 	}
 
-	payload := map[string]any{
+	normalizedPayload := map[string]any{
 		"id":      tabID,
 		"label":   label,
 		"nodes":   flowNodes,
 		"configs": configNodes,
 	}
 
-	return json.Marshal(payload)
+	return json.Marshal(normalizedPayload)
+}
+
+func rekeyNodeRedIDs(payload any) {
+	ids := map[string]string{}
+	collectNodeRedIDs(payload, ids)
+	if len(ids) == 0 {
+		return
+	}
+	rewriteNodeRedIDs(payload, ids)
+}
+
+func collectNodeRedIDs(value any, ids map[string]string) {
+	switch v := value.(type) {
+	case map[string]any:
+		if id, ok := v["id"].(string); ok && id != "" {
+			if _, exists := ids[id]; !exists {
+				ids[id] = newNodeRedID()
+			}
+		}
+		for _, child := range v {
+			collectNodeRedIDs(child, ids)
+		}
+	case []any:
+		for _, child := range v {
+			collectNodeRedIDs(child, ids)
+		}
+	}
+}
+
+func rewriteNodeRedIDs(value any, ids map[string]string) {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, child := range v {
+			switch typed := child.(type) {
+			case string:
+				if replacement, ok := ids[typed]; ok {
+					v[key] = replacement
+				}
+			default:
+				rewriteNodeRedIDs(typed, ids)
+			}
+		}
+	case []any:
+		for i, child := range v {
+			switch typed := child.(type) {
+			case string:
+				if replacement, ok := ids[typed]; ok {
+					v[i] = replacement
+				}
+			default:
+				rewriteNodeRedIDs(typed, ids)
+			}
+		}
+	}
+}
+
+func newNodeRedID() string {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		panic(fmt.Sprintf("failed to generate node-red id: %v", err))
+	}
+	return "nr-" + hex.EncodeToString(buf)
 }
 
 // FlowState returns the runtime state of Node-RED flows.

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/absmach/agent/pkg/agent"
@@ -112,7 +113,7 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 		}
 	}
 
-	if len(dc.Channels) < 2 {
+	if len(dc.Channels) < 1 {
 		return agent.ErrMalformedEntity
 	}
 
@@ -133,6 +134,7 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 	hc := dc.SvcsConf.Agent.Heartbeat
 	tc := dc.SvcsConf.Agent.Terminal
 	c := agent.NewConfig(sc, cc, nc, lc, mc, hc, tc, file)
+	c.DomainID = dc.SvcsConf.Agent.DomainID
 
 	dc.SvcsConf.Export = fillExportConfig(dc.SvcsConf.Export, c)
 
@@ -212,7 +214,11 @@ func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) 
 		return deviceConfig{}, err
 	}
 
-	req.Header.Add("Authorization", fmt.Sprintf("Client %s", bsKey))
+	authScheme := "Client"
+	if strings.Contains(bsSvrURL, "/things/bootstrap") {
+		authScheme = "Thing"
+	}
+	req.Header.Add("Authorization", fmt.Sprintf("%s %s", authScheme, bsKey))
 	resp, err := client.Do(req)
 	if err != nil {
 		return deviceConfig{}, err
