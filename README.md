@@ -72,6 +72,8 @@ export MG_AGENT_MQTT_SKIP_TLS=false
 make run_provision
 ```
 
+Using `MG_API=https://cloud.magistrala.absmach.eu/api` points provisioning at Magistrala Cloud. Setting `MG_AGENT_MQTT_URL=ssl://messaging.magistrala.absmach.eu:8883` points the agent at the cloud MQTT broker instead of the local Docker default.
+
 **Alternatively**, create a Client, Channel, Bootstrap config, and Rule Engine rule manually via the Magistrala UI or API, then update `configs/config.toml` or set bootstrap runtime env vars in `docker/.env`.
 
 For bootstrap mode, the runtime env values are:
@@ -94,7 +96,7 @@ make all && make dockers_dev
 make run
 ```
 
-Starts: Agent (:9999), Node-RED (:1880), Agent UI (:3000).
+Starts: Agent (:9999), Node-RED (:1880), Agent UI (:3002).
 
 ### Stopping
 
@@ -105,7 +107,7 @@ make clean_volumes
 
 ## Agent UI
 
-A web-based management UI is included and served at `http://localhost:3000`. It provides:
+A web-based management UI is included and served at `http://localhost:3002`. It provides:
 
 - **Configuration** — view and save the agent config (`server`, `channels`, `mqtt`, `nodered`, `log`)
 - **Node-RED** — ping, get state, fetch flows, deploy flows (replaces all running flows), and add a single flow tab (non-destructive) from a local JSON file

@@ -24,7 +24,7 @@ make all && make dockers_dev
 make run
 ```
 
-This starts: Agent (:9999), Node-RED (:1880), FluxMQ (:5682), Agent UI (:3000).
+This starts: Agent (:9999), Node-RED (:1880), FluxMQ (:5682), Agent UI (:3002).
 
 ### 3. Verify services
 
@@ -38,7 +38,7 @@ curl -s -X POST http://localhost:9999/nodered \
   -d '{"command":"nodered-ping"}'
 
 # Open the Agent UI
-open http://localhost:3000
+open http://localhost:3002
 
 # Open Node-RED UI
 open http://localhost:1880
@@ -70,6 +70,17 @@ Or with a custom API URL:
 ```bash
 MG_API=https://my-instance/api make run_provision MG_DOMAIN_ID=<domain-id> MG_PAT=<pat>
 ```
+
+For Magistrala Cloud specifically, use:
+
+```bash
+MG_API=https://cloud.magistrala.absmach.eu/api \
+MG_AGENT_MQTT_URL=ssl://messaging.magistrala.absmach.eu:8883 \
+MG_AGENT_MQTT_SKIP_TLS=false \
+make run_provision MG_DOMAIN_ID=<domain-id> MG_PAT=<pat>
+```
+
+That combination targets the cloud APIs for provisioning and the cloud MQTT broker for runtime messaging.
 
 Or run the script directly:
 
@@ -105,7 +116,7 @@ docker compose up -d
 
 ### Via Agent UI
 
-Open `http://localhost:3000` in a browser. The **Node-RED** panel lets you:
+Open `http://localhost:3002` in a browser. The **Node-RED** panel lets you:
 
 - **Ping** — check that Node-RED is reachable
 - **State** — get the current runtime state
@@ -192,7 +203,7 @@ FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
 mosquitto_pub \
   -h <mqtt-host> -p 8883 \
   --capath /etc/ssl/certs \
-  -I "Client" \
+  -I "agent-mock-device" \
   -u <client-id> -P <client-secret> \
   -t "m/<domain-id>/c/<channel-id>/req" \
   -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-deploy,$FLOWS\"}]"
@@ -211,7 +222,7 @@ The agent will:
 mosquitto_pub \
   -h <mqtt-host> -p 8883 \
   --capath /etc/ssl/certs \
-  -I "Client" \
+  -I "agent-mock-device" \
   -u <client-id> -P <client-secret> \
   -t "m/<domain-id>/c/<channel-id>/req" \
   -m '[{"bn":"req-2:", "n":"nodered", "vs":"nodered-flows"}]'
@@ -243,4 +254,4 @@ The Node-RED URL is configured via:
 | `MG_AGENT_CLIENT_ID` | (pre-set UUID) | Magistrala Client ID |
 | `MG_AGENT_CLIENT_SECRET` | (pre-set UUID) | Magistrala Client Secret |
 | `MG_AGENT_CHANNEL` | (pre-set UUID) | Channel ID (req/data/res subtopics) |
-| `MG_UI_PORT` | `3000` | Agent UI port |
+| `MG_UI_PORT` | `3002` | Agent UI port |
