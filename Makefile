@@ -62,21 +62,19 @@ arm: all
 
 clean:
 	rm -rf ${BUILD_DIR}
-	rm -f ui/main.js
-
+	rm -rf ui/.next
 
 ui:
-	elm make ui/src/Main.elm --output=ui/main.js
+	cd ui && npm install && npm run dev
 
 ui_prod:
-	elm make --optimize ui/src/Main.elm --output=ui/main.js
+	cd ui && npm ci && npm run build
 
 ui_run:
-	cd ui && elm reactor
+	cd ui && npm run dev
 
 ui_clean:
-	rm -f ui/main.js
-	rm -rf ui/elm-stuff
+	rm -rf ui/.next ui/node_modules
 
 install:
 	cp ${BUILD_DIR}/* $(GOBIN)
@@ -109,9 +107,9 @@ dockers: $(DOCKERS)
 
 dockers_dev: $(DOCKERS_DEV)
 ifeq ($(GOARCH), arm)
-	docker build --tag=magistrala/ui-arm -f ui/docker/Dockerfile.arm ui
+	docker build --no-cache --tag=magistrala/ui-arm -f ui/docker/Dockerfile.arm ui
 else
-	docker build --tag=magistrala/ui -f ui/docker/Dockerfile ui
+	docker build --no-cache --tag=magistrala/ui -f ui/docker/Dockerfile ui
 endif
 
 

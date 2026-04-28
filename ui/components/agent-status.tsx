@@ -6,31 +6,43 @@ type Status = "checking" | "online" | "offline";
 
 export function AgentStatus() {
   const [status, setStatus] = useState<Status>("checking");
+  const [agentUrl, setAgentUrl] = useState("…");
+
+  async function check() {
+    try {
+      const res = await fetch("/api/health");
+      const data = await res.json();
+      setAgentUrl(data.agentUrl ?? "unknown");
+      setStatus(data.reachable ? "online" : "offline");
+    } catch {
+      setStatus("offline");
+    }
+  }
 
   useEffect(() => {
-    fetch("/api/config")
-      .then((r) => setStatus(r.ok ? "online" : "offline"))
-      .catch(() => setStatus("offline"));
+    check();
+    // Retry every 5 seconds so the UI recovers automatically when the agent starts
+    const id = setInterval(check, 5000);
+    return () => clearInterval(id);
   }, []);
 
-  const styles: Record<Status, { dot: string; text: string; label: string }> =
-    {
-      checking: {
-        dot: "bg-muted-foreground animate-pulse",
-        text: "text-muted-foreground",
-        label: "Checking agent connection…",
-      },
-      online: {
-        dot: "bg-success",
-        text: "text-success",
-        label: "Agent is reachable",
-      },
-      offline: {
-        dot: "bg-destructive",
-        text: "text-destructive",
-        label: "Agent is not reachable",
-      },
-    };
+  const styles: Record<Status, { dot: string; text: string; label: string }> = {
+    checking: {
+      dot: "bg-muted-foreground animate-pulse",
+      text: "text-muted-foreground",
+      label: "Checking agent…",
+    },
+    online: {
+      dot: "bg-success",
+      text: "text-success",
+      label: "Agent is reachable",
+    },
+    offline: {
+      dot: "bg-destructive",
+      text: "text-destructive",
+      label: "Agent is not reachable",
+    },
+  };
 
   const { dot, text, label } = styles[status];
 
@@ -41,7 +53,7 @@ export function AgentStatus() {
       <span className="text-muted-foreground">
         — connecting to{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">
-          localhost:9999
+          {agentUrl}
         </code>
       </span>
     </div>

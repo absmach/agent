@@ -1,25 +1,38 @@
-###
 # Copyright (c) Abstract Machines
-#
-# Abstract Machines is licensed under an Apache license, version 2.0 license.
-# All rights not explicitly granted in the Apache license, version 2.0 are reserved.
-# See the included LICENSE file for more details.
-###
+# SPDX-License-Identifier: Apache-2.0
 
-# Stage 0, based on Node.js, to build and compile Elm app
-FROM node:10.15.1-alpine AS builder
+# Stage 1 — install deps and build the Next.js app
+FROM node:22-alpine AS builder
+ENV NEXT_TELEMETRY_DISABLED=1
 
 WORKDIR /app
-RUN npm install --unsafe-perm=true --allow-root -g elm@latest-0.19.0
 
-COPY . /app
-RUN elm make --optimize src/Main.elm --output=main.js
+COPY package.json package-lock.json ./
+RUN npm ci
 
-# Stage 1, based on Nginx, to have only the compiled app, ready for production with Nginx
-FROM nginx:1.14.2-alpine AS runner
-COPY --from=builder /app/index.html /usr/share/nginx/html
-COPY --from=builder /app/main.js /usr/share/nginx/html
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY docker/entrypoint.sh /entrypoint.sh
+COPY . .
+RUN npm run build
 
-ENTRYPOINT ["/entrypoint.sh"]
+# Stage 2 — minimal production image
+FROM node:22-alpine AS runner
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+
+WORKDIR /app
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Next.js standalone output bundles everything needed to run the server
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+USER nextjs
+
+EXPOSE 3000
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["node", "server.js"]

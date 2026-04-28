@@ -91,9 +91,12 @@ services:
     image: magistrala/ui:latest
     container_name: agent-ui
     restart: on-failure
+    depends_on:
+      - agent
     ports:
       - "${MG_UI_PORT}:${MG_UI_PORT}"
     networks:
       - magistrala-agent-base-net
     environment:
       MG_UI_PORT: ${MG_UI_PORT}
+      AGENT_BASE_URL: http://agent:${MG_AGENT_PORT}

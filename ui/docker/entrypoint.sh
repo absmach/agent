@@ -1,9 +1,11 @@
 #!/bin/sh
 
-if [ -n "$MG_UI_PORT" ]; then
-    sed -i -e "s/MG_UI_PORT/$MG_UI_PORT/" /etc/nginx/conf.d/default.conf
-else
-    sed -i -e "s/MG_UI_PORT/3000/" /etc/nginx/conf.d/default.conf
-fi
+# Copyright (c) Abstract Machines
+# SPDX-License-Identifier: Apache-2.0
 
-exec nginx -g "daemon off;"
+# The Next.js standalone server reads PORT and HOSTNAME from the environment.
+# AGENT_BASE_URL is read at request time by the API proxy routes.
+export PORT="${MG_UI_PORT:-3000}"
+export HOSTNAME="0.0.0.0"
+
+exec "$@"

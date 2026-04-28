@@ -1,8 +1,0 @@
-{
-  "/api/config/route": "app/api/config/route.js",
-  "/config/page": "app/config/page.js",
-  "/exec/page": "app/exec/page.js",
-  "/nodered/page": "app/nodered/page.js",
-  "/page": "app/page.js",
-  "/services/page": "app/services/page.js"
-}

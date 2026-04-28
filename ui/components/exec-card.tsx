@@ -1,28 +1,66 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Terminal, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+interface HistoryEntry {
+  cmd: string;
+  output: string;
+  error?: boolean;
+}
+
+function parseCommand(input: string): string {
+  // Split by whitespace but keep quoted strings together,
+  // then join with commas for the agent API.
+  const args: string[] = [];
+  let current = "";
+  let inQuote = false;
+  let quoteChar = "";
+
+  for (const char of input.trim()) {
+    if (inQuote) {
+      if (char === quoteChar) {
+        inQuote = false;
+      } else {
+        current += char;
+      }
+    } else if (char === '"' || char === "'") {
+      inQuote = true;
+      quoteChar = char;
+    } else if (char === " ") {
+      if (current) {
+        args.push(current);
+        current = "";
+      }
+    } else {
+      current += char;
+    }
+  }
+  if (current) args.push(current);
+  return args.join(",");
+}
 
 export function ExecCard() {
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [cmd, setCmd] = useState("");
-  const [lastCmd, setLastCmd] = useState("");
-  const [output, setOutput] = useState("");
+  const [cmdHistory, setCmdHistory] = useState<string[]>([]);
+  const [historyIdx, setHistoryIdx] = useState(-1);
   const [loading, setLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [history, loading]);
 
   async function run() {
-    if (!cmd.trim()) return;
+    const trimmed = cmd.trim();
+    if (!trimmed || loading) return;
+
+    setCmdHistory((prev) => [trimmed, ...prev]);
+    setHistoryIdx(-1);
+    setCmd("");
     setLoading(true);
-    setLastCmd(cmd);
-    setOutput("");
+
     try {
       const res = await fetch("/api/exec", {
         method: "POST",
@@ -30,72 +68,138 @@ export function ExecCard() {
         body: JSON.stringify({
           bn: "exec:",
           n: "exec",
-          vs: cmd,
+          vs: parseCommand(trimmed),
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setOutput(data.vs ?? JSON.stringify(data, null, 2));
+      setHistory((prev) => [
+        ...prev,
+        { cmd: trimmed, output: data.vs ?? JSON.stringify(data, null, 2) },
+      ]);
     } catch (err) {
-      setOutput(String(err));
+      setHistory((prev) => [
+        ...prev,
+        { cmd: trimmed, output: String(err), error: true },
+      ]);
     } finally {
       setLoading(false);
     }
   }
 
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      run();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const next = Math.min(historyIdx + 1, cmdHistory.length - 1);
+      setHistoryIdx(next);
+      setCmd(cmdHistory[next] ?? "");
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const next = Math.max(historyIdx - 1, -1);
+      setHistoryIdx(next);
+      setCmd(next === -1 ? "" : (cmdHistory[next] ?? ""));
+    }
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <Terminal className="h-4 w-4" />
-          Execute Command
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="execCmd">Command</Label>
-          <Input
-            id="execCmd"
-            placeholder="e.g. ls,-la"
-            value={cmd}
-            onChange={(e) => setCmd(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && run()}
-          />
-          <p className="text-xs text-muted-foreground">
-            Comma-separated: command,arg1,arg2
-          </p>
+    <div className="overflow-hidden rounded-xl border shadow-sm">
+      {/* Terminal title bar */}
+      <div className="flex items-center gap-2 bg-zinc-800 px-4 py-2.5">
+        <div className="flex gap-1.5">
+          <span className="h-3 w-3 rounded-full bg-red-500" />
+          <span className="h-3 w-3 rounded-full bg-yellow-400" />
+          <span className="h-3 w-3 rounded-full bg-green-500" />
         </div>
+        <span className="mx-auto font-mono text-xs text-zinc-400">
+          magistrala-agent — bash
+        </span>
+        {history.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setHistory([])}
+            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            Clear
+          </button>
+        )}
+      </div>
 
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={run}
-          disabled={loading || !cmd.trim()}
-        >
-          {loading ? "Running…" : "Run"}
-        </Button>
+      {/* Terminal body */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: click focuses the input, keyboard is handled by the input itself */}
+      <div
+        className="min-h-72 max-h-[28rem] overflow-y-auto bg-zinc-900 p-4 font-mono text-sm cursor-text"
+        onClick={() => inputRef.current?.focus()}
+      >
+        {history.length === 0 && !loading && (
+          <p className="text-zinc-500 text-xs">
+            Type a command and press{" "}
+            <kbd className="rounded border border-zinc-600 px-1 text-zinc-400">
+              Enter
+            </kbd>{" "}
+            to run it. Use{" "}
+            <kbd className="rounded border border-zinc-600 px-1 text-zinc-400">
+              ↑
+            </kbd>{" "}
+            /{" "}
+            <kbd className="rounded border border-zinc-600 px-1 text-zinc-400">
+              ↓
+            </kbd>{" "}
+            to browse history.
+          </p>
+        )}
 
-        {output && (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-xs text-muted-foreground">
-                $ {lastCmd}
-              </span>
-              <button
-                type="button"
-                onClick={() => setOutput("")}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-3 w-3" />
-                Clear
-              </button>
+        {/* Command + output history */}
+        {history.map((entry, i) => (
+          <div key={i} className="mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-green-400 select-none">$</span>
+              <span className="text-zinc-100">{entry.cmd}</span>
             </div>
-            <pre className="max-h-64 overflow-y-auto rounded-md bg-zinc-900 p-3 text-xs text-zinc-100 whitespace-pre-wrap break-all">
-              {output}
-            </pre>
+            {entry.output && (
+              <pre
+                className={`mt-1 whitespace-pre-wrap break-all text-xs leading-relaxed ${
+                  entry.error ? "text-red-400" : "text-zinc-300"
+                }`}
+              >
+                {entry.output}
+              </pre>
+            )}
+          </div>
+        ))}
+
+        {/* Running indicator */}
+        {loading && (
+          <div className="flex items-center gap-2 text-zinc-400">
+            <span className="text-green-400 select-none">$</span>
+            <span className="animate-pulse text-xs">Running…</span>
           </div>
         )}
-      </CardContent>
-    </Card>
+
+        {/* Live input line */}
+        {!loading && (
+          <div className="flex items-center gap-2">
+            <span className="text-green-400 select-none shrink-0">$</span>
+            <input
+              ref={inputRef}
+              type="text"
+              value={cmd}
+              onChange={(e) => setCmd(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="min-w-0 flex-1 bg-transparent text-zinc-100 outline-none caret-green-400 placeholder:text-zinc-600"
+              placeholder="enter command…"
+              autoFocus
+              spellCheck={false}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+            />
+          </div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+    </div>
   );
 }

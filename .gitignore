@@ -1,6 +1,13 @@
 build
 cmd/config.toml
 configs/config.toml
+
+# UI (Next.js)
+ui/node_modules/
+ui/.next/
+ui/.env.local
+ui/tsconfig.tsbuildinfo
+
 # Node-RED runtime-generated files (do not commit)
 docker/nodered/.config.nodes.json
 docker/nodered/.config.runtime.json

@@ -1,0 +1,28 @@
+# Never send these to the Docker build context
+
+# Dependencies — Docker installs these fresh inside the image
+node_modules/
+
+# Build output — Docker rebuilds inside the image
+.next/
+out/
+
+# Elm legacy files (not needed by Next.js build)
+elm-stuff/
+main.js
+src/
+
+# Local env overrides — use Docker env vars instead
+.env.local
+.env*.local
+
+# Editor and OS noise
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Git
+.git/
+.gitignore
