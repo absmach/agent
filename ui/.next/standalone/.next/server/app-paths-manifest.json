@@ -1,0 +1,8 @@
+{
+  "/api/config/route": "app/api/config/route.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/exec/route": "app/api/exec/route.js",
+  "/api/nodered/route": "app/api/nodered/route.js",
+  "/api/services/route": "app/api/services/route.js",
+  "/page": "app/page.js"
+}

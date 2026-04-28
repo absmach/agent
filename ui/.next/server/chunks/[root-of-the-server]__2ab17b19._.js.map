@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":[],"names":[],"mappings":"","debugId":null}},
+    {"offset": {"line": 57, "column": 0}, "map": {"version":3,"sources":["file:///home/steve/work/agent/ui/app/api/services/route.ts"],"sourcesContent":["import { NextResponse } from \"next/server\";\n\nconst AGENT = process.env.AGENT_BASE_URL ?? \"http://localhost:9999\";\n\nexport async function GET() {\n  try {\n    const res = await fetch(`${AGENT}/services`, { cache: \"no-store\" });\n    const text = await res.text();\n    return new NextResponse(text, {\n      status: res.status,\n      headers: { \"Content-Type\": \"application/json\" },\n    });\n  } catch {\n    return NextResponse.json(\n      { error: \"Failed to reach agent\" },\n      { status: 502 },\n    );\n  }\n}\n"],"names":[],"mappings":";;;;AAAA;;AAEA,MAAM,QAAQ,QAAQ,GAAG,CAAC,cAAc,IAAI;AAErC,eAAe;IACpB,IAAI;QACF,MAAM,MAAM,MAAM,MAAM,GAAG,MAAM,SAAS,CAAC,EAAE;YAAE,OAAO;QAAW;QACjE,MAAM,OAAO,MAAM,IAAI,IAAI;QAC3B,OAAO,IAAI,gJAAY,CAAC,MAAM;YAC5B,QAAQ,IAAI,MAAM;YAClB,SAAS;gBAAE,gBAAgB;YAAmB;QAChD;IACF,EAAE,OAAM;QACN,OAAO,gJAAY,CAAC,IAAI,CACtB;YAAE,OAAO;QAAwB,GACjC;YAAE,QAAQ;QAAI;IAElB;AACF","debugId":null}}]
+}
