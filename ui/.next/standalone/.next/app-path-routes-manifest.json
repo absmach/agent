@@ -1,8 +1,12 @@
 {
-  "/api/config/route": "/api/config",
   "/_not-found/page": "/_not-found",
+  "/api/config/route": "/api/config",
   "/api/exec/route": "/api/exec",
   "/api/nodered/route": "/api/nodered",
   "/api/services/route": "/api/services",
+  "/exec/page": "/exec",
+  "/services/page": "/services",
+  "/nodered/page": "/nodered",
+  "/config/page": "/config",
   "/page": "/"
 }

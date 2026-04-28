@@ -1,8 +1,12 @@
 {
-  "/api/config/route": "app/api/config/route.js",
   "/_not-found/page": "app/_not-found/page.js",
+  "/api/config/route": "app/api/config/route.js",
   "/api/exec/route": "app/api/exec/route.js",
   "/api/nodered/route": "app/api/nodered/route.js",
   "/api/services/route": "app/api/services/route.js",
+  "/exec/page": "app/exec/page.js",
+  "/services/page": "app/services/page.js",
+  "/nodered/page": "app/nodered/page.js",
+  "/config/page": "app/config/page.js",
   "/page": "app/page.js"
 }

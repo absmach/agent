@@ -3,7 +3,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(1 0 0);
+  --background: oklch(0.975 0 248);
   --foreground: oklch(0.137 0.036 258.5);
 
   --card: oklch(1 0 0);
@@ -34,39 +34,14 @@
   --input: oklch(0.929 0 255.5);
   --ring: oklch(0.334 0.093 252);
   --radius: 0.625rem;
-}
 
-.dark {
-  --background: oklch(0.145 0 258);
-  --foreground: oklch(0.985 0 248);
-
-  --card: oklch(0.205 0 265);
-  --card-foreground: oklch(0.985 0 248);
-
-  --popover: oklch(0.205 0 265);
-  --popover-foreground: oklch(0.985 0 248);
-
-  --primary: oklch(0.488 0.117 252);
-  --primary-foreground: oklch(0.985 0 248);
-
-  --secondary: oklch(0.269 0 265);
-  --secondary-foreground: oklch(0.985 0 248);
-
-  --muted: oklch(0.269 0 265);
-  --muted-foreground: oklch(0.708 0 258);
-
-  --accent: oklch(0.269 0 265);
-  --accent-foreground: oklch(0.985 0 248);
-
-  --destructive: oklch(0.637 0.245 25.3);
-  --destructive-foreground: oklch(0.984 0 248);
-
-  --success: oklch(0.527 0.154 150.1);
-  --success-foreground: oklch(0.984 0 248);
-
-  --border: oklch(0.269 0 265);
-  --input: oklch(0.269 0 265);
-  --ring: oklch(0.488 0.117 252);
+  --sidebar-bg: oklch(0.334 0.093 252);
+  --sidebar-fg: oklch(0.968 0 286.4);
+  --sidebar-active-bg: oklch(1 0 0 / 0.12);
+  --sidebar-hover-bg: oklch(1 0 0 / 0.08);
+  --sidebar-section: oklch(1 0 0 / 0.45);
+  --sidebar-width: 240px;
+  --topbar-height: 56px;
 }
 
 @theme inline {

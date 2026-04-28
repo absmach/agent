@@ -31,6 +31,30 @@
       "regex": "^/_not\\-found(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/config",
+      "regex": "^/config(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/config(?:/)?$"
+    },
+    {
+      "page": "/exec",
+      "regex": "^/exec(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/exec(?:/)?$"
+    },
+    {
+      "page": "/nodered",
+      "regex": "^/nodered(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/nodered(?:/)?$"
+    },
+    {
+      "page": "/services",
+      "regex": "^/services(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/services(?:/)?$"
     }
   ],
   "dataRoutes": [],
