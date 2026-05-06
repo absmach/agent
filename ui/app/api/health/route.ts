@@ -8,7 +8,8 @@ export async function GET() {
       cache: "no-store",
       signal: AbortSignal.timeout(3000),
     });
-    return NextResponse.json({ reachable: res.ok, agentUrl: AGENT });
+
+    return NextResponse.json({ reachable: true, status: res.status, agentUrl: AGENT });
   } catch {
     return NextResponse.json({ reachable: false, agentUrl: AGENT });
   }
