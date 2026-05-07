@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/absmach/agent/pkg/agent"
-	"github.com/absmach/magistrala/bootstrap"
 	"github.com/absmach/magistrala/pkg/errors"
 	toml "github.com/pelletier/go-toml"
 )
@@ -57,26 +56,25 @@ type Config struct {
 	SkipTLS       bool
 }
 
+// ServicesConfig holds the full agent and export configuration embedded in
+// the bootstrap content field.
 type ServicesConfig struct {
 	Agent  agent.Config `json:"agent"`
 	Export exportConfig `json:"export"`
 }
 
-type ConfigContent struct {
-	Content string `json:"content"`
+// bootstrapResponse holds the fields returned by the bootstrap endpoint.
+// All device credentials and channel information arrive via the rendered
+// Content field; ClientCert, ClientKey, and CaCert remain direct response fields.
+type bootstrapResponse struct {
+	Content    string `json:"content"`
+	ClientKey  string `json:"client_key"`
+	ClientCert string `json:"client_cert"`
+	CaCert     string `json:"ca_cert"`
 }
 
-type deviceConfig struct {
-	ClientID     string              `json:"client_id"`
-	ClientSecret string              `json:"client_secret"`
-	Channels     []bootstrap.Channel `json:"channels"`
-	ClientKey    string              `json:"client_key"`
-	ClientCert   string              `json:"client_cert"`
-	CaCert       string              `json:"ca_cert"`
-	SvcsConf     ServicesConfig      `json:"-"`
-}
-
-// Bootstrap - Retrieve device config.
+// Bootstrap retrieves device configuration from the bootstrap service and
+// writes it to the local config file.
 func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 	retries, err := strconv.ParseUint(cfg.Retries, 10, 64)
 	if err != nil {
@@ -95,10 +93,10 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 
 	logger.Info("Requesting config", slog.String("config_id", cfg.ID), slog.String("config_url", cfg.URL))
 
-	dc := deviceConfig{}
+	var br bootstrapResponse
 
 	for i := 0; i < int(retries); i++ {
-		dc, err = getConfig(cfg.ID, cfg.Key, cfg.URL, cfg.SkipTLS, logger)
+		br, err = getConfig(cfg.ID, cfg.Key, cfg.URL, cfg.SkipTLS, logger)
 		if err == nil {
 			break
 		}
@@ -113,37 +111,32 @@ func Bootstrap(cfg Config, logger *slog.Logger, file string) error {
 		}
 	}
 
-	if len(dc.Channels) < 1 {
+	var sc ServicesConfig
+	if err := json.Unmarshal([]byte(br.Content), &sc); err != nil {
+		return fmt.Errorf("failed to parse bootstrap content: %w", err)
+	}
+
+	if sc.Agent.Channels.ID == "" {
 		return agent.ErrMalformedEntity
 	}
 
-	sc := dc.SvcsConf.Agent.Server
-	cc := agent.ChanConfig{
-		ID: dc.Channels[0].ID,
-	}
-	lc := dc.SvcsConf.Agent.Log
-	nc := dc.SvcsConf.Agent.NodeRed
+	// MQTT credentials and channel arrive via rendered content; certificates
+	// are still returned as direct fields on the bootstrap response.
+	mc := sc.Agent.MQTT
+	mc.ClientCert = br.ClientCert
+	mc.ClientKey = br.ClientKey
+	mc.CaCert = br.CaCert
 
-	mc := dc.SvcsConf.Agent.MQTT
-	mc.Password = dc.ClientSecret
-	mc.Username = dc.ClientID
-	mc.ClientCert = dc.ClientCert
-	mc.ClientKey = dc.ClientKey
-	mc.CaCert = dc.CaCert
+	c := agent.NewConfig(sc.Agent.Server, sc.Agent.Channels, sc.Agent.NodeRed, sc.Agent.Log, mc, sc.Agent.Heartbeat, sc.Agent.Terminal, file)
+	c.DomainID = sc.Agent.DomainID
 
-	hc := dc.SvcsConf.Agent.Heartbeat
-	tc := dc.SvcsConf.Agent.Terminal
-	c := agent.NewConfig(sc, cc, nc, lc, mc, hc, tc, file)
-	c.DomainID = dc.SvcsConf.Agent.DomainID
-
-	dc.SvcsConf.Export = fillExportConfig(dc.SvcsConf.Export, c)
-
-	saveExportConfig(dc.SvcsConf.Export, logger)
+	sc.Export = fillExportConfig(sc.Export, c)
+	saveExportConfig(sc.Export, logger)
 
 	return agent.SaveConfig(c)
 }
 
-// if export config isnt filled use agent configs.
+// fillExportConfig backfills any zero-value export fields from the agent config.
 func fillExportConfig(econf exportConfig, c agent.Config) exportConfig {
 	if econf.MQTT.Username == "" {
 		econf.MQTT.Username = c.MQTT.Username
@@ -191,8 +184,7 @@ func saveExportConfig(econf exportConfig, logger *slog.Logger) {
 	}
 }
 
-func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) (deviceConfig, error) {
-	// Get the SystemCertPool, continue with an empty pool on error.
+func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) (bootstrapResponse, error) {
 	rootCAs, err := x509.SystemCertPool()
 	if err != nil {
 		logger.Error(err.Error())
@@ -200,18 +192,18 @@ func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) 
 	if rootCAs == nil {
 		rootCAs = x509.NewCertPool()
 	}
-	// Trust the augmented cert pool in our client.
-	config := &tls.Config{
+
+	tlsCfg := &tls.Config{
 		InsecureSkipVerify: skipTLS,
 		RootCAs:            rootCAs,
 	}
-	tr := &http.Transport{TLSClientConfig: config}
+	tr := &http.Transport{TLSClientConfig: tlsCfg}
 	client := &http.Client{Transport: tr}
 	url := fmt.Sprintf("%s/%s", bsSvrURL, bsID)
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return deviceConfig{}, err
+		return bootstrapResponse{}, err
 	}
 
 	authScheme := "Client"
@@ -219,32 +211,26 @@ func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) 
 		authScheme = "Thing"
 	}
 	req.Header.Add("Authorization", fmt.Sprintf("%s %s", authScheme, bsKey))
+
 	resp, err := client.Do(req)
 	if err != nil {
-		return deviceConfig{}, err
+		return bootstrapResponse{}, err
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode >= http.StatusBadRequest {
-		return deviceConfig{}, errors.New(http.StatusText(resp.StatusCode))
+		return bootstrapResponse{}, errors.New(http.StatusText(resp.StatusCode))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return deviceConfig{}, err
+		return bootstrapResponse{}, err
 	}
-	defer resp.Body.Close()
-	dc := deviceConfig{}
-	h := ConfigContent{}
-	if err := json.Unmarshal([]byte(body), &h); err != nil {
-		return deviceConfig{}, err
+
+	var br bootstrapResponse
+	if err := json.Unmarshal(body, &br); err != nil {
+		return bootstrapResponse{}, err
 	}
-	fmt.Println(h.Content)
-	sc := ServicesConfig{}
-	if err := json.Unmarshal([]byte(h.Content), &sc); err != nil {
-		return deviceConfig{}, err
-	}
-	if err := json.Unmarshal([]byte(body), &dc); err != nil {
-		return deviceConfig{}, err
-	}
-	dc.SvcsConf = sc
-	return dc, nil
+
+	return br, nil
 }
