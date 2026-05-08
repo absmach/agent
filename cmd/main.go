@@ -39,6 +39,8 @@ type config struct {
 	NodeRedURL           string `env:"MG_AGENT_NODERED_URL" envDefault:"http://localhost:1880/"`
 	MqttURL              string `env:"MG_AGENT_MQTT_URL" envDefault:"localhost:1883"`
 	HTTPPort             string `env:"MG_AGENT_HTTP_PORT" envDefault:"9999"`
+	CtrlChannel        string `env:"MG_AGENT_CTRL_CHANNEL" envDefault:""`
+	DataChannel        string `env:"MG_AGENT_DATA_CHANNEL" envDefault:""`
 	BrokerURL            string `env:"MG_AGENT_BROKER_URL" envDefault:"amqp://guest:guest@localhost:5682/"`
 	MqttSkipTLSVer       string `env:"MG_AGENT_MQTT_SKIP_TLS" envDefault:"true"`
 	MqttMTLS             string `env:"MG_AGENT_MQTT_MTLS" envDefault:"false"`
@@ -203,6 +205,11 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 	sc := agent.ServerConfig{
 		BrokerURL: cfg.BrokerURL,
 		Port:      cfg.HTTPPort,
+	}
+	cc := agent.ChanConfig{
+		ID:     cfg.Channel,
+		CtrlID: cfg.CtrlChannel,
+		DataID: cfg.DataChannel,
 	}
 	interval, err := time.ParseDuration(cfg.HeartbeatInterval)
 	if err != nil {
