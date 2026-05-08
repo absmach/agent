@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/absmach/agent/pkg/encoder"
+	"github.com/absmach/agent/pkg/senml"
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/creack/pty"
 )
@@ -107,7 +107,7 @@ func (t *term) IsDone() chan bool {
 func (t *term) Write(p []byte) (int, error) {
 	t.resetCounter(t.resetTimeout)
 	n := len(p)
-	payload, err := encoder.EncodeSenML(t.uuid, terminal, string(p))
+	payload, err := senml.EncodeString(t.uuid, terminal, string(p))
 	if err != nil {
 		return n, err
 	}

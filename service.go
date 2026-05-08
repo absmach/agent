@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/nodered"
+	"github.com/absmach/agent/pkg/senml"
 	"github.com/absmach/agent/pkg/terminal"
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/messaging"
@@ -228,7 +228,7 @@ func (a *agent) Execute(uuid, cmd string) (string, error) {
 		return "", errors.Wrap(errFailedExecute, err)
 	}
 
-	payload, err := encoder.EncodeSenML(uuid, shellCmd, string(out))
+	payload, err := senml.EncodeString(uuid, shellCmd, string(out))
 	if err != nil {
 		return "", errors.Wrap(errFailedEncode, err)
 	}
@@ -597,7 +597,7 @@ func ensureNodeRedTLSConfig(payload any) any {
 }
 
 func (a *agent) processResponse(uuid, cmd, resp string) error {
-	payload, err := encoder.EncodeSenML(uuid, cmd, resp)
+	payload, err := senml.EncodeString(uuid, cmd, resp)
 	if err != nil {
 		return errors.Wrap(errFailedEncode, err)
 	}
