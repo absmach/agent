@@ -27,9 +27,9 @@ import (
 	"github.com/absmach/agent/pkg/iface"
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/ota"
+	"github.com/absmach/agent/pkg/senml"
 	"github.com/absmach/agent/pkg/terminal"
 	"github.com/absmach/magistrala/pkg/errors"
-	senml "github.com/absmach/senml"
 	paho "github.com/eclipse/paho.mqtt.golang"
 	toml "github.com/pelletier/go-toml"
 )
@@ -724,7 +724,7 @@ func ensureNodeRedTLSConfig(payload any) any {
 }
 
 func (a *agent) processResponse(uuid, cmd, resp string) error {
-	payload, err := encoder.EncodeSenML(uuid, cmd, resp)
+	payload, err := senml.EncodeString(uuid, cmd, resp)
 	if err != nil {
 		return errors.Wrap(errFailedEncode, err)
 	}
@@ -864,7 +864,7 @@ func (a *agent) selfHeartbeatPayload() ([]byte, error) {
 	deviceCountValue := float64(deviceCount)
 	connected := a.mqttClient.IsConnected()
 
-	pack := senml.Pack{Records: []senml.Record{
+	pack := []senml.Record{
 		{BaseName: "agent:", Name: "service_type", StringValue: &svcType},
 		{Name: "heartbeat", BoolValue: &heartbeat},
 		{Name: "fw_version", StringValue: &fwVersion},
@@ -872,8 +872,8 @@ func (a *agent) selfHeartbeatPayload() ([]byte, error) {
 		{Name: "heap_free", Unit: "By", Value: &heapFreeValue},
 		{Name: "devices", Unit: "count", Value: &deviceCountValue},
 		{Name: "connected", BoolValue: &connected},
-	}}
-	return senml.Encode(pack, senml.JSON)
+	}
+	return senml.EncodeRecords(pack)
 }
 
 func (a *agent) UpdateLiveness(svcname, svctype string) error {
@@ -929,11 +929,11 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	progressFn := func(state ota.State, progress float64) {
 		now := float64(time.Now().UnixNano())
 		stateStr := strings.ToLower(state.String())
-		statusPack := senml.Pack{Records: []senml.Record{
+		statusPack := []senml.Record{
 			{BaseName: "gw:", BaseTime: now, Name: "ota_state", StringValue: &stateStr},
 			{Name: "ota_progress", Unit: "%", Value: &progress},
-		}}
-		b, err := senml.Encode(statusPack, senml.JSON)
+		}
+		b, err := senml.EncodeRecords(statusPack)
 		if err != nil {
 			a.logger.Warn("Failed to encode OTA status", slog.Any("error", err))
 			return
