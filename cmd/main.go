@@ -97,6 +97,8 @@ func main() {
 	cfg, err = loadBootConfig(cfg, c, logger)
 	if err != nil {
 		logger.Error("Failed to load bootstrap config", slog.Any("error", err))
+		exitCode = 1
+		return
 	}
 
 	if err := validateRuntimeConfig(cfg); err != nil {
@@ -138,7 +140,7 @@ func main() {
 	svc = middleware.NewLogging(svc, logger)
 	counter, latency := prometheus.MakeMetrics("agent", "api")
 	svc = middleware.NewMetrics(svc, counter, latency)
-	b := conn.NewBroker(svc, mqttClient, cfg.Channels.ID, cfg.DomainID, pubsub, logger)
+	b := conn.NewBroker(svc, mqttClient, cfg.Channels.CtrlChan(), cfg.DomainID, pubsub, logger)
 	onReconnect = b.Resubscribe
 
 	srv := &http.Server{
@@ -169,8 +171,8 @@ func validateRuntimeConfig(cfg agent.Config) error {
 	if cfg.DomainID == "" {
 		missing = append(missing, "domain_id")
 	}
-	if cfg.Channels.ID == "" {
-		missing = append(missing, "channels.id")
+	if cfg.Channels.CtrlChan() == "" || cfg.Channels.DataChan() == "" {
+		missing = append(missing, "channels.id (or channels.ctrl_id + channels.data_id)")
 	}
 	if cfg.MQTT.URL == "" {
 		missing = append(missing, "mqtt.url")
@@ -468,7 +470,7 @@ func initLogger(levelText string) (*slog.Logger, error) {
 func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Config, error) {
 	file := cfg.ConfigFile
 	if cfg.BootstrapURL == "" || cfg.BootstrapID == "" || cfg.BootstrapKey == "" {
-		return c, nil
+		return c, errors.New("MG_AGENT_BOOTSTRAP_URL, MG_AGENT_BOOTSTRAP_ID and MG_AGENT_BOOTSTRAP_KEY are required")
 	}
 
 	skipTLS, err := strconv.ParseBool(cfg.BootstrapSkipTLS)
@@ -485,7 +487,7 @@ func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Conf
 		SkipTLS:       skipTLS,
 	}
 
-	if err := bootstrap.Bootstrap(bsConfig, logger, file); err != nil {
+	if err := bootstrap.Bootstrap(bsConfig, c, logger, file); err != nil {
 		return c, errors.Wrap(errFetchingBootstrapFailed, err)
 	}
 
@@ -497,15 +499,6 @@ func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Conf
 	mc, err := loadCertificate(bsc.MQTT)
 	if err != nil {
 		return bsc, errors.Wrap(errFailedToSetupMTLS, err)
-	}
-
-	// Preserve non-zero values from initial config
-	if bsc.Heartbeat.Interval <= 0 {
-		bsc.Heartbeat.Interval = c.Heartbeat.Interval
-	}
-
-	if bsc.Terminal.SessionTimeout <= 0 {
-		bsc.Terminal.SessionTimeout = c.Terminal.SessionTimeout
 	}
 
 	bsc.MQTT = mc

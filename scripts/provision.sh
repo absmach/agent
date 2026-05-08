@@ -3,14 +3,14 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Provision script for mock device environment.
-# This script creates the necessary Magistrala resources (Client, Channel,
-# Bootstrap Profile, Bootstrap Enrollment) and configures a Rule Engine to
-# store messages from the mock device.
+# This script creates the necessary Magistrala resources (Client, Channels,
+# Bootstrap Profile, Bootstrap Enrollment) so that the agent can call the
+# bootstrap endpoint at startup to receive its full configuration.
 #
-# Bootstrap flow (new profile-based API):
+# Bootstrap flow (profile-based API):
 #   Step 4a - Create a Bootstrap Profile with a Go template and binding slots
 #   Step 4b - Create a Bootstrap Enrollment linked to the profile
-#   Step 4c - Bind the device client and channel to the enrollment slots
+#   Step 4c - Bind the device client and channels to the enrollment slots
 #
 # Prerequisites:
 #   - A running Magistrala instance (self-hosted or cloud)
@@ -25,8 +25,8 @@
 #   MG_BOOTSTRAP_API - Bootstrap service API base URL (default: http://localhost:9013)
 #   MG_DOMAIN_ID     - Domain ID (required)
 #   MG_PAT           - Personal Access Token (required)
-#   MG_AGENT_BOOTSTRAP_EXTERNAL_ID  - External bootstrap ID for the device
-#   MG_AGENT_BOOTSTRAP_EXTERNAL_KEY - External bootstrap key for the device
+#   MG_AGENT_BOOTSTRAP_EXTERNAL_ID  - External bootstrap ID for the device (required)
+#   MG_AGENT_BOOTSTRAP_EXTERNAL_KEY - External bootstrap key for the device (required)
 #   MG_AGENT_BOOTSTRAP_CLIENT_CERT  - Optional PEM client certificate to store in bootstrap
 #   MG_AGENT_BOOTSTRAP_CLIENT_KEY   - Optional PEM client key to store in bootstrap
 #   MG_AGENT_BOOTSTRAP_CA_CERT      - Optional PEM CA certificate to store in bootstrap
@@ -34,12 +34,16 @@
 # Usage (localhost):
 #   export MG_PAT=pat_xxx
 #   export MG_DOMAIN_ID=<domain-id>
+#   export MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<device-id>
+#   export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<device-key>
 #   ./provision.sh
 #
 # Usage (cloud):
 #   export MG_API=https://cloud.magistrala.absmach.eu/api
 #   export MG_PAT=pat_xxx
 #   export MG_DOMAIN_ID=<domain-id>
+#   export MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<device-id>
+#   export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<device-key>
 #   ./provision.sh
 
 set -euo pipefail
@@ -51,40 +55,31 @@ if [ -n "${MG_API:-}" ]; then
   MG_RULES_API="${MG_RULES_API:-${MG_API}}"
   MG_BOOTSTRAP_API="${MG_BOOTSTRAP_API:-${MG_API}}"
   DEFAULT_MQTT_URL="ssl://messaging.magistrala.absmach.eu:8883"
-  DEFAULT_MQTT_SKIP_TLS="false"
 else
   MG_CLIENTS_API="${MG_CLIENTS_API:-http://localhost:9006}"
   MG_CHANNELS_API="${MG_CHANNELS_API:-http://localhost:9005}"
   MG_RULES_API="${MG_RULES_API:-http://localhost:9008}"
   MG_BOOTSTRAP_API="${MG_BOOTSTRAP_API:-http://localhost:9013}"
   DEFAULT_MQTT_URL="ssl://host.docker.internal:8883"
-  DEFAULT_MQTT_SKIP_TLS="true"
 fi
 
 MG_AGENT_MQTT_URL="${MG_AGENT_MQTT_URL:-${DEFAULT_MQTT_URL}}"
-MG_AGENT_MQTT_SKIP_TLS="${MG_AGENT_MQTT_SKIP_TLS:-${DEFAULT_MQTT_SKIP_TLS}}"
-MG_AGENT_MQTT_MTLS="${MG_AGENT_MQTT_MTLS:-false}"
-MG_AGENT_MQTT_QOS="${MG_AGENT_MQTT_QOS:-0}"
-MG_AGENT_MQTT_RETAIN="${MG_AGENT_MQTT_RETAIN:-false}"
-MG_AGENT_MQTT_CA_PATH="${MG_AGENT_MQTT_CA_PATH:-ca.crt}"
-MG_AGENT_MQTT_CERT_PATH="${MG_AGENT_MQTT_CERT_PATH:-client.cert}"
-MG_AGENT_MQTT_PRIV_KEY_PATH="${MG_AGENT_MQTT_PRIV_KEY_PATH:-client.key}"
-MG_AGENT_BOOTSTRAP_EXTERNAL_ID="${MG_AGENT_BOOTSTRAP_EXTERNAL_ID:-my-device-001}"
-MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY:-my-device-secret}"
 MG_AGENT_BOOTSTRAP_CLIENT_CERT="${MG_AGENT_BOOTSTRAP_CLIENT_CERT:-}"
 MG_AGENT_BOOTSTRAP_CLIENT_KEY="${MG_AGENT_BOOTSTRAP_CLIENT_KEY:-}"
 MG_AGENT_BOOTSTRAP_CA_CERT="${MG_AGENT_BOOTSTRAP_CA_CERT:-}"
-MG_AGENT_PORT="${MG_AGENT_PORT:-9999}"
-MG_AGENT_BROKER_URL="${MG_AGENT_BROKER_URL:-amqp://guest:guest@fluxmq:5682/}"
-MG_AGENT_NODERED_URL="${MG_AGENT_NODERED_URL:-http://nodered:1880/}"
-MG_AGENT_HEARTBEAT_INTERVAL="${MG_AGENT_HEARTBEAT_INTERVAL:-10s}"
-MG_AGENT_TERMINAL_SESSION_TIMEOUT="${MG_AGENT_TERMINAL_SESSION_TIMEOUT:-1m0s}"
-MG_AGENT_LOG_LEVEL="${MG_AGENT_LOG_LEVEL:-info}"
 MG_RULES_RETRIES="${MG_RULES_RETRIES:-5}"
 MG_RULES_RETRY_DELAY_SECONDS="${MG_RULES_RETRY_DELAY_SECONDS:-2}"
 
-DOMAIN_ID="${MG_DOMAIN_ID:-}"
+if [ -z "${MG_AGENT_BOOTSTRAP_EXTERNAL_ID:-}" ]; then
+  echo "ERROR: MG_AGENT_BOOTSTRAP_EXTERNAL_ID is required (device MAC address or unique ID)."
+  exit 1
+fi
+if [ -z "${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY:-}" ]; then
+  echo "ERROR: MG_AGENT_BOOTSTRAP_EXTERNAL_KEY is required (device bootstrap password)."
+  exit 1
+fi
 
+DOMAIN_ID="${MG_DOMAIN_ID:-}"
 if [ -z "$DOMAIN_ID" ]; then
   echo "ERROR: MG_DOMAIN_ID is required."
   exit 1
@@ -109,13 +104,6 @@ echo "Step 1: Using PAT token (${#TOKEN} characters)."
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-json_bool() {
-  case "${1,,}" in
-    1|true|yes|on) echo "true" ;;
-    *) echo "false" ;;
-  esac
-}
 
 # POST request; outputs body + newline + HTTP status code.
 post_json() {
@@ -221,62 +209,51 @@ require_created_with_retry() {
 
 # Build the Bootstrap Profile JSON payload.
 # The content_template is a Go template rendered server-side by the bootstrap
-# service using binding snapshots (.Bindings) and per-enrollment variables
-# (.Vars). It produces the full agent ServicesConfig JSON.
+# service. It produces the rendered content the agent parses at startup.
+# Binding slots:
+#   mqtt_client  - the device Client (credentials)
+#   telemetry    - the telemetry/data Channel (DataChan)
+#   commands     - the commands/control Channel (CtrlChan)
 build_profile_payload() {
   python3 - <<'PY'
 import json
 
 template = """{
-  "agent": {
-    "domain_id": "{{.Device.DomainID}}",
-    "channels": {
-      "id": "{{.Bindings.mqtt_channel.Snapshot.id}}"
-    },
-    "server": {
-      "broker_url": "{{.Vars.broker_url}}",
-      "port": "{{.Vars.port}}"
-    },
-    "nodered": {
-      "url": "{{.Vars.nodered_url}}"
-    },
-    "log": {
-      "level": "{{.Vars.log_level}}"
-    },
-    "mqtt": {
-      "url": "{{.Vars.mqtt_url}}",
-      "username": "{{.Bindings.device_client.Snapshot.id}}",
-      "password": "{{.Bindings.device_client.Secret.secret}}",
-      "mtls": {{.Vars.mtls}},
-      "skip_tls_ver": {{.Vars.skip_tls_ver}},
-      "qos": {{.Vars.qos}},
-      "retain": {{.Vars.retain}},
-      "ca_path": "{{.Vars.ca_path}}",
-      "cert_path": "{{.Vars.cert_path}}",
-      "priv_key_path": "{{.Vars.priv_key_path}}"
-    },
-    "heartbeat": {
-      "interval": "{{.Vars.heartbeat_interval}}"
-    },
-    "terminal": {
-      "session_timeout": "{{.Vars.session_timeout}}"
-    }
+  "device_id": "{{ .Device.ID }}",
+  "external_id": "{{ .Device.ExternalID }}",
+  "domain_id": "{{ .Device.DomainID }}",
+  "mqtt": {
+    "url": "{{ index .Vars "mqtt_url" }}",
+    "client_id": "{{ (index .Bindings "mqtt_client").ID }}",
+    "secret": "{{ index (index .Bindings "mqtt_client").Secret "secret" }}"
+  },
+  "telemetry": {
+    "channel_id": "{{ (index .Bindings "telemetry").ID }}",
+    "topic": "{{ index (index .Bindings "telemetry").Snapshot "topic" }}"
+  },
+  "commands": {
+    "channel_id": "{{ (index .Bindings "commands").ID }}"
   }
 }"""
 
 payload = {
     "name": "agent-linux-device-profile",
-    "description": "Bootstrap profile for Linux mock IoT gateway device running Magistrala Agent",
+    "description": "Bootstrap profile for Linux IoT gateway device running Magistrala Agent",
     "template_format": "json",
     "content_template": template,
     "binding_slots": [
         {
-            "name": "device_client",
+            "name": "mqtt_client",
             "type": "client",
             "required": True,
         },
         {
-            "name": "mqtt_channel",
+            "name": "telemetry",
+            "type": "channel",
+            "required": True,
+        },
+        {
+            "name": "commands",
             "type": "channel",
             "required": True,
         },
@@ -287,36 +264,20 @@ PY
 }
 
 # Build the Bootstrap Enrollment JSON payload.
-# render_context supplies the static per-device variables (.Vars.*) referenced
-# in the profile template. Dynamic values (credentials, channel ID) come from
-# bindings resolved in step 4c.
+# render_context supplies the static per-enrollment variables (.Vars.*)
+# referenced in the profile template. Only mqtt_url is needed; all other
+# agent settings are provided via environment variables at startup.
 build_enrollment_payload() {
   PROFILE_ID="${PROFILE_ID}" \
   MG_AGENT_BOOTSTRAP_EXTERNAL_ID="${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}" \
   MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY}" \
-  MG_AGENT_BROKER_URL="${MG_AGENT_BROKER_URL}" \
-  MG_AGENT_PORT="${MG_AGENT_PORT}" \
-  MG_AGENT_NODERED_URL="${MG_AGENT_NODERED_URL}" \
-  MG_AGENT_LOG_LEVEL="${MG_AGENT_LOG_LEVEL}" \
   MG_AGENT_MQTT_URL="${MG_AGENT_MQTT_URL}" \
-  MG_AGENT_MQTT_MTLS="$(json_bool "${MG_AGENT_MQTT_MTLS}")" \
-  MG_AGENT_MQTT_SKIP_TLS="$(json_bool "${MG_AGENT_MQTT_SKIP_TLS}")" \
-  MG_AGENT_MQTT_QOS="${MG_AGENT_MQTT_QOS}" \
-  MG_AGENT_MQTT_RETAIN="$(json_bool "${MG_AGENT_MQTT_RETAIN}")" \
-  MG_AGENT_MQTT_CA_PATH="${MG_AGENT_MQTT_CA_PATH}" \
-  MG_AGENT_MQTT_CERT_PATH="${MG_AGENT_MQTT_CERT_PATH}" \
-  MG_AGENT_MQTT_PRIV_KEY_PATH="${MG_AGENT_MQTT_PRIV_KEY_PATH}" \
-  MG_AGENT_HEARTBEAT_INTERVAL="${MG_AGENT_HEARTBEAT_INTERVAL}" \
-  MG_AGENT_TERMINAL_SESSION_TIMEOUT="${MG_AGENT_TERMINAL_SESSION_TIMEOUT}" \
   MG_AGENT_BOOTSTRAP_CLIENT_CERT="${MG_AGENT_BOOTSTRAP_CLIENT_CERT}" \
   MG_AGENT_BOOTSTRAP_CLIENT_KEY="${MG_AGENT_BOOTSTRAP_CLIENT_KEY}" \
   MG_AGENT_BOOTSTRAP_CA_CERT="${MG_AGENT_BOOTSTRAP_CA_CERT}" \
   python3 - <<'PY'
 import json
 import os
-
-def parse_bool(value):
-    return str(value).lower() in {"1", "true", "yes", "on"}
 
 payload = {
     "external_id": os.environ["MG_AGENT_BOOTSTRAP_EXTERNAL_ID"],
@@ -325,20 +286,7 @@ payload = {
     "profile_id": os.environ["PROFILE_ID"],
     "status": "enabled",
     "render_context": {
-        "broker_url":          os.environ["MG_AGENT_BROKER_URL"],
-        "port":                os.environ["MG_AGENT_PORT"],
-        "nodered_url":         os.environ["MG_AGENT_NODERED_URL"],
-        "log_level":           os.environ["MG_AGENT_LOG_LEVEL"],
-        "mqtt_url":            os.environ["MG_AGENT_MQTT_URL"],
-        "mtls":                parse_bool(os.environ["MG_AGENT_MQTT_MTLS"]),
-        "skip_tls_ver":        parse_bool(os.environ["MG_AGENT_MQTT_SKIP_TLS"]),
-        "qos":                 int(os.environ["MG_AGENT_MQTT_QOS"]),
-        "retain":              parse_bool(os.environ["MG_AGENT_MQTT_RETAIN"]),
-        "ca_path":             os.environ["MG_AGENT_MQTT_CA_PATH"],
-        "cert_path":           os.environ["MG_AGENT_MQTT_CERT_PATH"],
-        "priv_key_path":       os.environ["MG_AGENT_MQTT_PRIV_KEY_PATH"],
-        "heartbeat_interval":  os.environ["MG_AGENT_HEARTBEAT_INTERVAL"],
-        "session_timeout":     os.environ["MG_AGENT_TERMINAL_SESSION_TIMEOUT"],
+        "mqtt_url": os.environ["MG_AGENT_MQTT_URL"],
     },
     "client_cert": os.environ["MG_AGENT_BOOTSTRAP_CLIENT_CERT"],
     "client_key":  os.environ["MG_AGENT_BOOTSTRAP_CLIENT_KEY"],
@@ -351,7 +299,8 @@ PY
 # Build the bindings payload that links profile slots to real resources.
 build_bindings_payload() {
   CLIENT_ID="${CLIENT_ID}" \
-  CHANNEL="${CHANNEL}" \
+  TELEMETRY_CHANNEL="${TELEMETRY_CHANNEL}" \
+  COMMANDS_CHANNEL="${COMMANDS_CHANNEL}" \
   python3 - <<'PY'
 import json
 import os
@@ -359,14 +308,19 @@ import os
 payload = {
     "bindings": [
         {
-            "slot":        "device_client",
+            "slot":        "mqtt_client",
             "type":        "client",
             "resource_id": os.environ["CLIENT_ID"],
         },
         {
-            "slot":        "mqtt_channel",
+            "slot":        "telemetry",
             "type":        "channel",
-            "resource_id": os.environ["CHANNEL"],
+            "resource_id": os.environ["TELEMETRY_CHANNEL"],
+        },
+        {
+            "slot":        "commands",
+            "type":        "channel",
+            "resource_id": os.environ["COMMANDS_CHANNEL"],
         },
     ]
 }
@@ -407,34 +361,54 @@ echo "  Client ID:     ${CLIENT_ID}"
 echo "  Client Secret: ${CLIENT_SECRET}"
 
 # ---------------------------------------------------------------------------
-# Step 3: Create Channel
+# Step 3: Create Channels (telemetry + commands)
 # ---------------------------------------------------------------------------
 echo ""
-echo "Step 3: Creating Channel..."
+echo "Step 3: Creating Channels (telemetry + commands)..."
 CHANNEL_URL="${MG_CHANNELS_API}/${DOMAIN_ID}/channels"
 echo "  API: ${CHANNEL_URL}"
 
-CHANNEL_PAYLOAD='{
-  "name": "agent-channel",
-  "description": "Agent channel for data and control",
+TELEMETRY_PAYLOAD='{
+  "name": "agent-telemetry",
+  "description": "Agent telemetry/data channel (DataChan)",
   "metadata": {
-    "type": "agent"
+    "type": "agent",
+    "role": "telemetry"
   },
   "status": "enabled"
 }'
-CH_RESPONSE=$(post_json "${CHANNEL_URL}" "${CHANNEL_PAYLOAD}")
-require_created "Channel creation" "${CHANNEL_URL}" "${CH_RESPONSE}"
-CH_BODY=$(response_body "${CH_RESPONSE}")
+TEL_RESPONSE=$(post_json "${CHANNEL_URL}" "${TELEMETRY_PAYLOAD}")
+require_created "Telemetry channel creation" "${CHANNEL_URL}" "${TEL_RESPONSE}"
+TEL_BODY=$(response_body "${TEL_RESPONSE}")
 
-CHANNEL=$(echo "$CH_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
-
-if [ -z "$CHANNEL" ]; then
-  echo "ERROR: Failed to create Channel."
-  echo "Endpoint: ${CHANNEL_URL}"
-  echo "Response: ${CH_BODY}"
+TELEMETRY_CHANNEL=$(echo "$TEL_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
+if [ -z "$TELEMETRY_CHANNEL" ]; then
+  echo "ERROR: Failed to create telemetry Channel."
+  echo "Response: ${TEL_BODY}"
   exit 1
 fi
-echo "  Channel ID: ${CHANNEL}"
+echo "  Telemetry Channel ID: ${TELEMETRY_CHANNEL}"
+
+COMMANDS_PAYLOAD='{
+  "name": "agent-commands",
+  "description": "Agent commands/control channel (CtrlChan)",
+  "metadata": {
+    "type": "agent",
+    "role": "commands"
+  },
+  "status": "enabled"
+}'
+CMD_RESPONSE=$(post_json "${CHANNEL_URL}" "${COMMANDS_PAYLOAD}")
+require_created "Commands channel creation" "${CHANNEL_URL}" "${CMD_RESPONSE}"
+CMD_BODY=$(response_body "${CMD_RESPONSE}")
+
+COMMANDS_CHANNEL=$(echo "$CMD_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
+if [ -z "$COMMANDS_CHANNEL" ]; then
+  echo "ERROR: Failed to create commands Channel."
+  echo "Response: ${CMD_BODY}"
+  exit 1
+fi
+echo "  Commands Channel ID:  ${COMMANDS_CHANNEL}"
 
 # ---------------------------------------------------------------------------
 # Step 4a: Create Bootstrap Profile
@@ -488,8 +462,9 @@ echo "  Enrollment ID: ${ENROLLMENT_ID}"
 
 # ---------------------------------------------------------------------------
 # Step 4c: Bind Resources
-# Links device_client → CLIENT_ID and mqtt_channel → CHANNEL_ID so the
-# profile template can render credentials and channel ID at bootstrap time.
+# Links mqtt_client → CLIENT_ID, telemetry → TELEMETRY_CHANNEL,
+# and commands → COMMANDS_CHANNEL so the profile template can render
+# credentials and channel IDs at bootstrap time.
 # ---------------------------------------------------------------------------
 echo ""
 echo "Step 4c: Binding resources to enrollment..."
@@ -499,21 +474,22 @@ echo "  API: ${BINDINGS_URL}"
 BINDINGS_PAYLOAD=$(build_bindings_payload)
 BINDINGS_RESPONSE=$(put_json "${BINDINGS_URL}" "${BINDINGS_PAYLOAD}")
 require_no_content "Bootstrap Bindings" "${BINDINGS_URL}" "${BINDINGS_RESPONSE}"
-echo "  device_client → ${CLIENT_ID}"
-echo "  mqtt_channel  → ${CHANNEL}"
+echo "  mqtt_client → ${CLIENT_ID}"
+echo "  telemetry   → ${TELEMETRY_CHANNEL}"
+echo "  commands    → ${COMMANDS_CHANNEL}"
 
 # ---------------------------------------------------------------------------
-# Step 5: Set up Rule Engine to store messages as SenML
+# Step 5: Set up Rule Engine to store telemetry messages as SenML
 # ---------------------------------------------------------------------------
 echo ""
-echo "Step 5: Configuring Rule Engine (save_senml) for 'data' subtopic..."
+echo "Step 5: Configuring Rule Engine (save_senml) for telemetry channel..."
 RULE_CONFIG_URL="${MG_RULES_API}/${DOMAIN_ID}/rules"
 echo "  API: ${RULE_CONFIG_URL}"
 
 RULE_PAYLOAD="{
   \"name\": \"agent-mock-device-storage-data\",
   \"domain\": \"${DOMAIN_ID}\",
-  \"input_channel\": \"${CHANNEL}\",
+  \"input_channel\": \"${TELEMETRY_CHANNEL}\",
   \"input_topic\": \"data\",
   \"logic\": {
     \"type\": 0,
@@ -525,65 +501,12 @@ RULE_PAYLOAD="{
   \"status\": \"enabled\"
 }"
 require_created_with_retry \
-  "Rule Engine configuration for 'data' subtopic" \
+  "Rule Engine configuration for telemetry channel" \
   "${RULE_CONFIG_URL}" \
   "${RULE_PAYLOAD}" \
   "${MG_RULES_RETRIES}" \
   "${MG_RULES_RETRY_DELAY_SECONDS}"
-echo "  Rule Engine configured for 'data' subtopic (save_senml)."
-
-# ---------------------------------------------------------------------------
-# Step 6: Update configs/config.toml with provisioned values
-# This supports direct (non-bootstrap) mode; bootstrap mode reads credentials
-# from the rendered content field instead.
-# ---------------------------------------------------------------------------
-echo ""
-echo "Step 6: Updating configs/config.toml..."
-CONFIG_FILE="configs/config.toml"
-
-mkdir -p configs
-
-cat > "${CONFIG_FILE}.tmp" << EOF
-File = "/config.toml"
-domain_id = "${DOMAIN_ID}"
-
-[channels]
-  id = "${CHANNEL}"
-
-[heartbeat]
-  interval = "${MG_AGENT_HEARTBEAT_INTERVAL}"
-
-[log]
-  level = "${MG_AGENT_LOG_LEVEL}"
-
-[mqtt]
-  ca_cert = ""
-  ca_path = "${MG_AGENT_MQTT_CA_PATH}"
-  cert_path = "${MG_AGENT_MQTT_CERT_PATH}"
-  client_cert = ""
-  client_key = ""
-  mtls = ${MG_AGENT_MQTT_MTLS}
-  password = "${CLIENT_SECRET}"
-  priv_key_path = "${MG_AGENT_MQTT_PRIV_KEY_PATH}"
-  qos = ${MG_AGENT_MQTT_QOS}
-  retain = ${MG_AGENT_MQTT_RETAIN}
-  skip_tls_ver = ${MG_AGENT_MQTT_SKIP_TLS}
-  url = "${MG_AGENT_MQTT_URL}"
-  username = "${CLIENT_ID}"
-
-[nodered]
-  url = "${MG_AGENT_NODERED_URL}"
-
-[server]
-  broker_url = "${MG_AGENT_BROKER_URL}"
-  port = "${MG_AGENT_PORT}"
-
-[terminal]
-  session_timeout = "${MG_AGENT_TERMINAL_SESSION_TIMEOUT}"
-EOF
-
-mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
-echo "  configs/config.toml updated."
+echo "  Rule Engine configured for telemetry channel (save_senml)."
 
 # ---------------------------------------------------------------------------
 # Summary
@@ -592,37 +515,36 @@ echo ""
 echo "=== Provisioning Complete ==="
 echo ""
 echo "Resources created:"
-echo "  Client ID:     ${CLIENT_ID}"
-echo "  Client Secret: ${CLIENT_SECRET}"
-echo "  Channel ID:    ${CHANNEL}"
-echo "  Domain ID:     ${DOMAIN_ID}"
-echo "  Profile ID:    ${PROFILE_ID}"
-echo "  Enrollment ID: ${ENROLLMENT_ID}"
-echo "  Bootstrap ID:  ${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}"
-echo "  Bootstrap Key: ${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY}"
-echo "  Storage rule:  data"
+echo "  Client ID:          ${CLIENT_ID}"
+echo "  Client Secret:      ${CLIENT_SECRET}"
+echo "  Telemetry Channel:  ${TELEMETRY_CHANNEL}"
+echo "  Commands Channel:   ${COMMANDS_CHANNEL}"
+echo "  Domain ID:          ${DOMAIN_ID}"
+echo "  Profile ID:         ${PROFILE_ID}"
+echo "  Enrollment ID:      ${ENROLLMENT_ID}"
+echo "  Bootstrap ID:       ${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}"
+echo "  Bootstrap Key:      ${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY}"
 echo ""
-echo "Configuration saved to: configs/config.toml"
 echo ""
 echo "=== Next Steps ==="
 echo ""
-echo "Option 1: Direct Execution (uses config.toml)"
-echo "  1. Run:  make run"
-echo "  2. Open: http://localhost:1880  (Node-RED UI)"
-echo "  3. Agent uses credentials from configs/config.toml"
+echo "Bootstrap credentials for this device:"
+echo "  MG_AGENT_BOOTSTRAP_ID=${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}"
+echo "  MG_AGENT_BOOTSTRAP_KEY=${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY}"
+echo "  MG_AGENT_BOOTSTRAP_URL=${MG_BOOTSTRAP_API}/clients/bootstrap"
 echo ""
-echo "Option 2: Bootstrap Mode (recommended for cloud/remote)"
-echo "  1. Set environment variables:"
-echo "     export MG_AGENT_BOOTSTRAP_ID=${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}"
-echo "     export MG_AGENT_BOOTSTRAP_KEY=${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY}"
-echo "     export MG_AGENT_BOOTSTRAP_URL=${MG_BOOTSTRAP_API}/clients/bootstrap"
-echo "  2. Run:  make run"
-echo "  3. Agent fetches rendered config from bootstrap service"
+echo "Pass these to the agent at runtime (env vars, systemd unit, k8s secret)."
+echo ""
+echo "Local dev quickstart (docker compose):"
+echo "  MG_AGENT_BOOTSTRAP_ID=${MG_AGENT_BOOTSTRAP_EXTERNAL_ID} \\"
+echo "  MG_AGENT_BOOTSTRAP_KEY=${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY} \\"
+echo "  make run"
 echo ""
 echo "=== MQTT Connection Details ==="
 echo "  Username: ${CLIENT_ID}"
 echo "  Password: ${CLIENT_SECRET}"
-echo "  Channel:  ${CHANNEL}"
+echo "  Telemetry Channel: ${TELEMETRY_CHANNEL}"
+echo "  Commands Channel:  ${COMMANDS_CHANNEL}"
 echo "  Domain:   ${DOMAIN_ID}"
 echo ""
 echo "=== Test MQTT Publishing ==="
@@ -631,7 +553,7 @@ echo "Local (localhost:8883):"
 echo "  mosquitto_pub -I \"agent-mock-device\" \\"
 echo "    -u ${CLIENT_ID} \\"
 echo "    -P ${CLIENT_SECRET} \\"
-echo "    -t m/${DOMAIN_ID}/c/${CHANNEL}/data \\"
+echo "    -t m/${DOMAIN_ID}/c/${TELEMETRY_CHANNEL}/msg \\"
 echo "    -h localhost -p 8883 \\"
 echo "    -m '[{\"n\":\"Temperature\",\"bu\":\"°C\",\"u\":\"°C\",\"v\":30}]' \\"
 echo "    --cafile docker/ssl/certs/ca.crt"
@@ -642,7 +564,7 @@ echo "    -h messaging.magistrala.absmach.eu -p 8883 \\"
 echo "    --capath /etc/ssl/certs \\"
 echo "    -u ${CLIENT_ID} \\"
 echo "    -P ${CLIENT_SECRET} \\"
-echo "    -t m/${DOMAIN_ID}/c/${CHANNEL}/data \\"
+echo "    -t m/${DOMAIN_ID}/c/${TELEMETRY_CHANNEL}/msg \\"
 echo "    -m '[{\"n\":\"Temperature\",\"bu\":\"°C\",\"u\":\"°C\",\"v\":30}]'"
 echo ""
 echo "=== Deploy Node-RED Flow ==="

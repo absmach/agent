@@ -20,7 +20,25 @@ type ServerConfig struct {
 }
 
 type ChanConfig struct {
-	ID string `toml:"id" json:"id"`
+	ID     string `toml:"id" json:"id"`
+	CtrlID string `toml:"ctrl_id" json:"ctrl_id"`
+	DataID string `toml:"data_id" json:"data_id"`
+}
+
+// CtrlChan returns the control channel ID, falling back to ID for backward compatibility.
+func (c ChanConfig) CtrlChan() string {
+	if c.CtrlID != "" {
+		return c.CtrlID
+	}
+	return c.ID
+}
+
+// DataChan returns the data channel ID, falling back to ID for backward compatibility.
+func (c ChanConfig) DataChan() string {
+	if c.DataID != "" {
+		return c.DataID
+	}
+	return c.ID
 }
 
 type NodeRedConfig struct {
