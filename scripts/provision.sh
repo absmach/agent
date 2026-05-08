@@ -105,8 +105,6 @@ echo ""
 
 TOKEN="${MG_PAT}"
 echo "Step 1: Using PAT token (${#TOKEN} characters)."
-echo "Token starts with: ${TOKEN:0:30}"
-echo "Token ends with: ${TOKEN: -20}"
 
 # ---------------------------------------------------------------------------
 # Helpers

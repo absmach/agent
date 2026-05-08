@@ -62,3 +62,49 @@ func TestNormalizeAddFlowPayloadRekeysIDs(t *testing.T) {
 		t.Fatalf("expected node z to point to rekeyed tab id, got %v want %v", inject["z"], tabID)
 	}
 }
+
+// TestRewriteNodeRedIDsPreservesFreetextFields verifies that freetext fields
+// (name, label, info) are never rewritten even when their value coincidentally
+// matches a node id that was collected for rekeying.
+func TestRewriteNodeRedIDsPreservesFreetextFields(t *testing.T) {
+	// "some-node-id" is a real node id; "my-label" is a freetext label that
+	// happens to equal another node's original id.
+	input := `[
+		{"id":"tab-1","type":"tab","label":"my-label"},
+		{"id":"some-node-id","type":"inject","z":"tab-1","name":"some-node-id","label":"some-node-id","wires":[[]]}
+	]`
+
+	payload, err := normalizeAddFlowPayload(input)
+	if err != nil {
+		t.Fatalf("normalizeAddFlowPayload returned error: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(payload, &got); err != nil {
+		t.Fatalf("failed to unmarshal normalized payload: %v", err)
+	}
+
+	// Tab label must not be rewritten.
+	if got["label"] != "my-label" {
+		t.Errorf("tab label was unexpectedly rewritten: got %v", got["label"])
+	}
+
+	nodes, _ := got["nodes"].([]any)
+	if len(nodes) == 0 {
+		t.Fatal("expected at least one flow node")
+	}
+	node := nodes[0].(map[string]any)
+
+	// name and label are freetext — must be preserved exactly.
+	if node["name"] != "some-node-id" {
+		t.Errorf("node name was unexpectedly rewritten: got %v", node["name"])
+	}
+	if node["label"] != "some-node-id" {
+		t.Errorf("node label was unexpectedly rewritten: got %v", node["label"])
+	}
+
+	// The id field itself must still be rekeyed.
+	if node["id"] == "some-node-id" {
+		t.Errorf("node id was not rekeyed")
+	}
+}

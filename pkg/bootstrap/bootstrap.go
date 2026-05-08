@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/absmach/agent/pkg/agent"
@@ -207,9 +206,6 @@ func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) 
 	}
 
 	authScheme := "Client"
-	if strings.Contains(bsSvrURL, "/things/bootstrap") {
-		authScheme = "Thing"
-	}
 	req.Header.Add("Authorization", fmt.Sprintf("%s %s", authScheme, bsKey))
 
 	resp, err := client.Do(req)

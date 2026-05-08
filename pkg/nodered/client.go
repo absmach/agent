@@ -216,14 +216,23 @@ func collectNodeRedIDs(value any, ids map[string]string) {
 	}
 }
 
+// idRefFields lists the map keys whose string values are node ID references.
+// Only these fields are candidates for rewriting; freetext fields like name,
+// label, and info are left untouched even if their value happens to match an ID.
+var idRefFields = map[string]bool{
+	"id": true, "broker": true, "z": true, "tls": true,
+}
+
 func rewriteNodeRedIDs(value any, ids map[string]string) {
 	switch v := value.(type) {
 	case map[string]any:
 		for key, child := range v {
 			switch typed := child.(type) {
 			case string:
-				if replacement, ok := ids[typed]; ok {
-					v[key] = replacement
+				if idRefFields[key] {
+					if replacement, ok := ids[typed]; ok {
+						v[key] = replacement
+					}
 				}
 			default:
 				rewriteNodeRedIDs(typed, ids)

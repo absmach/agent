@@ -82,15 +82,6 @@ if [ ! -f /data/.initialized ]; then
     touch /data/.initialized
 fi
 
-cat > /data/flows_cred.json << EOF
-{
-    "mqtt-broker-config": {
-        "user": "${MG_AGENT_CLIENT_ID}",
-        "password": "${MG_AGENT_CLIENT_SECRET}"
-    }
-}
-EOF
-
 # Patch flows.json at every start using JSON-aware updates:
 #  - mqtt-broker nodes get host/port/TLS/client credentials from TOML/env
 #  - mqtt out nodes keep valid broker config references
