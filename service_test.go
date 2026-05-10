@@ -26,6 +26,10 @@ import (
 
 var domainID = "1e7295a6-8de9-4c3c-8e36-387217f131f6"
 
+func mqttTopic(channel, suffix string) string {
+	return fmt.Sprintf("m/%s/c/%s/%s", domainID, channel, suffix)
+}
+
 func testConfig(file string) agent.Config {
 	return agent.NewConfig(
 		agent.ServerConfig{Port: "9000", BrokerURL: "amqp://broker:5682"},
@@ -309,13 +313,13 @@ func TestExecute(t *testing.T) {
 			desc:   "execute shell command successfully",
 			cmd:    "printf,hello",
 			output: "hello",
-			topic:  "m/domain-id/c/ctrl-channel/res",
+			topic:  mqttTopic("ctrl-channel", "res"),
 		},
 		{
 			desc:   "execute command with no output successfully",
 			cmd:    "true",
 			output: "(no output)",
-			topic:  "m/domain-id/c/ctrl-channel/res",
+			topic:  mqttTopic("ctrl-channel", "res"),
 		},
 		{
 			desc:   "execute cd command successfully",
@@ -331,7 +335,7 @@ func TestExecute(t *testing.T) {
 			desc:   "return publish error",
 			cmd:    "true",
 			err:    true,
-			topic:  "m/domain-id/c/ctrl-channel/res",
+			topic:  mqttTopic("ctrl-channel", "res"),
 			pubErr: errBoom,
 		},
 	}
@@ -411,7 +415,7 @@ func TestControl(t *testing.T) {
 			}
 			if strings.HasPrefix(tc.cmd, "nodered-") && !tc.fail && tc.cmd == "nodered-ping" {
 				if tc.pubErr != nil || !tc.err {
-					expectMQTTPublish(t, mqttClient, "m/domain-id/c/ctrl-channel/res", tc.pubErr)
+					expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), tc.pubErr)
 				}
 			}
 			err = svc.Control("uuid", tc.cmd)
@@ -498,7 +502,7 @@ func TestServiceConfig(t *testing.T) {
 				assert.Nil(t, err, fmt.Sprintf("%s: unexpected heartbeat error %v", tc.desc, err))
 			}
 			if !tc.err || tc.pubErr != nil {
-				expectMQTTPublish(t, mqttClient, "m/domain-id/c/ctrl-channel/res", tc.pubErr)
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), tc.pubErr)
 			}
 			if tc.publishTopic != "" {
 				pubsub.On("Publish", context.Background(), tc.publishTopic, mock.Anything).Return(nil).Once()
@@ -718,18 +722,18 @@ func TestPublish(t *testing.T) {
 		{
 			desc:   "publish control message successfully",
 			topic:  "control",
-			output: "m/domain-id/c/ctrl-channel/res",
+			output: mqttTopic("ctrl-channel", "res"),
 		},
 		{
 			desc:   "publish data message successfully",
 			topic:  "data",
-			output: "m/domain-id/c/data-channel/msg",
+			output: mqttTopic("data-channel", "msg"),
 		},
 		{
 			desc:   "return mqtt publish error",
 			topic:  "exec",
 			err:    errBoom,
-			output: "m/domain-id/c/ctrl-channel/res/exec",
+			output: mqttTopic("ctrl-channel", "res/exec"),
 		},
 	}
 
@@ -748,6 +752,313 @@ func TestPublish(t *testing.T) {
 				assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
 			}
 			assert.Equal(t, "payload", payload, fmt.Sprintf("%s: unexpected payload", tc.desc))
+		})
+	}
+}
+
+func TestChangeDir(t *testing.T) {
+	tmp := t.TempDir()
+	child := filepath.Join(tmp, "child")
+	err := os.Mkdir(child, 0o755)
+	assert.Nil(t, err, fmt.Sprintf("unexpected mkdir error %v", err))
+
+	cases := []struct {
+		desc    string
+		workDir string
+		cmd     []string
+		dir     string
+		output  string
+	}{
+		{
+			desc:    "change to absolute directory",
+			workDir: "/",
+			cmd:     []string{"cd", child},
+			dir:     child,
+			output:  "(no output)",
+		},
+		{
+			desc:    "change to relative directory",
+			workDir: tmp,
+			cmd:     []string{"cd", "child"},
+			dir:     child,
+			output:  "(no output)",
+		},
+		{
+			desc:    "return shell error for missing directory",
+			workDir: tmp,
+			cmd:     []string{"cd", "missing"},
+			dir:     tmp,
+			output:  "sh: cd: " + tmp + "/missing: No such file or directory",
+		},
+	}
+	if info, statErr := os.Stat("/root"); statErr == nil && info.IsDir() {
+		cases = append(cases, struct {
+			desc    string
+			workDir string
+			cmd     []string
+			dir     string
+			output  string
+		}{
+			desc:    "change to default home directory",
+			workDir: tmp,
+			cmd:     []string{"cd"},
+			dir:     "/root",
+			output:  "(no output)",
+		})
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, workDir, err := agent.ChangeDirForTest(tc.workDir, tc.cmd)
+			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
+			assert.Equal(t, tc.output, got, fmt.Sprintf("%s: unexpected output", tc.desc))
+			assert.Equal(t, tc.dir, workDir, fmt.Sprintf("%s: unexpected workdir", tc.desc))
+		})
+	}
+}
+
+func TestNormalizeNodeRedFlow(t *testing.T) {
+	cfg := agent.Config{
+		DomainID: domainID,
+		Channels: agent.ChanConfig{
+			DataID: "data-channel",
+		},
+		MQTT: agent.MQTTConfig{
+			URL:        "ssl://mqtt.example.com:8883",
+			Username:   "client-id",
+			Password:   "client-secret",
+			SkipTLSVer: true,
+		},
+	}
+
+	cases := []struct {
+		desc string
+		flow string
+		same bool
+	}{
+		{
+			desc: "return invalid json unchanged",
+			flow: "{",
+			same: true,
+		},
+		{
+			desc: "normalize mqtt settings and topics",
+			flow: `[
+				{"id":"tab","type":"tab","label":"flow"},
+				{"id":"broker-a","type":"mqtt-broker","broker":"old","port":"1883","tls":"old"},
+				{"id":"fn","type":"function","func":"msg.topic = \"m/old-domain/c/old-channel/data\";"},
+				{"id":"out","type":"mqtt out","broker":"missing","topic":"m/old-domain/c/old-channel/msg"}
+			]`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got := agent.NormalizeNodeRedFlowForTest(cfg, tc.flow)
+			if tc.same {
+				assert.Equal(t, tc.flow, got, fmt.Sprintf("%s: expected unchanged flow", tc.desc))
+				return
+			}
+
+			var nodes []map[string]any
+			err := json.Unmarshal([]byte(got), &nodes)
+			assert.Nil(t, err, fmt.Sprintf("%s: unexpected json error %v", tc.desc, err))
+
+			byID := map[string]map[string]any{}
+			for _, node := range nodes {
+				id, _ := node["id"].(string)
+				byID[id] = node
+			}
+
+			broker := byID["broker-a"]
+			assert.Equal(t, "mqtt.example.com", broker["broker"], fmt.Sprintf("%s: unexpected mqtt host", tc.desc))
+			assert.Equal(t, "8883", broker["port"], fmt.Sprintf("%s: unexpected mqtt port", tc.desc))
+			assert.Equal(t, "client-id-nr", broker["clientid"], fmt.Sprintf("%s: unexpected node-red client id", tc.desc))
+			assert.Equal(t, true, broker["usetls"], fmt.Sprintf("%s: unexpected tls flag", tc.desc))
+			assert.Equal(t, agent.NodeRedTLSConfigIDForTest, broker["tls"], fmt.Sprintf("%s: unexpected tls config id", tc.desc))
+			assert.Equal(t, map[string]any{"user": "client-id", "password": "client-secret"}, broker["credentials"], fmt.Sprintf("%s: unexpected credentials", tc.desc))
+			assert.Equal(t, fmt.Sprintf(`msg.topic = "%s";`, mqttTopic("data-channel", "msg")), byID["fn"]["func"], fmt.Sprintf("%s: unexpected function topic", tc.desc))
+			assert.Equal(t, "broker-a", byID["out"]["broker"], fmt.Sprintf("%s: unexpected mqtt out broker", tc.desc))
+			assert.Equal(t, mqttTopic("data-channel", "msg"), byID["out"]["topic"], fmt.Sprintf("%s: unexpected mqtt out topic", tc.desc))
+			assert.Contains(t, byID, agent.NodeRedTLSConfigIDForTest, fmt.Sprintf("%s: expected tls config node", tc.desc))
+		})
+	}
+}
+
+func TestNodeRedMQTTEndpoint(t *testing.T) {
+	cases := []struct {
+		desc   string
+		rawURL string
+		host   string
+		port   string
+		tls    bool
+	}{
+		{
+			desc: "default empty endpoint",
+			port: "1883",
+		},
+		{
+			desc:   "parse ssl endpoint",
+			rawURL: "ssl://mqtt.example.com:8883",
+			host:   "mqtt.example.com",
+			port:   "8883",
+			tls:    true,
+		},
+		{
+			desc:   "default mqtts port",
+			rawURL: "mqtts://mqtt.example.com",
+			host:   "mqtt.example.com",
+			port:   "1883",
+			tls:    true,
+		},
+		{
+			desc:   "parse host port without scheme",
+			rawURL: "mqtt.example.com:1884",
+			host:   "mqtt.example.com",
+			port:   "1884",
+		},
+		{
+			desc:   "strip path from malformed scheme",
+			rawURL: "://mqtt.example.com:1885/path",
+			host:   "mqtt.example.com",
+			port:   "1885",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			host, port, useTLS := agent.NodeRedMQTTEndpointForTest(tc.rawURL)
+			assert.Equal(t, tc.host, host, fmt.Sprintf("%s: unexpected host", tc.desc))
+			assert.Equal(t, tc.port, port, fmt.Sprintf("%s: unexpected port", tc.desc))
+			assert.Equal(t, tc.tls, useTLS, fmt.Sprintf("%s: unexpected tls flag", tc.desc))
+		})
+	}
+}
+
+func TestPatchNodeRedTopic(t *testing.T) {
+	cases := []struct {
+		desc     string
+		input    string
+		domainID string
+		channel  string
+		want     string
+	}{
+		{
+			desc:     "legacy data topic",
+			input:    `msg.topic = "m/old-domain/c/old-channel/data";`,
+			domainID: domainID,
+			channel:  "channel-id",
+			want:     fmt.Sprintf(`msg.topic = "m/%s/c/channel-id/msg";`, domainID),
+		},
+		{
+			desc:     "message topic",
+			input:    `msg.topic = "m/old-domain/c/old-channel/msg";`,
+			domainID: domainID,
+			channel:  "channel-id",
+			want:     fmt.Sprintf(`msg.topic = "m/%s/c/channel-id/msg";`, domainID),
+		},
+		{
+			desc:  "leave topic unchanged without ids",
+			input: `msg.topic = "m/old-domain/c/old-channel/msg";`,
+			want:  `msg.topic = "m/old-domain/c/old-channel/msg";`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got := agent.PatchNodeRedTopicForTest(tc.input, tc.domainID, tc.channel)
+			assert.Equal(t, tc.want, got, fmt.Sprintf("%s: expected content %s got %s", tc.desc, tc.want, got))
+		})
+	}
+}
+
+func TestEnsureNodeRedTLSConfig(t *testing.T) {
+	cases := []struct {
+		desc string
+		in   any
+		len  int
+	}{
+		{
+			desc: "append tls config to flow array",
+			in:   []any{map[string]any{"id": "broker"}},
+			len:  2,
+		},
+		{
+			desc: "keep existing tls config in flow array",
+			in:   []any{map[string]any{"id": agent.NodeRedTLSConfigIDForTest}},
+			len:  1,
+		},
+		{
+			desc: "append tls config to flow object",
+			in:   map[string]any{},
+			len:  1,
+		},
+		{
+			desc: "keep existing tls config in flow object",
+			in:   map[string]any{"configs": []any{map[string]any{"id": agent.NodeRedTLSConfigIDForTest}}},
+			len:  1,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got := agent.EnsureNodeRedTLSConfigForTest(tc.in)
+			switch typed := got.(type) {
+			case []any:
+				assert.Len(t, typed, tc.len, fmt.Sprintf("%s: unexpected array length", tc.desc))
+			case map[string]any:
+				assert.Len(t, typed["configs"], tc.len, fmt.Sprintf("%s: unexpected config length", tc.desc))
+			}
+		})
+	}
+
+	t.Run("ignore unsupported payload", func(t *testing.T) {
+		got := agent.EnsureNodeRedTLSConfigForTest("flow")
+		assert.Equal(t, "flow", got, "expected unsupported payload to be unchanged")
+	})
+}
+
+func TestTerminalCloseExistingSession(t *testing.T) {
+	sessionCount, err := agent.TerminalCloseExistingSessionForTest("uuid")
+	assert.Nil(t, err, fmt.Sprintf("unexpected terminal close error %v", err))
+	assert.Zero(t, sessionCount, "expected terminal to be removed")
+}
+
+func TestGetTopic(t *testing.T) {
+	cfg := agent.Config{
+		DomainID: domainID,
+		Channels: agent.ChanConfig{
+			CtrlID: "ctrl-channel",
+			DataID: "data-channel",
+		},
+	}
+
+	cases := []struct {
+		desc  string
+		topic string
+		want  string
+	}{
+		{
+			desc:  "control response",
+			topic: "control",
+			want:  mqttTopic("ctrl-channel", "res"),
+		},
+		{
+			desc:  "data message",
+			topic: "data",
+			want:  mqttTopic("data-channel", "msg"),
+		},
+		{
+			desc:  "named response",
+			topic: "exec",
+			want:  mqttTopic("ctrl-channel", "res/exec"),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got := agent.GetTopicForTest(cfg, tc.topic)
+			assert.Equal(t, tc.want, got, fmt.Sprintf("%s: expected topic %s got %s", tc.desc, tc.want, got))
 		})
 	}
 }
