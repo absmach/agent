@@ -24,6 +24,8 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+var domainID = "1e7295a6-8de9-4c3c-8e36-387217f131f6"
+
 func testConfig(file string) agent.Config {
 	return agent.NewConfig(
 		agent.ServerConfig{Port: "9000", BrokerURL: "amqp://broker:5682"},
@@ -45,7 +47,7 @@ func testConfig(file string) agent.Config {
 }
 
 func newService(t *testing.T, cfg agent.Config, subscribeErr error) (agent.Service, *agentmocks.MQTTClient, *agentmocks.PubSub, *nrmocks.Client, messaging.SubscriberConfig, error) {
-	cfg.DomainID = "domain-id"
+	cfg.DomainID = domainID
 	mqttClient := agentmocks.NewMQTTClient(t)
 	pubsub := agentmocks.NewPubSub(t)
 	nodeRed := nrmocks.NewClient(t)
@@ -70,7 +72,7 @@ func TestConfig(t *testing.T) {
 	tmp := t.TempDir()
 	configFile := filepath.Join(tmp, "config.toml")
 	cfg := testConfig(configFile)
-	cfg.DomainID = "domain-id"
+	cfg.DomainID = domainID
 
 	cases := []struct {
 		desc string
@@ -672,11 +674,12 @@ func TestNodeRed(t *testing.T) {
 
 func TestAddConfigAndConfig(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "config.toml")
+	// nolint:dogsled
 	svc, _, _, _, _, err := newService(t, testConfig(file), nil)
 	assert.Nil(t, err, fmt.Sprintf("unexpected setup error %v", err))
 
 	cfg := testConfig(file)
-	cfg.DomainID = "domain-id"
+	cfg.DomainID = domainID
 	err = svc.AddConfig(cfg)
 	assert.Nil(t, err, fmt.Sprintf("unexpected add config error %v", err))
 	assert.FileExists(t, file, "expected config file")
@@ -684,6 +687,7 @@ func TestAddConfigAndConfig(t *testing.T) {
 }
 
 func TestServices(t *testing.T) {
+	// nolint:dogsled
 	svc, _, _, _, subConfig, err := newService(t, testConfig(""), nil)
 	assert.Nil(t, err, fmt.Sprintf("unexpected setup error %v", err))
 
