@@ -46,13 +46,17 @@ open http://localhost:1880
 
 ## Provisioning with Magistrala
 
-If you have a running Magistrala instance, use the provisioning script to automatically create Clients, Channels, and Rule Engine rules:
+If you have a running Magistrala instance, use the provisioning script to automatically create Clients, Channels, Bootstrap Profile resources, and Rule Engine rules:
 
 ```bash
+export MG_AGENT_BOOTSTRAP_EXTERNAL_ID='01:6:0:sb:sa'
+export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY='secret'
 export MG_PAT=<personal-access-token>
 export MG_DOMAIN_ID=<domain-id>
 make run_provision
 ```
+
+Use your real PAT in the shell, but do not commit it to files. The agent and Node-RED do not consume a generated `config.toml`; they fetch the rendered bootstrap profile at startup.
 
 The PAT used for provisioning must be able to create bootstrap configs, rules, clients, and channels in the target domain. The script expects scopes such as:
 
@@ -68,7 +72,12 @@ The PAT used for provisioning must be able to create bootstrap configs, rules, c
 Or with a custom API URL:
 
 ```bash
-MG_API=https://my-instance/api make run_provision MG_DOMAIN_ID=<domain-id> MG_PAT=<pat>
+MG_API=https://my-instance/api \
+MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<device-external-id> \
+MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<device-external-key> \
+MG_DOMAIN_ID=<domain-id> \
+MG_PAT=<pat> \
+make run_provision
 ```
 
 For Magistrala Cloud specifically, use:
@@ -77,7 +86,11 @@ For Magistrala Cloud specifically, use:
 MG_API=https://cloud.magistrala.absmach.eu/api \
 MG_AGENT_MQTT_URL=ssl://messaging.magistrala.absmach.eu:8883 \
 MG_AGENT_MQTT_SKIP_TLS=false \
-make run_provision MG_DOMAIN_ID=<domain-id> MG_PAT=<pat>
+MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<device-external-id> \
+MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<device-external-key> \
+MG_DOMAIN_ID=<domain-id> \
+MG_PAT=<pat> \
+make run_provision
 ```
 
 That combination targets the cloud APIs for provisioning and the cloud MQTT broker for runtime messaging.
@@ -85,6 +98,8 @@ That combination targets the cloud APIs for provisioning and the cloud MQTT brok
 Or run the script directly:
 
 ```bash
+export MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<device-external-id>
+export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<device-external-key>
 export MG_PAT=<personal-access-token>
 export MG_DOMAIN_ID=<domain-id>
 bash scripts/provision.sh
@@ -92,19 +107,17 @@ bash scripts/provision.sh
 
 This will:
 1. Create a Client (device) with credentials
-2. Create a Channel
-3. Create a Bootstrap configuration with `external_id`, `external_key`, channel association, and the agent runtime config
-4. Configure a Rule Engine rule with `save_senml` output for the `data` subtopic
-5. Update `configs/config.toml` with the provisioned IDs and MQTT credentials
+2. Create telemetry and commands Channels
+3. Create a Bootstrap Profile and Enrollment with `external_id` and `external_key`
+4. Bind the profile slots to the provisioned client and channels
+5. Configure a Rule Engine rule with `save_senml` output for telemetry messages
 
-**Alternatively**, if you prefer to set up resources manually via the Magistrala UI or API, simply edit `docker/.env` directly with your values:
+**Alternatively**, if you prefer to set up resources manually via the Magistrala UI or API, create the Client, telemetry Channel, commands Channel, Bootstrap Profile, Enrollment, bindings, and Rule Engine rule, then edit `docker/.env` with the bootstrap values:
 
 ```env
-MG_AGENT_MQTT_URL=ssl://messaging.example.com:8883
-MG_AGENT_CLIENT_ID=<client-id>
-MG_AGENT_CLIENT_SECRET=<client-secret>
-MG_AGENT_DOMAIN_ID=<domain-id>
-MG_AGENT_CHANNEL=<channel-id>
+MG_AGENT_BOOTSTRAP_URL=http://bootstrap:9013/clients/bootstrap
+MG_AGENT_BOOTSTRAP_ID=<external-id>
+MG_AGENT_BOOTSTRAP_KEY=<external-key>
 ```
 
 Then restart the agent:
@@ -155,7 +168,7 @@ curl -s -X POST http://localhost:9999/nodered \
 
 ### Via MQTT (from Magistrala cloud)
 
-Send a SenML array to `m/<domain-id>/c/<channel-id>/req`:
+Send a SenML array to `m/<domain-id>/c/<commands-channel-id>/req`:
 
 Supported commands:
 - `nodered-deploy,<base64-flow>` — **Replace all running flows** with the provided flow JSON
@@ -205,7 +218,7 @@ mosquitto_pub \
   --capath /etc/ssl/certs \
   -I "agent-mock-device" \
   -u <client-id> -P <client-secret> \
-  -t "m/<domain-id>/c/<channel-id>/req" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
   -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-deploy,$FLOWS\"}]"
 ```
 
@@ -224,7 +237,7 @@ mosquitto_pub \
   --capath /etc/ssl/certs \
   -I "agent-mock-device" \
   -u <client-id> -P <client-secret> \
-  -t "m/<domain-id>/c/<channel-id>/req" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
   -m '[{"bn":"req-2:", "n":"nodered", "vs":"nodered-flows"}]'
 ```
 
@@ -233,25 +246,22 @@ The agent logs will show:
 {"level":"INFO","msg":"NodeRed command \"nodered-deploy,...\" completed successfully.","duration":"...","uuid":"req-1"}
 ```
 
-Node-RED will start publishing speed data to `m/<domain-id>/c/<channel-id>/data` within 3 seconds of deployment.
+Node-RED will start publishing speed data to the telemetry topic from the rendered profile, normally `m/<domain-id>/c/<telemetry-channel-id>/msg`, within 3 seconds of deployment.
 
 ## Configuration
 
-The Node-RED URL is configured via:
+The Node-RED URL is configured via environment variable:
 
 - **Environment variable**: `MG_AGENT_NODERED_URL` (default: `http://localhost:1880/`)
-- **Config file** (`config.toml`):
-  ```toml
-  [nodered]
-    url = "http://localhost:1880/"
-  ```
+
+Device identity, MQTT credentials, domain ID, and telemetry/commands channel IDs come from the rendered bootstrap profile.
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MG_AGENT_NODERED_URL` | `http://localhost:1880/` | Node-RED REST API base URL |
-| `MG_AGENT_CLIENT_ID` | (pre-set UUID) | Magistrala Client ID |
-| `MG_AGENT_CLIENT_SECRET` | (pre-set UUID) | Magistrala Client Secret |
-| `MG_AGENT_CHANNEL` | (pre-set UUID) | Channel ID (req/data/res subtopics) |
+| `MG_AGENT_BOOTSTRAP_URL` | `http://bootstrap:9013/clients/bootstrap` | Bootstrap fetch URL |
+| `MG_AGENT_BOOTSTRAP_ID` | | Bootstrap external ID |
+| `MG_AGENT_BOOTSTRAP_KEY` | | Bootstrap external key |
 | `MG_UI_PORT` | `3002` | Agent UI port |
