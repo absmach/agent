@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/absmach/agent/pkg/agent"
+	"github.com/absmach/agent"
 	"github.com/absmach/magistrala"
 	mgapi "github.com/absmach/magistrala/api/http"
 	apiutil "github.com/absmach/magistrala/api/http/util"

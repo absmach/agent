@@ -2,7 +2,7 @@
 # Copyright (c) Abstract Machines
 # SPDX-License-Identifier: Apache-2.0
 #
-# Generates flows_cred.json from environment variables before starting Node-RED.
+# Generates flows_cred.json from bootstrap/env values before starting Node-RED.
 # Required env vars:
 #   MG_AGENT_CLIENT_ID      - Magistrala client ID (used as MQTT username)
 #   MG_AGENT_CLIENT_SECRET  - Magistrala client secret (used as MQTT password)
@@ -12,6 +12,10 @@ set -e
 CONFIG_FILE="${MG_AGENT_CONFIG_FILE:-/seed/config.toml}"
 
 toml_value() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        return 0
+    fi
+
     section="$1"
     key="$2"
     awk -v section="$section" -v key="$key" '
@@ -37,6 +41,120 @@ toml_value() {
         }
     ' "$CONFIG_FILE"
 }
+
+bootstrap_exports() {
+    if [ -z "${MG_AGENT_BOOTSTRAP_URL:-}" ] || [ -z "${MG_AGENT_BOOTSTRAP_ID:-}" ] || [ -z "${MG_AGENT_BOOTSTRAP_KEY:-}" ]; then
+        return 0
+    fi
+
+    node <<'NODE'
+const http = require("http");
+const https = require("https");
+
+const baseURL = process.env.MG_AGENT_BOOTSTRAP_URL || "";
+const bootstrapID = process.env.MG_AGENT_BOOTSTRAP_ID || "";
+const bootstrapKey = process.env.MG_AGENT_BOOTSTRAP_KEY || "";
+const skipTLS = process.env.MG_AGENT_BOOTSTRAP_SKIP_TLS === "true";
+const retries = Math.max(parseInt(process.env.MG_AGENT_BOOTSTRAP_RETRIES || "5", 10) || 1, 1);
+const retryDelaySec = Math.max(parseInt(process.env.MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS || "10", 10) || 0, 0);
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function request(url) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const client = parsed.protocol === "https:" ? https : http;
+    const options = {
+      headers: { Authorization: `Client ${bootstrapKey}` },
+      timeout: 30000
+    };
+
+    if (parsed.protocol === "https:") {
+      options.agent = new https.Agent({ rejectUnauthorized: !skipTLS });
+    }
+
+    const req = client.get(parsed, options, (res) => {
+      let data = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => {
+        data += chunk;
+      });
+      res.on("end", () => {
+        if (res.statusCode >= 400) {
+          reject(new Error(`bootstrap returned HTTP ${res.statusCode}`));
+          return;
+        }
+        resolve(data);
+      });
+    });
+
+    req.on("timeout", () => req.destroy(new Error("bootstrap request timed out")));
+    req.on("error", reject);
+  });
+}
+
+async function fetchBootstrap() {
+  const url = `${baseURL.replace(/\/+$/, "")}/${bootstrapID.replace(/^\/+/, "")}`;
+  let lastErr;
+
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      return await request(url);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries) {
+        console.error(`Fetching bootstrap failed: ${err.message}; retrying in ${retryDelaySec}s`);
+        await sleep(retryDelaySec * 1000);
+      }
+    }
+  }
+
+  throw lastErr;
+}
+
+(async () => {
+  try {
+    const body = JSON.parse(await fetchBootstrap());
+    let content = body.content === undefined ? body : body.content;
+    if (typeof content === "string") {
+      content = JSON.parse(content);
+    }
+
+    const mqtt = content.mqtt || {};
+    const telemetry = content.telemetry || {};
+    const channels = content.channels || {};
+
+    const values = {
+      MG_AGENT_CLIENT_ID: process.env.MG_AGENT_CLIENT_ID || mqtt.client_id || mqtt.username || "",
+      MG_AGENT_CLIENT_SECRET: process.env.MG_AGENT_CLIENT_SECRET || mqtt.secret || mqtt.password || "",
+      MG_AGENT_DOMAIN_ID: process.env.MG_AGENT_DOMAIN_ID || content.domain_id || "",
+      MG_AGENT_CHANNEL: process.env.MG_AGENT_CHANNEL || telemetry.channel_id || channels.data_id || channels.id || "",
+      MG_AGENT_MQTT_URL: process.env.MG_AGENT_MQTT_URL || mqtt.url || ""
+    };
+
+    for (const [key, value] of Object.entries(values)) {
+      if (value !== "") {
+        console.log(`${key}=${shellQuote(value)}; export ${key};`);
+      }
+    }
+  } catch (err) {
+    console.error(`Failed to load bootstrap config for Node-RED: ${err.message}`);
+    process.exit(1);
+  }
+})();
+NODE
+}
+
+BOOTSTRAP_EXPORTS="$(bootstrap_exports)"
+if [ -n "$BOOTSTRAP_EXPORTS" ]; then
+    eval "$BOOTSTRAP_EXPORTS"
+fi
 
 if [ -f "$CONFIG_FILE" ]; then
     MG_AGENT_CLIENT_ID="${MG_AGENT_CLIENT_ID:-$(toml_value mqtt username)}"
@@ -83,9 +201,9 @@ if [ ! -f /data/.initialized ]; then
 fi
 
 # Patch flows.json at every start using JSON-aware updates:
-#  - mqtt-broker nodes get host/port/TLS/client credentials from TOML/env
+#  - mqtt-broker nodes get host/port/TLS/client credentials from bootstrap/env
 #  - mqtt out nodes keep valid broker config references
-#  - function/topic strings get the provisioned Magistrala data topic
+#  - function/topic strings get the provisioned Magistrala MQTT message topic
 node <<'NODE'
 const fs = require("fs");
 
@@ -101,8 +219,8 @@ const mqttHost = process.env.MQTT_HOST || "";
 const mqttPort = process.env.MQTT_PORT || "1883";
 const mqttUseTLS = process.env.MQTT_USETLS === "true";
 const mqttSkipTLS = process.env.MQTT_SKIP_TLS === "true";
-const dataTopic = `m/${domainID}/c/${channelID}/data`;
-const topicPattern = /m\/[^/"'\s]*\/c\/[^/"'\s]*\/data/g;
+const dataTopic = `m/${domainID}/c/${channelID}/msg`;
+const topicPattern = /m\/[^/"'\s]*\/c\/[^/"'\s]*\/(?:data|msg)/g;
 
 const flows = JSON.parse(fs.readFileSync(flowFile, "utf8"));
 const nodes = Array.isArray(flows) ? flows : [];

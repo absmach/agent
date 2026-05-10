@@ -10,7 +10,7 @@ package mocks
 import (
 	"context"
 
-	"github.com/absmach/agent/pkg/agent"
+	"github.com/absmach/agent"
 	mock "github.com/stretchr/testify/mock"
 )
 

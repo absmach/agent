@@ -424,7 +424,7 @@ func (a *agent) NodeRed(cmdStr string) (string, error) {
 }
 
 // normalizeNodeRedFlow updates deployed flow JSON so Node-RED follows the same
-// MQTT target and credentials as the agent TOML config.
+// MQTT target and credentials as the agent runtime config.
 func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 	var payload any
 	if err := json.Unmarshal([]byte(flowJSON), &payload); err != nil {
@@ -432,6 +432,7 @@ func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 	}
 
 	host, port, useTLS := nodeRedMQTTEndpoint(a.config.MQTT.URL)
+	dataChannel := a.config.Channels.DataChan()
 	brokerIDs := map[string]struct{}{}
 
 	patchNodeRedValue(payload, func(node map[string]any) {
@@ -459,12 +460,12 @@ func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 			}
 		case "function":
 			if fn, ok := node["func"].(string); ok {
-				node["func"] = patchNodeRedTopic(fn, a.config.DomainID, a.config.Channels.ID)
+				node["func"] = patchNodeRedTopic(fn, a.config.DomainID, dataChannel)
 			}
 		}
 
 		if topic, ok := node["topic"].(string); ok {
-			node["topic"] = patchNodeRedTopic(topic, a.config.DomainID, a.config.Channels.ID)
+			node["topic"] = patchNodeRedTopic(topic, a.config.DomainID, dataChannel)
 		}
 	})
 
@@ -498,7 +499,7 @@ func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 
 const nodeRedTLSConfigID = "magistrala-agent-tls"
 
-var nodeRedTopicPattern = regexp.MustCompile(`m/[^/"'\s]*/c/[^/"'\s]*/data`)
+var nodeRedTopicPattern = regexp.MustCompile(`m/[^/"'\s]*/c/[^/"'\s]*/(?:data|msg)`)
 
 func nodeRedMQTTEndpoint(rawURL string) (host, port string, useTLS bool) {
 	if rawURL == "" {
@@ -538,7 +539,7 @@ func patchNodeRedTopic(value, domainID, channelID string) string {
 	if domainID == "" || channelID == "" {
 		return value
 	}
-	return nodeRedTopicPattern.ReplaceAllString(value, fmt.Sprintf("m/%s/c/%s/data", domainID, channelID))
+	return nodeRedTopicPattern.ReplaceAllString(value, fmt.Sprintf("m/%s/c/%s/msg", domainID, channelID))
 }
 
 func patchNodeRedValue(value any, patch func(map[string]any)) {
@@ -677,14 +678,13 @@ func (a *agent) Publish(t, payload string) error {
 
 func (a *agent) getTopic(topic string) (t string) {
 	domainID := a.config.DomainID
-	chan_ := a.config.Channels.ID
 	switch topic {
 	case control:
-		t = fmt.Sprintf("m/%s/c/%s/res", domainID, chan_)
+		t = fmt.Sprintf("m/%s/c/%s/res", domainID, a.config.Channels.CtrlChan())
 	case data:
-		t = fmt.Sprintf("m/%s/c/%s/msg", domainID, chan_)
+		t = fmt.Sprintf("m/%s/c/%s/msg", domainID, a.config.Channels.DataChan())
 	default:
-		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, chan_, topic)
+		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, a.config.Channels.CtrlChan(), topic)
 	}
 	return t
 }

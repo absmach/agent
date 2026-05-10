@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/absmach/agent/pkg/agent"
+	"github.com/absmach/agent"
 	"github.com/absmach/magistrala/pkg/messaging"
 	"github.com/absmach/senml"
 	mqtt "github.com/eclipse/paho.mqtt.golang"

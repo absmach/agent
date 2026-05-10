@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/absmach/agent/pkg/agent"
+	"github.com/absmach/agent"
 	"github.com/absmach/agent/pkg/nodered"
 	mgerrors "github.com/absmach/magistrala/pkg/errors"
 	"github.com/go-kit/kit/endpoint"

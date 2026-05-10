@@ -4,7 +4,7 @@
 package api
 
 import (
-	"github.com/absmach/agent/pkg/agent"
+	"github.com/absmach/agent"
 )
 
 type pubReq struct {

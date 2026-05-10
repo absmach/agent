@@ -328,6 +328,25 @@ print(json.dumps(payload, separators=(",", ":")))
 PY
 }
 
+build_connect_payload() {
+  local channel_id="$1"
+  shift
+  CHANNEL_ID="${channel_id}" \
+  CLIENT_ID="${CLIENT_ID}" \
+  CONN_TYPES="$*" \
+  python3 - <<'PY'
+import json
+import os
+
+payload = {
+    "channel_ids": [os.environ["CHANNEL_ID"]],
+    "client_ids": [os.environ["CLIENT_ID"]],
+    "types": os.environ["CONN_TYPES"].split(),
+}
+print(json.dumps(payload, separators=(",", ":")))
+PY
+}
+
 # ---------------------------------------------------------------------------
 # Step 2: Create the agent Client (device)
 # ---------------------------------------------------------------------------
@@ -411,6 +430,24 @@ fi
 echo "  Commands Channel ID:  ${COMMANDS_CHANNEL}"
 
 # ---------------------------------------------------------------------------
+# Step 3b: Connect Client to Channels
+# ---------------------------------------------------------------------------
+echo ""
+echo "Step 3b: Connecting Client to Channels..."
+CONNECT_URL="${MG_CHANNELS_API}/${DOMAIN_ID}/channels/connect"
+echo "  API: ${CONNECT_URL}"
+
+TELEMETRY_CONNECT_PAYLOAD=$(build_connect_payload "${TELEMETRY_CHANNEL}" Publish)
+TELEMETRY_CONNECT_RESPONSE=$(post_json "${CONNECT_URL}" "${TELEMETRY_CONNECT_PAYLOAD}")
+require_created "Telemetry channel connection" "${CONNECT_URL}" "${TELEMETRY_CONNECT_RESPONSE}"
+echo "  ${CLIENT_ID} → ${TELEMETRY_CHANNEL} (Publish)"
+
+COMMANDS_CONNECT_PAYLOAD=$(build_connect_payload "${COMMANDS_CHANNEL}" Publish Subscribe)
+COMMANDS_CONNECT_RESPONSE=$(post_json "${CONNECT_URL}" "${COMMANDS_CONNECT_PAYLOAD}")
+require_created "Commands channel connection" "${CONNECT_URL}" "${COMMANDS_CONNECT_RESPONSE}"
+echo "  ${CLIENT_ID} → ${COMMANDS_CHANNEL} (Publish, Subscribe)"
+
+# ---------------------------------------------------------------------------
 # Step 4a: Create Bootstrap Profile
 # ---------------------------------------------------------------------------
 echo ""
@@ -490,7 +527,7 @@ RULE_PAYLOAD="{
   \"name\": \"agent-mock-device-storage-data\",
   \"domain\": \"${DOMAIN_ID}\",
   \"input_channel\": \"${TELEMETRY_CHANNEL}\",
-  \"input_topic\": \"data\",
+  \"input_topic\": \"msg\",
   \"logic\": {
     \"type\": 0,
     \"value\": \"return message.payload\"

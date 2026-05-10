@@ -12,9 +12,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/absmach/agent/pkg/agent"
+	"github.com/absmach/agent"
 	"github.com/absmach/magistrala/pkg/errors"
 )
 
@@ -39,6 +40,8 @@ type renderedContent struct {
 		URL      string `json:"url"`
 		ClientID string `json:"client_id"`
 		Secret   string `json:"secret"`
+		Username string `json:"username"`
+		Password string `json:"password"`
 	} `json:"mqtt"`
 	Telemetry struct {
 		ChannelID string `json:"channel_id"`
@@ -47,6 +50,11 @@ type renderedContent struct {
 	Commands struct {
 		ChannelID string `json:"channel_id"`
 	} `json:"commands"`
+	Channels struct {
+		ID     string `json:"id"`
+		CtrlID string `json:"ctrl_id"`
+		DataID string `json:"data_id"`
+	} `json:"channels"`
 }
 
 // bootstrapResponse holds the fields returned by the bootstrap endpoint.
@@ -57,13 +65,12 @@ type bootstrapResponse struct {
 	CaCert     string `json:"ca_cert"`
 }
 
-// Bootstrap retrieves device configuration from the bootstrap service, overlays
-// the returned credentials and channel IDs onto agentCfg, and writes the result
-// to the local config file.
-func Bootstrap(cfg Config, agentCfg agent.Config, logger *slog.Logger, file string) error {
+// FetchAgentConfig retrieves device configuration from the bootstrap service and
+// overlays the returned credentials and channel IDs onto agentCfg.
+func FetchAgentConfig(cfg Config, agentCfg agent.Config, logger *slog.Logger) (agent.Config, error) {
 	retries, err := strconv.ParseUint(cfg.Retries, 10, 64)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Invalid BOOTSTRAP_RETRIES value: %s", err))
+		return agentCfg, errors.New(fmt.Sprintf("Invalid BOOTSTRAP_RETRIES value: %s", err))
 	}
 	if retries == 0 {
 		retries = 1
@@ -71,7 +78,7 @@ func Bootstrap(cfg Config, agentCfg agent.Config, logger *slog.Logger, file stri
 
 	retryDelaySec, err := strconv.ParseUint(cfg.RetryDelaySec, 10, 64)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Invalid BOOTSTRAP_RETRY_DELAY_SECONDS value: %s", err))
+		return agentCfg, errors.New(fmt.Sprintf("Invalid BOOTSTRAP_RETRY_DELAY_SECONDS value: %s", err))
 	}
 
 	logger.Info("Requesting config", slog.String("config_id", cfg.ID), slog.String("config_url", cfg.URL))
@@ -92,16 +99,27 @@ func Bootstrap(cfg Config, agentCfg agent.Config, logger *slog.Logger, file stri
 		}
 	}
 	if fetchErr != nil {
-		return fmt.Errorf("bootstrap retries exhausted: %w", fetchErr)
+		return agentCfg, fmt.Errorf("bootstrap retries exhausted: %w", fetchErr)
 	}
 
+	return applyBootstrapResponse(agentCfg, br)
+}
+
+func applyBootstrapResponse(agentCfg agent.Config, br bootstrapResponse) (agent.Config, error) {
 	var rc renderedContent
 	if err := json.Unmarshal([]byte(br.Content), &rc); err != nil {
-		return fmt.Errorf("failed to parse bootstrap content: %w", err)
+		return agentCfg, fmt.Errorf("failed to parse bootstrap content: %w", err)
 	}
 
-	if rc.Telemetry.ChannelID == "" {
-		return agent.ErrMalformedEntity
+	telemetryChannel := rc.Telemetry.ChannelID
+	if telemetryChannel == "" {
+		telemetryChannel = rc.Channels.DataID
+	}
+	if telemetryChannel == "" {
+		telemetryChannel = rc.Channels.ID
+	}
+	if telemetryChannel == "" {
+		return agentCfg, agent.ErrMalformedEntity
 	}
 
 	// Overlay device identity from bootstrap onto the env-based config.
@@ -109,27 +127,53 @@ func Bootstrap(cfg Config, agentCfg agent.Config, logger *slog.Logger, file stri
 	if rc.DomainID != "" {
 		agentCfg.DomainID = rc.DomainID
 	}
-	agentCfg.MQTT.Username = rc.MQTT.ClientID
-	agentCfg.MQTT.Password = rc.MQTT.Secret
+	username := rc.MQTT.ClientID
+	if username == "" {
+		username = rc.MQTT.Username
+	}
+	if username != "" {
+		agentCfg.MQTT.Username = username
+	}
+	password := rc.MQTT.Secret
+	if password == "" {
+		password = rc.MQTT.Password
+	}
+	if password != "" {
+		agentCfg.MQTT.Password = password
+	}
 	if rc.MQTT.URL != "" {
 		agentCfg.MQTT.URL = rc.MQTT.URL
 	}
-	if rc.Commands.ChannelID != "" {
-		agentCfg.Channels.CtrlID = rc.Commands.ChannelID
-		agentCfg.Channels.DataID = rc.Telemetry.ChannelID
+	commandChannel := rc.Commands.ChannelID
+	if commandChannel == "" {
+		commandChannel = rc.Channels.CtrlID
+	}
+	if commandChannel != "" {
+		agentCfg.Channels.CtrlID = commandChannel
+		agentCfg.Channels.DataID = telemetryChannel
 		agentCfg.Channels.ID = ""
 	} else {
 		// Single-channel fallback: ID is used by both CtrlChan() and DataChan().
-		agentCfg.Channels.ID = rc.Telemetry.ChannelID
+		agentCfg.Channels.ID = telemetryChannel
 		agentCfg.Channels.CtrlID = ""
 		agentCfg.Channels.DataID = ""
 	}
 	agentCfg.MQTT.ClientCert = br.ClientCert
 	agentCfg.MQTT.ClientKey = br.ClientKey
 	agentCfg.MQTT.CaCert = br.CaCert
-	agentCfg.File = file
 
-	return agent.SaveConfig(agentCfg)
+	return agentCfg, nil
+}
+
+// Bootstrap preserves the legacy behavior of fetching bootstrap configuration
+// and writing it to a TOML config file.
+func Bootstrap(cfg Config, agentCfg agent.Config, logger *slog.Logger, file string) error {
+	bootCfg, err := FetchAgentConfig(cfg, agentCfg, logger)
+	if err != nil {
+		return err
+	}
+	bootCfg.File = file
+	return agent.SaveConfig(bootCfg)
 }
 
 func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) (bootstrapResponse, error) {
@@ -147,7 +191,7 @@ func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) 
 	}
 	tr := &http.Transport{TLSClientConfig: tlsCfg}
 	client := &http.Client{Transport: tr}
-	url := fmt.Sprintf("%s/%s", bsSvrURL, bsID)
+	url := bootstrapConfigURL(bsSvrURL, bsID)
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -177,4 +221,8 @@ func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) 
 	}
 
 	return br, nil
+}
+
+func bootstrapConfigURL(bsSvrURL, bsID string) string {
+	return fmt.Sprintf("%s/%s", strings.TrimRight(bsSvrURL, "/"), strings.TrimLeft(bsID, "/"))
 }

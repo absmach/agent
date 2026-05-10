@@ -13,9 +13,35 @@ template-data:
   boilerplate-file: ./tools/config/boilerplate.txt
 
 packages:
-  github.com/absmach/agent/pkg/agent:
+  github.com/absmach/agent:
     interfaces:
       Service:
+  github.com/absmach/agent/pkg/terminal:
+    interfaces:
+      Session:
+        config:
+          dir: "./mocks"
+          structname: "TerminalSession"
+          filename: "terminal_session.go"
   github.com/absmach/agent/pkg/nodered:
     interfaces:
       Client:
+  github.com/absmach/magistrala/pkg/messaging:
+    interfaces:
+      PubSub:
+        config:
+          dir: "./mocks"
+          structname: "PubSub"
+          filename: "pub_sub.go"
+  github.com/eclipse/paho.mqtt.golang:
+    interfaces:
+      Client:
+        config:
+          dir: "./mocks"
+          structname: "MQTTClient"
+          filename: "mqtt_client.go"
+      Token:
+        config:
+          dir: "./mocks"
+          structname: "MQTTToken"
+          filename: "mqtt_token.go"

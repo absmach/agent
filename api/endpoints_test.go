@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/absmach/agent/pkg/agent"
-	api "github.com/absmach/agent/pkg/agent/api"
-	agentmocks "github.com/absmach/agent/pkg/agent/mocks"
+	"github.com/absmach/agent"
+	api "github.com/absmach/agent/api"
+	agentmocks "github.com/absmach/agent/mocks"
 	"github.com/absmach/agent/pkg/nodered"
 	mglog "github.com/absmach/magistrala/logger"
 	mgerrors "github.com/absmach/magistrala/pkg/errors"

@@ -18,9 +18,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/absmach/agent/pkg/agent"
-	"github.com/absmach/agent/pkg/agent/api"
-	"github.com/absmach/agent/pkg/agent/middleware"
+	"github.com/absmach/agent"
+	"github.com/absmach/agent/api"
+	"github.com/absmach/agent/middleware"
 	"github.com/absmach/agent/pkg/bootstrap"
 	"github.com/absmach/agent/pkg/conn"
 	"github.com/absmach/agent/pkg/nodered"
@@ -94,11 +94,13 @@ func main() {
 		return
 	}
 
-	cfg, err = loadBootConfig(cfg, c, logger)
-	if err != nil {
-		logger.Error("Failed to load bootstrap config", slog.Any("error", err))
-		exitCode = 1
-		return
+	if hasBootstrapConfig(c) {
+		cfg, err = loadBootConfig(cfg, c, logger)
+		if err != nil {
+			logger.Error("Failed to load bootstrap config", slog.Any("error", err))
+			exitCode = 1
+			return
+		}
 	}
 
 	if err := validateRuntimeConfig(cfg); err != nil {
@@ -187,9 +189,13 @@ func validateRuntimeConfig(cfg agent.Config) error {
 		missing = append(missing, "server.broker_url")
 	}
 	if len(missing) > 0 {
-		return errors.New(fmt.Sprintf("%s: missing required TOML fields: %s", errInvalidRuntimeConfig, strings.Join(missing, ", ")))
+		return errors.New(fmt.Sprintf("%s: missing required runtime fields: %s", errInvalidRuntimeConfig, strings.Join(missing, ", ")))
 	}
 	return nil
+}
+
+func hasBootstrapConfig(cfg config) bool {
+	return cfg.BootstrapURL != "" || cfg.BootstrapID != "" || cfg.BootstrapKey != ""
 }
 
 func loadEnvConfig(cfg config) (agent.Config, error) {
@@ -254,7 +260,14 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 	cc := agent.ChanConfig{}
 	c := agent.NewConfig(sc, cc, nc, lc, mc, ch, ct, file)
 
-	if _, err := os.Stat(file); err == nil {
+	if hasBootstrapConfig(cfg) {
+		return c, nil
+	}
+
+	if info, err := os.Stat(file); err == nil {
+		if info.IsDir() {
+			return c, errors.New(fmt.Sprintf("config file %q is a directory", file))
+		}
 		fc, err := agent.ReadConfig(file)
 		if err != nil {
 			return c, errors.Wrap(errFailedToReadConfig, err)
@@ -387,27 +400,29 @@ func loadCertificate(cnfg agent.MQTTConfig) (agent.MQTTConfig, error) {
 		return c, nil
 	}
 
-	var caByte []byte
 	var cc []byte
 	var pk []byte
-	var err error
 
-	// Load CA cert from file
-	if c.CAPath != "" {
-		caByte, err = os.ReadFile(c.CAPath)
+	// Prefer bootstrap-provided certificate material when present.
+	if c.CaCert != "" {
+		c.CA = []byte(c.CaCert)
+	} else if c.CAPath != "" {
+		caByte, err := os.ReadFile(c.CAPath)
 		if err != nil {
 			return c, err
 		}
 		c.CA = caByte
 	}
 
-	// Load CA cert from string if file not present
-	if len(c.CA) == 0 && c.CaCert != "" {
-		c.CA = []byte(c.CaCert)
-	}
-
-	// Load client certificate from file if present
-	if c.CertPath != "" {
+	if c.ClientCert != "" && c.ClientKey != "" {
+		cc = []byte(c.ClientCert)
+		pk = []byte(c.ClientKey)
+		cert, err := tls.X509KeyPair(cc, pk)
+		if err != nil {
+			return c, err
+		}
+		c.Cert = cert
+	} else if c.CertPath != "" {
 		cc, err := os.ReadFile(c.CertPath)
 		if err != nil {
 			return c, err
@@ -416,17 +431,6 @@ func loadCertificate(cnfg agent.MQTTConfig) (agent.MQTTConfig, error) {
 		if err != nil {
 			return c, err
 		}
-		cert, err := tls.X509KeyPair(cc, pk)
-		if err != nil {
-			return c, err
-		}
-		c.Cert = cert
-	}
-
-	// Load client certificate from string if file not present
-	if c.Cert.Certificate == nil && c.ClientCert != "" {
-		cc = []byte(c.ClientCert)
-		pk = []byte(c.ClientKey)
 		cert, err := tls.X509KeyPair(cc, pk)
 		if err != nil {
 			return c, err
@@ -487,14 +491,11 @@ func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Conf
 		SkipTLS:       skipTLS,
 	}
 
-	if err := bootstrap.Bootstrap(bsConfig, c, logger, file); err != nil {
+	bsc, err := bootstrap.FetchAgentConfig(bsConfig, c, logger)
+	if err != nil {
 		return c, errors.Wrap(errFetchingBootstrapFailed, err)
 	}
-
-	bsc, err := agent.ReadConfig(file)
-	if err != nil {
-		return c, errors.Wrap(errFailedToReadConfig, err)
-	}
+	bsc.File = file
 
 	mc, err := loadCertificate(bsc.MQTT)
 	if err != nil {
