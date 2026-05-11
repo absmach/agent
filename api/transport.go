@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/absmach/agent"
+	agentui "github.com/absmach/agent/ui"
 	"github.com/absmach/magistrala"
 	mgapi "github.com/absmach/magistrala/api/http"
 	apiutil "github.com/absmach/magistrala/api/http/util"
@@ -81,6 +82,8 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, instanceID string) http
 
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health", magistrala.Health("agent", instanceID))
+
+	r.Handle("/*", agentui.Handler())
 
 	return r
 }

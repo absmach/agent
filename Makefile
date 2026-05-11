@@ -62,7 +62,7 @@ arm: all
 
 clean:
 	rm -rf ${BUILD_DIR}
-	rm -rf ui/.next
+	rm -rf ui/dist
 
 ui:
 	cd ui && npm install && npm run dev
@@ -74,7 +74,7 @@ ui_run:
 	cd ui && npm run dev
 
 ui_clean:
-	rm -rf ui/.next ui/node_modules
+	rm -rf ui/dist ui/node_modules
 
 install:
 	cp ${BUILD_DIR}/* $(GOBIN)
@@ -94,7 +94,7 @@ mocks: $(MOCKERY)
 	@$(MOCKERY) --config ./tools/config/.mockery.yaml
 
 
-$(SERVICES):
+$(SERVICES): ui_prod
 	$(call compile_service,$(@))
 
 $(DOCKERS):
@@ -106,11 +106,6 @@ $(DOCKERS_DEV):
 dockers: $(DOCKERS)
 
 dockers_dev: $(DOCKERS_DEV)
-ifeq ($(GOARCH), arm)
-	docker build --no-cache --tag=magistrala/ui-arm -f ui/docker/Dockerfile.arm ui
-else
-	docker build --no-cache --tag=magistrala/ui -f ui/docker/Dockerfile ui
-endif
 
 
 define docker_push
