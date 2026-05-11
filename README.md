@@ -92,8 +92,8 @@ Using `MG_API=https://cloud.magistrala.absmach.eu/api` points provisioning at Ma
 For bootstrap mode, the runtime env values are:
 
 ```env
-MG_AGENT_BOOTSTRAP_ID=<external-id>
-MG_AGENT_BOOTSTRAP_KEY=<external-key>
+MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<external-id>
+MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<external-key>
 MG_AGENT_BOOTSTRAP_URL=http://bootstrap:9013/clients/bootstrap
 ```
 
@@ -181,8 +181,8 @@ make dockers_dev
 Start FluxMQ (or use an existing Magistrala FluxMQ instance), then run the agent with bootstrap env vars:
 
 ```bash
-MG_AGENT_BOOTSTRAP_ID=<external-id> \
-MG_AGENT_BOOTSTRAP_KEY=<external-key> \
+MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<external-id> \
+MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<external-key> \
 MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/clients/bootstrap \
 build/magistrala-agent
 ```
@@ -191,7 +191,7 @@ build/magistrala-agent
 
 In the normal runtime flow, configuration is built from environment variables plus the rendered bootstrap profile. Environment variables provide local infrastructure settings, such as HTTP port, FluxMQ URL, Node-RED URL, MQTT TLS options, and bootstrap credentials. The rendered bootstrap profile provides device identity, domain ID, MQTT credentials, and telemetry/commands channel IDs.
 
-The legacy `config.toml` fallback still exists for local development, but bootstrap mode skips reading the file when `MG_AGENT_BOOTSTRAP_URL`, `MG_AGENT_BOOTSTRAP_ID`, and `MG_AGENT_BOOTSTRAP_KEY` are all set.
+The legacy `config.toml` fallback still exists for local development, but bootstrap mode skips reading the file when `MG_AGENT_BOOTSTRAP_URL`, `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`, and `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` are all set.
 
 Environment variables:
 
@@ -214,8 +214,8 @@ Environment variables:
 | `MG_AGENT_HEARTBEAT_INTERVAL` | Expected heartbeat interval | `10s` |
 | `MG_AGENT_TERMINAL_SESSION_TIMEOUT` | Terminal session timeout | `60s` |
 | `MG_AGENT_BOOTSTRAP_URL` | Bootstrap base URL | |
-| `MG_AGENT_BOOTSTRAP_ID` | Bootstrap external ID | |
-| `MG_AGENT_BOOTSTRAP_KEY` | Bootstrap external key | |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_ID` | Bootstrap external ID | |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` | Bootstrap external key | |
 | `MG_AGENT_BOOTSTRAP_RETRIES` | Bootstrap fetch retries | `5` |
 | `MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS` | Bootstrap retry delay in seconds | `10` |
 | `MG_AGENT_BOOTSTRAP_SKIP_TLS` | Skip TLS verification for bootstrap fetch | `false` |

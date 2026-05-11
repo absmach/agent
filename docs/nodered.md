@@ -116,8 +116,8 @@ This will:
 
 ```env
 MG_AGENT_BOOTSTRAP_URL=http://bootstrap:9013/clients/bootstrap
-MG_AGENT_BOOTSTRAP_ID=<external-id>
-MG_AGENT_BOOTSTRAP_KEY=<external-key>
+MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<external-id>
+MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<external-key>
 ```
 
 Then restart the agent:
@@ -262,6 +262,6 @@ Device identity, MQTT credentials, domain ID, and telemetry/commands channel IDs
 |----------|---------|-------------|
 | `MG_AGENT_NODERED_URL` | `http://localhost:1880/` | Node-RED REST API base URL |
 | `MG_AGENT_BOOTSTRAP_URL` | `http://bootstrap:9013/clients/bootstrap` | Bootstrap fetch URL |
-| `MG_AGENT_BOOTSTRAP_ID` | | Bootstrap external ID |
-| `MG_AGENT_BOOTSTRAP_KEY` | | Bootstrap external key |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_ID` | | Bootstrap external ID |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` | | Bootstrap external key |
 | `MG_UI_PORT` | `3002` | Agent UI port |

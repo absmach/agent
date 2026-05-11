@@ -34,28 +34,28 @@ import (
 )
 
 type config struct {
-	ConfigFile          string `env:"MG_AGENT_CONFIG_FILE" envDefault:"config.toml"`
-	LogLevel            string `env:"MG_AGENT_LOG_LEVEL" envDefault:"info"`
-	NodeRedURL          string `env:"MG_AGENT_NODERED_URL" envDefault:"http://localhost:1880/"`
-	MqttURL             string `env:"MG_AGENT_MQTT_URL" envDefault:"localhost:1883"`
-	HTTPPort            string `env:"MG_AGENT_HTTP_PORT" envDefault:"9999"`
-	AgentPort           string `env:"MG_AGENT_PORT" envDefault:""`
-	BrokerURL           string `env:"MG_AGENT_BROKER_URL" envDefault:"amqp://guest:guest@localhost:5682/"`
-	MqttSkipTLSVer      string `env:"MG_AGENT_MQTT_SKIP_TLS" envDefault:"true"`
-	MqttMTLS            string `env:"MG_AGENT_MQTT_MTLS" envDefault:"false"`
-	MqttCA              string `env:"MG_AGENT_MQTT_CA" envDefault:"ca.crt"`
-	MqttQoS             string `env:"MG_AGENT_MQTT_QOS" envDefault:"0"`
-	MqttRetain          string `env:"MG_AGENT_MQTT_RETAIN" envDefault:"false"`
-	MqttCert            string `env:"MG_AGENT_MQTT_CLIENT_CERT" envDefault:"client.cert"`
-	MqttPrivateKey      string `env:"MG_AGENT_MQTT_CLIENT_KEY" envDefault:"client.key"`
-	HeartbeatInterval   string `env:"MG_AGENT_HEARTBEAT_INTERVAL" envDefault:"10s"`
-	TermSessionTimeout  string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT" envDefault:"60s"`
-	BootstrapURL        string `env:"MG_AGENT_BOOTSTRAP_URL" envDefault:""`
-	BootstrapID         string `env:"MG_AGENT_BOOTSTRAP_ID" envDefault:""`
-	BootstrapKey        string `env:"MG_AGENT_BOOTSTRAP_KEY" envDefault:""`
-	BootstrapRetries    string `env:"MG_AGENT_BOOTSTRAP_RETRIES" envDefault:"5"`
-	BootstrapRetryDelay string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
-	BootstrapSkipTLS    string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS" envDefault:"false"`
+	ConfigFile           string `env:"MG_AGENT_CONFIG_FILE" envDefault:"config.toml"`
+	LogLevel             string `env:"MG_AGENT_LOG_LEVEL" envDefault:"info"`
+	NodeRedURL           string `env:"MG_AGENT_NODERED_URL" envDefault:"http://localhost:1880/"`
+	MqttURL              string `env:"MG_AGENT_MQTT_URL" envDefault:"localhost:1883"`
+	HTTPPort             string `env:"MG_AGENT_HTTP_PORT" envDefault:"9999"`
+	AgentPort            string `env:"MG_AGENT_PORT" envDefault:""`
+	BrokerURL            string `env:"MG_AGENT_BROKER_URL" envDefault:"amqp://guest:guest@localhost:5682/"`
+	MqttSkipTLSVer       string `env:"MG_AGENT_MQTT_SKIP_TLS" envDefault:"true"`
+	MqttMTLS             string `env:"MG_AGENT_MQTT_MTLS" envDefault:"false"`
+	MqttCA               string `env:"MG_AGENT_MQTT_CA" envDefault:"ca.crt"`
+	MqttQoS              string `env:"MG_AGENT_MQTT_QOS" envDefault:"0"`
+	MqttRetain           string `env:"MG_AGENT_MQTT_RETAIN" envDefault:"false"`
+	MqttCert             string `env:"MG_AGENT_MQTT_CLIENT_CERT" envDefault:"client.cert"`
+	MqttPrivateKey       string `env:"MG_AGENT_MQTT_CLIENT_KEY" envDefault:"client.key"`
+	HeartbeatInterval    string `env:"MG_AGENT_HEARTBEAT_INTERVAL" envDefault:"10s"`
+	TermSessionTimeout   string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT" envDefault:"60s"`
+	BootstrapURL         string `env:"MG_AGENT_BOOTSTRAP_URL" envDefault:""`
+	BootstrapExternalID  string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_ID" envDefault:""`
+	BootstrapExternalKey string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_KEY" envDefault:""`
+	BootstrapRetries     string `env:"MG_AGENT_BOOTSTRAP_RETRIES" envDefault:"5"`
+	BootstrapRetryDelay  string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
+	BootstrapSkipTLS     string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS" envDefault:"false"`
 }
 
 var (
@@ -197,7 +197,7 @@ func validateRuntimeConfig(cfg agent.Config) error {
 }
 
 func hasBootstrapConfig(cfg config) bool {
-	return cfg.BootstrapURL != "" && cfg.BootstrapID != "" && cfg.BootstrapKey != ""
+	return cfg.BootstrapURL != "" && cfg.BootstrapExternalID != "" && cfg.BootstrapExternalKey != ""
 }
 
 func loadEnvConfig(cfg config) (agent.Config, error) {
@@ -472,8 +472,18 @@ func initLogger(levelText string) (*slog.Logger, error) {
 
 func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Config, error) {
 	file := cfg.ConfigFile
-	if cfg.BootstrapURL == "" || cfg.BootstrapID == "" || cfg.BootstrapKey == "" {
-		return c, errors.New("MG_AGENT_BOOTSTRAP_URL, MG_AGENT_BOOTSTRAP_ID and MG_AGENT_BOOTSTRAP_KEY are required")
+	missing := []string{}
+	if cfg.BootstrapURL == "" {
+		missing = append(missing, "MG_AGENT_BOOTSTRAP_URL")
+	}
+	if cfg.BootstrapExternalID == "" {
+		missing = append(missing, "MG_AGENT_BOOTSTRAP_EXTERNAL_ID")
+	}
+	if cfg.BootstrapExternalKey == "" {
+		missing = append(missing, "MG_AGENT_BOOTSTRAP_EXTERNAL_KEY")
+	}
+	if len(missing) > 0 {
+		return c, errors.New(fmt.Sprintf("bootstrap configuration is incomplete: missing %s", strings.Join(missing, ", ")))
 	}
 
 	skipTLS, err := strconv.ParseBool(cfg.BootstrapSkipTLS)
@@ -483,8 +493,8 @@ func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Conf
 
 	bsConfig := bootstrap.Config{
 		URL:           cfg.BootstrapURL,
-		ID:            cfg.BootstrapID,
-		Key:           cfg.BootstrapKey,
+		ID:            cfg.BootstrapExternalID,
+		Key:           cfg.BootstrapExternalKey,
 		Retries:       cfg.BootstrapRetries,
 		RetryDelaySec: cfg.BootstrapRetryDelay,
 		SkipTLS:       skipTLS,

@@ -43,7 +43,7 @@ toml_value() {
 }
 
 bootstrap_exports() {
-    if [ -z "${MG_AGENT_BOOTSTRAP_URL:-}" ] || [ -z "${MG_AGENT_BOOTSTRAP_ID:-}" ] || [ -z "${MG_AGENT_BOOTSTRAP_KEY:-}" ]; then
+    if [ -z "${MG_AGENT_BOOTSTRAP_URL:-}" ] || [ -z "${MG_AGENT_BOOTSTRAP_EXTERNAL_ID:-}" ] || [ -z "${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY:-}" ]; then
         return 0
     fi
 
@@ -52,8 +52,8 @@ const http = require("http");
 const https = require("https");
 
 const baseURL = process.env.MG_AGENT_BOOTSTRAP_URL || "";
-const bootstrapID = process.env.MG_AGENT_BOOTSTRAP_ID || "";
-const bootstrapKey = process.env.MG_AGENT_BOOTSTRAP_KEY || "";
+const bootstrapID = process.env.MG_AGENT_BOOTSTRAP_EXTERNAL_ID || "";
+const bootstrapKey = process.env.MG_AGENT_BOOTSTRAP_EXTERNAL_KEY || "";
 const skipTLS = process.env.MG_AGENT_BOOTSTRAP_SKIP_TLS === "true";
 const retries = Math.max(parseInt(process.env.MG_AGENT_BOOTSTRAP_RETRIES || "5", 10) || 1, 1);
 const retryDelaySec = Math.max(parseInt(process.env.MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS || "10", 10) || 0, 0);
