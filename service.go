@@ -51,7 +51,7 @@ var (
 	errInvalidCommand = errors.New("invalid command")
 
 	// ErrMalformedEntity indicates malformed entity specification.
-	ErrMalformedEntity = errors.New("malformed entity specification")
+	ErrMalformedEntity = errors.ErrMalformedEntity
 
 	// ErrInvalidQueryParams indicates malformed URL.
 	ErrInvalidQueryParams = errors.New("invalid query params")

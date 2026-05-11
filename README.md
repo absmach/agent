@@ -11,7 +11,14 @@
   <img width="30%" height="30%" src="./docs/img/agent.png">
 </p>
 
-Magistrala IoT Agent is a communication, execution and software management agent for the [Magistrala][magistrala] IoT platform. It runs on edge devices and bridges local services (Node-RED, terminal) with the Magistrala cloud over MQTT. A built-in web UI is included for local management.
+Magistrala IoT Agent is a communication, execution and software management agent for the [Magistrala][magistrala] IoT platform. It runs on edge devices and bridges local services (Node-RED, terminal) with a Magistrala deployment over MQTT. That Magistrala deployment can be local or cloud-hosted. A built-in web UI is included for local management.
+
+## MQTT and Local Messaging
+
+The agent uses two messaging paths:
+
+- **MQTT** is used for the Magistrala-facing control and data plane. The agent connects to the MQTT broker from the rendered bootstrap profile or environment config, subscribes for commands on `m/<domain-id>/c/<commands-channel-id>/req`, and publishes responses on the commands channel plus data messages on the telemetry channel. This MQTT broker can be a local Magistrala deployment or Magistrala Cloud.
+- **FluxMQ over AMQP** is used for local gateway service messaging. The agent subscribes to local heartbeat messages on the FluxMQ-backed message bus so nearby services can report liveness without the agent polling them.
 
 ## Install
 
@@ -30,7 +37,7 @@ The binary is written to `build/magistrala-agent`.
 
 ## Running with Docker
 
-The recommended way to run agent is with the provided Docker Compose stack, which also starts Node-RED, FluxMQ, and Mosquitto.
+The recommended way to run agent is with the provided Docker Compose stack, which also starts Node-RED, FluxMQ, and the Agent UI.
 
 ### 1. Provision Magistrala resources
 
@@ -93,9 +100,9 @@ MG_AGENT_BOOTSTRAP_URL=http://bootstrap:9013/clients/bootstrap
 You can fetch the rendered bootstrap response directly:
 
 ```bash
-postman request 'http://localhost:9013/clients/bootstrap/01:6:0:sb:sa' \
-  --header 'accept: */*' \
-  --header 'Authorization: Client secret'
+curl -s 'http://localhost:9013/clients/bootstrap/01:6:0:sb:sa' \
+  -H 'accept: */*' \
+  -H 'Authorization: Client secret'
 ```
 
 The bootstrap endpoint returns a wrapper object. The agent parses the JSON string in `content`:
@@ -184,7 +191,7 @@ build/magistrala-agent
 
 In the normal runtime flow, configuration is built from environment variables plus the rendered bootstrap profile. Environment variables provide local infrastructure settings, such as HTTP port, FluxMQ URL, Node-RED URL, MQTT TLS options, and bootstrap credentials. The rendered bootstrap profile provides device identity, domain ID, MQTT credentials, and telemetry/commands channel IDs.
 
-The legacy `config.toml` fallback still exists for local development, but bootstrap mode skips reading the file when `MG_AGENT_BOOTSTRAP_URL`, `MG_AGENT_BOOTSTRAP_ID`, or `MG_AGENT_BOOTSTRAP_KEY` is set.
+The legacy `config.toml` fallback still exists for local development, but bootstrap mode skips reading the file when `MG_AGENT_BOOTSTRAP_URL`, `MG_AGENT_BOOTSTRAP_ID`, and `MG_AGENT_BOOTSTRAP_KEY` are all set.
 
 Environment variables:
 
@@ -215,7 +222,7 @@ Environment variables:
 
 ## MQTT Message Format
 
-Agent subscribes to `m/<domain-id>/c/<commands-channel-id>/req`.
+Agent uses MQTT against the configured Magistrala MQTT broker. It subscribes to `m/<domain-id>/c/<commands-channel-id>/req`.
 
 All messages use [SenML][senml] JSON array format:
 
@@ -271,7 +278,7 @@ Responses are published to `m/<domain-id>/c/<commands-channel-id>/res`.
 
 ## Node-RED Integration
 
-Agent can manage Node-RED flows running on the same device. Flows can be deployed either via the Node-RED UI directly, via the agent's HTTP API (local), or remotely from the Magistrala cloud over MQTT.
+Agent can manage Node-RED flows running on the same device. Flows can be deployed either via the Node-RED UI directly, via the agent's HTTP API (local), or from Magistrala over MQTT.
 
 ### Via HTTP (local)
 
@@ -308,7 +315,7 @@ curl -s -X POST http://localhost:9999/nodered \
   -d '{"command":"nodered-state"}'
 ```
 
-### Via MQTT (from Magistrala cloud)
+### Via MQTT (from Magistrala)
 
 ```bash
 FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
@@ -341,7 +348,7 @@ curl -s http://localhost:9999/services
 
 ## How to Save Export Config via Agent
 
-Agent can push an export service config file from cloud to gateway via MQTT. Bootstrap mode does not update the agent runtime config this way.
+Agent can push an export service config file from Magistrala to the gateway via MQTT. Bootstrap mode does not update the agent runtime config this way.
 
 ```bash
 mosquitto_pub \

@@ -136,8 +136,7 @@ release:
 	done
 	$(call docker_push,$(version))
 
-run_provision:
-	@bash scripts/provision.sh
+run_provision: provision
 
 provision:
 	@bash scripts/provision.sh

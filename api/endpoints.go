@@ -29,9 +29,9 @@ func pubEndpoint(svc agent.Service) endpoint.Endpoint {
 			return nil, err
 		}
 
-		return genericRes{
+		return publishRes{
 			Service:  "agent",
-			Response: "config",
+			Response: "publish",
 		}, nil
 	}
 }
@@ -81,7 +81,7 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 			return nil, err
 		}
 
-		return genericRes{
+		return addConfigRes{
 			Service:  "agent",
 			Response: "config",
 		}, nil
@@ -90,14 +90,13 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 
 func viewConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 	return func(_ context.Context, request any) (any, error) {
-		c := svc.Config()
-		return c, nil
+		return viewConfigRes{Config: svc.Config()}, nil
 	}
 }
 
 func viewServicesEndpoint(svc agent.Service) endpoint.Endpoint {
 	return func(_ context.Context, request any) (any, error) {
-		return svc.Services(), nil
+		return viewServicesRes(svc.Services()), nil
 	}
 }
 
@@ -122,7 +121,7 @@ func nodeRedEndpoint(svc agent.Service) endpoint.Endpoint {
 			return nil, err
 		}
 
-		return genericRes{
+		return nodeRedRes{
 			Service:  "agent",
 			Response: resp,
 		}, nil

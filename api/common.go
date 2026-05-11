@@ -3,34 +3,89 @@
 
 package api
 
-type serverConfig struct {
-	Port string `json:"port"`
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+
+	"github.com/absmach/magistrala"
+	"github.com/absmach/magistrala/pkg/errors"
+)
+
+const (
+	// ContentType represents JSON content type.
+	ContentType = "application/json"
+)
+
+// EncodeResponse encodes successful response.
+func EncodeResponse(_ context.Context, w http.ResponseWriter, response any) error {
+	if ar, ok := response.(magistrala.Response); ok {
+		for k, v := range ar.Headers() {
+			w.Header().Set(k, v)
+		}
+		w.Header().Set("Content-Type", ContentType)
+		w.WriteHeader(ar.Code())
+
+		if ar.Empty() {
+			return nil
+		}
+	}
+
+	return json.NewEncoder(w).Encode(response)
 }
 
-type chanConfig struct {
-	ID string `json:"id"`
-}
+// EncodeError encodes an error response.
+func EncodeError(_ context.Context, err error, w http.ResponseWriter) {
+	w.Header().Set("Content-Type", ContentType)
+	if sdkErr, ok := err.(errors.SDKError); ok {
+		w.WriteHeader(sdkErr.StatusCode())
+		if err := json.NewEncoder(w).Encode(sdkErr); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
 
-type noderedConfig struct {
-	Url string `json:"url"`
-}
-
-type logConfig struct {
-	Level string `json:"level"`
-}
-
-type mqttConfig struct {
-	Url      string `json:"url"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	QoS      byte   `json:"qos"`
-}
-
-// Config struct of Magistrala Agent.
-type agentConfig struct {
-	Server   serverConfig  `json:"server"`
-	Channels chanConfig    `json:"channels"`
-	NodeRed  noderedConfig `json:"nodered"`
-	Log      logConfig     `json:"log"`
-	Mqtt     mqttConfig    `json:"mqtt"`
+	switch retErr := err.(type) {
+	case *errors.RequestError:
+		w.WriteHeader(http.StatusBadRequest)
+		if err := json.NewEncoder(w).Encode(retErr); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	case *errors.AuthNError:
+		w.WriteHeader(http.StatusUnauthorized)
+		if err := json.NewEncoder(w).Encode(retErr); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	case *errors.AuthZError:
+		w.WriteHeader(http.StatusForbidden)
+		if err := json.NewEncoder(w).Encode(retErr); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	case *errors.MediaTypeError:
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+		if err := json.NewEncoder(w).Encode(retErr); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	case *errors.ServiceError:
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		if err := json.NewEncoder(w).Encode(retErr); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	case *errors.NotFoundError:
+		w.WriteHeader(http.StatusNotFound)
+		if err := json.NewEncoder(w).Encode(retErr); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	case *errors.InternalError:
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	default:
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }

@@ -92,6 +92,7 @@ func TestPublish(t *testing.T) {
 		desc      string
 		req       string
 		status    int
+		response  string
 		mockSetup func(*agentmocks.Service)
 		err       error
 	}{
@@ -101,7 +102,8 @@ func TestPublish(t *testing.T) {
 				"payload": "payload",
 				"topic":   "topic",
 			}),
-			status: http.StatusOK,
+			status:   http.StatusOK,
+			response: "publish",
 			mockSetup: func(svc *agentmocks.Service) {
 				svc.On("Publish", "topic", "payload").Return(nil)
 			},
@@ -109,13 +111,13 @@ func TestPublish(t *testing.T) {
 		{
 			desc:   "publish malformed request",
 			req:    toJSON(map[string]string{"payload": "payload"}),
-			status: http.StatusInternalServerError,
+			status: http.StatusBadRequest,
 			err:    agent.ErrMalformedEntity,
 		},
 		{
 			desc:   "publish invalid json",
 			req:    "}",
-			status: http.StatusInternalServerError,
+			status: http.StatusBadRequest,
 		},
 		{
 			desc: "publish service error",
@@ -160,7 +162,7 @@ func TestPublish(t *testing.T) {
 			err = json.NewDecoder(res.Body).Decode(&body)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error while decoding response body: %s", tc.desc, err))
 			assert.Equal(t, "agent", body.Service)
-			assert.Equal(t, "config", body.Response)
+			assert.Equal(t, tc.response, body.Response)
 		})
 	}
 }
@@ -192,13 +194,13 @@ func TestExec(t *testing.T) {
 		{
 			desc:   "execute malformed request",
 			req:    toJSON(map[string]string{"bn": "device:", "n": "wrong", "vs": "ls"}),
-			status: http.StatusInternalServerError,
+			status: http.StatusBadRequest,
 			err:    agent.ErrMalformedEntity,
 		},
 		{
 			desc:   "execute invalid json",
 			req:    "}",
-			status: http.StatusInternalServerError,
+			status: http.StatusBadRequest,
 		},
 		{
 			desc: "execute service error",
@@ -262,6 +264,7 @@ func TestAddConfig(t *testing.T) {
 		desc      string
 		req       string
 		status    int
+		response  string
 		mockSetup func(*agentmocks.Service)
 		err       error
 	}{
@@ -278,7 +281,8 @@ func TestAddConfig(t *testing.T) {
 					"password": "new-pass",
 				},
 			}),
-			status: http.StatusOK,
+			status:   http.StatusOK,
+			response: "config",
 			mockSetup: func(svc *agentmocks.Service) {
 				svc.On("Config").Return(current)
 				svc.On("AddConfig", mock.AnythingOfType("agent.Config")).Return(nil)
@@ -287,13 +291,13 @@ func TestAddConfig(t *testing.T) {
 		{
 			desc:   "add config malformed request",
 			req:    toJSON(map[string]any{"server": map[string]string{"port": ""}}),
-			status: http.StatusInternalServerError,
+			status: http.StatusBadRequest,
 			err:    agent.ErrMalformedEntity,
 		},
 		{
 			desc:   "add config invalid json",
 			req:    "}",
-			status: http.StatusInternalServerError,
+			status: http.StatusBadRequest,
 		},
 		{
 			desc: "add config service error",
@@ -346,7 +350,7 @@ func TestAddConfig(t *testing.T) {
 			err = json.NewDecoder(res.Body).Decode(&body)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error while decoding response body: %s", tc.desc, err))
 			assert.Equal(t, "agent", body.Service)
-			assert.Equal(t, "config", body.Response)
+			assert.Equal(t, tc.response, body.Response)
 		})
 	}
 }
@@ -438,13 +442,13 @@ func TestNodeRed(t *testing.T) {
 		{
 			desc:   "nodered malformed request",
 			req:    toJSON(map[string]string{"command": ""}),
-			status: http.StatusInternalServerError,
+			status: http.StatusBadRequest,
 			err:    agent.ErrMalformedEntity,
 		},
 		{
 			desc:   "nodered invalid json",
 			req:    "}",
-			status: http.StatusInternalServerError,
+			status: http.StatusBadRequest,
 		},
 		{
 			desc:   "nodered conflict",

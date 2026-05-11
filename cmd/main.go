@@ -179,11 +179,13 @@ func validateRuntimeConfig(cfg agent.Config) error {
 	if cfg.MQTT.URL == "" {
 		missing = append(missing, "mqtt.url")
 	}
-	if cfg.MQTT.Username == "" {
-		missing = append(missing, "mqtt.username")
-	}
-	if cfg.MQTT.Password == "" {
-		missing = append(missing, "mqtt.password")
+	if !cfg.MQTT.MTLS {
+		if cfg.MQTT.Username == "" {
+			missing = append(missing, "mqtt.username")
+		}
+		if cfg.MQTT.Password == "" {
+			missing = append(missing, "mqtt.password")
+		}
 	}
 	if cfg.Server.BrokerURL == "" {
 		missing = append(missing, "server.broker_url")
@@ -195,7 +197,7 @@ func validateRuntimeConfig(cfg agent.Config) error {
 }
 
 func hasBootstrapConfig(cfg config) bool {
-	return cfg.BootstrapURL != "" || cfg.BootstrapID != "" || cfg.BootstrapKey != ""
+	return cfg.BootstrapURL != "" && cfg.BootstrapID != "" && cfg.BootstrapKey != ""
 }
 
 func loadEnvConfig(cfg config) (agent.Config, error) {
@@ -317,9 +319,6 @@ func mergeConfig(defaults, file agent.Config) agent.Config {
 	}
 	if c.MQTT.PrivKeyPath == "" {
 		c.MQTT.PrivKeyPath = defaults.MQTT.PrivKeyPath
-	}
-	if c.MQTT.QoS == 0 {
-		c.MQTT.QoS = defaults.MQTT.QoS
 	}
 	if c.Heartbeat.Interval <= 0 {
 		c.Heartbeat.Interval = defaults.Heartbeat.Interval

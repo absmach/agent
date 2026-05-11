@@ -160,7 +160,7 @@ func TestBootstrapConfigURL(t *testing.T) {
 			url:     "http://bootstrap:9013/clients/bootstrap/01:6:0:sb:sa",
 		},
 		{
-			desc:    "trim duplicate slashes",
+			desc:    "trim all leading slashes from id",
 			baseURL: "http://bootstrap:9013/clients/bootstrap//",
 			id:      "//client-id",
 			url:     "http://bootstrap:9013/clients/bootstrap/client-id",
