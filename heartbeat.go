@@ -78,5 +78,7 @@ func (s *svc) Update() {
 }
 
 func (s *svc) Info() Info {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.info
 }
