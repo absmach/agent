@@ -83,7 +83,13 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, instanceID string) http
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health", magistrala.Health("agent", instanceID))
 
-	r.Handle("/*", agentui.Handler())
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui/", http.StatusFound)
+	})
+	r.Get("/ui", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui/", http.StatusFound)
+	})
+	r.Handle("/ui/*", http.StripPrefix("/ui", agentui.Handler()))
 
 	return r
 }

@@ -7,6 +7,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"path"
 	"strings"
 )
 
@@ -25,12 +26,27 @@ func Handler() http.Handler {
 		if name == "" {
 			name = "index.html"
 		}
-		if _, err := sub.Open(name); err != nil {
+
+		file, err := sub.Open(name)
+		if err == nil {
+			_ = file.Close()
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.NotFound(w, r)
+			return
+		}
+		if path.Ext(name) != "" || !strings.Contains(r.Header.Get("Accept"), "text/html") {
+			http.NotFound(w, r)
+			return
+		}
+
+		{
 			r2 := r.Clone(r.Context())
 			r2.URL.Path = "/index.html"
 			fileServer.ServeHTTP(w, r2)
-			return
 		}
-		fileServer.ServeHTTP(w, r)
 	})
 }

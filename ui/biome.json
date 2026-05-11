@@ -3,6 +3,11 @@
   "files": {
     "includes": ["**", "!dist", "!node_modules", "!**/*.test.*"]
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "assist": {
     "actions": {
       "source": {

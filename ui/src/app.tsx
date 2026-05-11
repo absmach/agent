@@ -8,17 +8,19 @@ import { ExecPage } from "@/pages/exec";
 import { HomePage } from "@/pages/home";
 import { NodeRedPage } from "@/pages/nodered";
 import { ServicesPage } from "@/pages/services";
+import { UI_BASE } from "@/routes";
 
 export function App() {
   return (
     <LocationProvider>
       <Shell>
         <Router>
-          <Route path="/" component={HomePage} />
-          <Route path="/config" component={ConfigPage} />
-          <Route path="/services" component={ServicesPage} />
-          <Route path="/exec" component={ExecPage} />
-          <Route path="/nodered" component={NodeRedPage} />
+          <Route path={`${UI_BASE}/`} component={HomePage} />
+          <Route path={UI_BASE} component={HomePage} />
+          <Route path={`${UI_BASE}/config`} component={ConfigPage} />
+          <Route path={`${UI_BASE}/services`} component={ServicesPage} />
+          <Route path={`${UI_BASE}/exec`} component={ExecPage} />
+          <Route path={`${UI_BASE}/nodered`} component={NodeRedPage} />
         </Router>
       </Shell>
     </LocationProvider>

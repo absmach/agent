@@ -3,45 +3,76 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(0.975 0 248);
-  --foreground: oklch(0.137 0.036 258.5);
+  --background: #f0f4f8;
+  --foreground: #0d1b2a;
 
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.137 0.036 258.5);
+  --card: #ffffff;
+  --card-foreground: #0d1b2a;
 
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 258);
+  --popover: #ffffff;
+  --popover-foreground: #0d1b2a;
 
-  --primary: oklch(0.334 0.093 252);
-  --primary-foreground: oklch(0.985 0 248);
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
 
-  --secondary: oklch(0.97 0 248);
-  --secondary-foreground: oklch(0.205 0 265);
+  --secondary: #f0f4f8;
+  --secondary-foreground: #0d1b2a;
 
-  --muted: oklch(0.97 0 248);
-  --muted-foreground: oklch(0.556 0 258);
+  --muted: #f0f4f8;
+  --muted-foreground: #5a7184;
 
-  --accent: oklch(0.969 0.009 235);
-  --accent-foreground: oklch(0.205 0 265);
+  --accent: #eff6ff;
+  --accent-foreground: #0d1b2a;
 
-  --destructive: oklch(0.637 0.245 25.3);
-  --destructive-foreground: oklch(0.984 0 248);
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
 
-  --success: oklch(0.527 0.154 150.1);
-  --success-foreground: oklch(0.984 0 248);
+  --success: #059669;
+  --success-foreground: #ffffff;
 
-  --border: oklch(0.929 0 255.5);
-  --input: oklch(0.929 0 255.5);
-  --ring: oklch(0.334 0.093 252);
-  --radius: 0.625rem;
+  --border: #dde3ea;
+  --input: #dde3ea;
+  --ring: #2563eb;
+  --radius: 0.5rem;
 
-  --sidebar-bg: oklch(0.334 0.093 252);
-  --sidebar-fg: oklch(0.968 0 286.4);
-  --sidebar-active-bg: oklch(1 0 0 / 0.12);
-  --sidebar-hover-bg: oklch(1 0 0 / 0.08);
-  --sidebar-section: oklch(1 0 0 / 0.45);
-  --sidebar-width: 240px;
-  --topbar-height: 56px;
+  --nav-bg: #0d1b2a;
+  --nav-border: rgb(255 255 255 / 0.07);
+}
+
+.dark {
+  --background: #0b1526;
+  --foreground: #dce6f0;
+
+  --card: #132035;
+  --card-foreground: #dce6f0;
+
+  --popover: #132035;
+  --popover-foreground: #dce6f0;
+
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+
+  --secondary: #1a2b42;
+  --secondary-foreground: #dce6f0;
+
+  --muted: #1a2b42;
+  --muted-foreground: #7a9ab8;
+
+  --accent: #1e3a5f;
+  --accent-foreground: #dce6f0;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --success: #10b981;
+  --success-foreground: #ffffff;
+
+  --border: #243450;
+  --input: #243450;
+  --ring: #60a5fa;
+
+  --nav-bg: #070e1c;
+  --nav-border: rgb(255 255 255 / 0.06);
 }
 
 @theme inline {
@@ -79,8 +110,6 @@
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
-  font-family:
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
 }

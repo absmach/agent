@@ -58,7 +58,7 @@ all: $(SERVICES)
 arm: GOARCH=arm64
 arm: all
 
-.PHONY: all arm $(SERVICES) dockers dockers_dev ui ui_prod ui_run latest release mocks
+.PHONY: all arm $(SERVICES) dockers dockers_dev ui ui_prod ui_run ui_clean latest release mocks
 
 clean:
 	rm -rf ${BUILD_DIR}
@@ -79,7 +79,7 @@ ui_clean:
 install:
 	cp ${BUILD_DIR}/* $(GOBIN)
 
-test:
+test: ui_prod
 	go test -v -race -count 1 -tags test $(shell go list ./... | grep -v 'vendor\|cmd')
 
 $(MOCKERY):

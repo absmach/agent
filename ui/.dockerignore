@@ -4,13 +4,12 @@
 node_modules/
 
 # Build output — Docker rebuilds inside the image
-.next/
+dist/
 out/
 
-# Elm legacy files (not needed by Next.js build)
+# Elm legacy files
 elm-stuff/
 main.js
-src/
 
 # Local env overrides — use Docker env vars instead
 .env.local

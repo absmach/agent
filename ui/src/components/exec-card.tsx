@@ -126,10 +126,7 @@ export function ExecCard() {
       </div>
 
       {/* Terminal body */}
-      <div
-        className="min-h-72 max-h-[28rem] overflow-y-auto bg-zinc-900 p-4 font-mono text-sm cursor-text"
-        onClick={() => inputRef.current?.focus()}
-      >
+      <div className="min-h-72 max-h-[28rem] overflow-y-auto bg-zinc-900 p-4 font-mono text-sm">
         {history.length === 0 && !loading && (
           <p className="text-zinc-500 text-xs">
             Type a command and press{" "}
@@ -184,8 +181,6 @@ export function ExecCard() {
               onKeyDown={handleKeyDown}
               className="min-w-0 flex-1 bg-transparent text-zinc-100 outline-none caret-green-400 placeholder:text-zinc-600"
               placeholder="enter command…"
-              // biome-ignore lint/a11y/noAutofocus: terminal UX requires autofocus
-              // biome-ignore lint/a11y/noAutofocus: terminal UX requires autofocus
               autofocus
               spellcheck={false}
               autocomplete="off"

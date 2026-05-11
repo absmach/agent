@@ -1,9 +1,8 @@
 # Copyright (c) Abstract Machines
 # SPDX-License-Identifier: Apache-2.0
 
-# Stage 1 — install deps and build the Next.js app
+# Stage 1 — install deps and build the Vite app
 FROM node:22-alpine AS builder
-ENV NEXT_TELEMETRY_DISABLED=1
 
 WORKDIR /app
 
@@ -13,26 +12,10 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# Stage 2 — minimal production image
-FROM node:22-alpine AS runner
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV NODE_ENV=production
+# Stage 2 — minimal static server
+FROM nginx:1.27-alpine AS runner
 
-WORKDIR /app
-
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
-
-# Next.js standalone output bundles everything needed to run the server
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
-USER nextjs
+COPY --from=builder /app/dist /usr/share/nginx/html/ui
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 3000
-
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["node", "server.js"]

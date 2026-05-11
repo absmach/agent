@@ -1,18 +1,13 @@
 // Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
+import { CheckCircle, Settings, XCircle } from "lucide-react";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { CheckCircle, Settings, XCircle } from "lucide-react";
-import { useCallback, useEffect, useState } from "preact/hooks";
 
 interface Config {
   httpPort: string;

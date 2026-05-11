@@ -2,11 +2,11 @@ build
 cmd/config.toml
 configs/config.toml
 
-# UI (Next.js)
+# UI (Vite/Preact)
 ui/node_modules/
-ui/.next/
 ui/.env.local
 ui/tsconfig.tsbuildinfo
+# ui/dist is intentionally left unignored because ui/embed.go embeds it into the Go binary.
 
 # Node-RED runtime-generated files (do not commit)
 docker/nodered/.config.nodes.json
