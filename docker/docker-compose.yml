@@ -65,12 +65,12 @@ services:
       - fluxmq
       - nodered
     ports:
-      - "${MG_AGENT_PORT}:${MG_AGENT_PORT}"
+      - "${MG_AGENT_HTTP_PORT}:${MG_AGENT_HTTP_PORT}"
     networks:
       - magistrala-agent-base-net
     environment:
       MG_AGENT_LOG_LEVEL: debug
-      MG_AGENT_HTTP_PORT: ${MG_AGENT_PORT}
+      MG_AGENT_HTTP_PORT: ${MG_AGENT_HTTP_PORT}
       MG_AGENT_MQTT_URL: ${MG_AGENT_MQTT_URL}
       MG_AGENT_MQTT_SKIP_TLS: ${MG_AGENT_MQTT_SKIP_TLS}
       MG_AGENT_MQTT_MTLS: ${MG_AGENT_MQTT_MTLS}
