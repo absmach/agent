@@ -27,7 +27,6 @@ import (
 )
 
 const (
-	Path           = "./config.toml"
 	HeartbeatTopic = "channels.heartbeat.>"
 	Commands       = "commands"
 	config         = "config"
@@ -643,7 +642,8 @@ func saveExportConfig(fileName string, content []byte) error {
 }
 
 func (a *agent) AddConfig(c Config) error {
-	return SaveConfig(c)
+	*a.config = c
+	return nil
 }
 
 func (a *agent) Config() Config {
