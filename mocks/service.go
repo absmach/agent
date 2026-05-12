@@ -137,8 +137,8 @@ func (_c *Service_Config_Call) RunAndReturn(run func() agent.Config) *Service_Co
 }
 
 // Control provides a mock function for the type Service
-func (_mock *Service) Control(s string, s1 string) error {
-	ret := _mock.Called(s, s1)
+func (_mock *Service) Control(uuid string, cmdStr string) error {
+	ret := _mock.Called(uuid, cmdStr)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Control")
@@ -146,7 +146,7 @@ func (_mock *Service) Control(s string, s1 string) error {
 
 	var r0 error
 	if returnFunc, ok := ret.Get(0).(func(string, string) error); ok {
-		r0 = returnFunc(s, s1)
+		r0 = returnFunc(uuid, cmdStr)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -159,13 +159,13 @@ type Service_Control_Call struct {
 }
 
 // Control is a helper method to define mock.On call
-//   - s string
-//   - s1 string
-func (_e *Service_Expecter) Control(s interface{}, s1 interface{}) *Service_Control_Call {
-	return &Service_Control_Call{Call: _e.mock.On("Control", s, s1)}
+//   - uuid string
+//   - cmdStr string
+func (_e *Service_Expecter) Control(uuid interface{}, cmdStr interface{}) *Service_Control_Call {
+	return &Service_Control_Call{Call: _e.mock.On("Control", uuid, cmdStr)}
 }
 
-func (_c *Service_Control_Call) Run(run func(s string, s1 string)) *Service_Control_Call {
+func (_c *Service_Control_Call) Run(run func(uuid string, cmdStr string)) *Service_Control_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 string
 		if args[0] != nil {
@@ -188,14 +188,14 @@ func (_c *Service_Control_Call) Return(err error) *Service_Control_Call {
 	return _c
 }
 
-func (_c *Service_Control_Call) RunAndReturn(run func(s string, s1 string) error) *Service_Control_Call {
+func (_c *Service_Control_Call) RunAndReturn(run func(uuid string, cmdStr string) error) *Service_Control_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Execute provides a mock function for the type Service
-func (_mock *Service) Execute(s string, s1 string) (string, error) {
-	ret := _mock.Called(s, s1)
+func (_mock *Service) Execute(uuid string, cmd string) (string, error) {
+	ret := _mock.Called(uuid, cmd)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Execute")
@@ -204,15 +204,15 @@ func (_mock *Service) Execute(s string, s1 string) (string, error) {
 	var r0 string
 	var r1 error
 	if returnFunc, ok := ret.Get(0).(func(string, string) (string, error)); ok {
-		return returnFunc(s, s1)
+		return returnFunc(uuid, cmd)
 	}
 	if returnFunc, ok := ret.Get(0).(func(string, string) string); ok {
-		r0 = returnFunc(s, s1)
+		r0 = returnFunc(uuid, cmd)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
 	if returnFunc, ok := ret.Get(1).(func(string, string) error); ok {
-		r1 = returnFunc(s, s1)
+		r1 = returnFunc(uuid, cmd)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -225,13 +225,13 @@ type Service_Execute_Call struct {
 }
 
 // Execute is a helper method to define mock.On call
-//   - s string
-//   - s1 string
-func (_e *Service_Expecter) Execute(s interface{}, s1 interface{}) *Service_Execute_Call {
-	return &Service_Execute_Call{Call: _e.mock.On("Execute", s, s1)}
+//   - uuid string
+//   - cmd string
+func (_e *Service_Expecter) Execute(uuid interface{}, cmd interface{}) *Service_Execute_Call {
+	return &Service_Execute_Call{Call: _e.mock.On("Execute", uuid, cmd)}
 }
 
-func (_c *Service_Execute_Call) Run(run func(s string, s1 string)) *Service_Execute_Call {
+func (_c *Service_Execute_Call) Run(run func(uuid string, cmd string)) *Service_Execute_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 string
 		if args[0] != nil {
@@ -249,19 +249,19 @@ func (_c *Service_Execute_Call) Run(run func(s string, s1 string)) *Service_Exec
 	return _c
 }
 
-func (_c *Service_Execute_Call) Return(s2 string, err error) *Service_Execute_Call {
-	_c.Call.Return(s2, err)
+func (_c *Service_Execute_Call) Return(s string, err error) *Service_Execute_Call {
+	_c.Call.Return(s, err)
 	return _c
 }
 
-func (_c *Service_Execute_Call) RunAndReturn(run func(s string, s1 string) (string, error)) *Service_Execute_Call {
+func (_c *Service_Execute_Call) RunAndReturn(run func(uuid string, cmd string) (string, error)) *Service_Execute_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // NodeRed provides a mock function for the type Service
-func (_mock *Service) NodeRed(s string) (string, error) {
-	ret := _mock.Called(s)
+func (_mock *Service) NodeRed(cmdStr string) (string, error) {
+	ret := _mock.Called(cmdStr)
 
 	if len(ret) == 0 {
 		panic("no return value specified for NodeRed")
@@ -270,15 +270,15 @@ func (_mock *Service) NodeRed(s string) (string, error) {
 	var r0 string
 	var r1 error
 	if returnFunc, ok := ret.Get(0).(func(string) (string, error)); ok {
-		return returnFunc(s)
+		return returnFunc(cmdStr)
 	}
 	if returnFunc, ok := ret.Get(0).(func(string) string); ok {
-		r0 = returnFunc(s)
+		r0 = returnFunc(cmdStr)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
 	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
-		r1 = returnFunc(s)
+		r1 = returnFunc(cmdStr)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -291,12 +291,12 @@ type Service_NodeRed_Call struct {
 }
 
 // NodeRed is a helper method to define mock.On call
-//   - s string
-func (_e *Service_Expecter) NodeRed(s interface{}) *Service_NodeRed_Call {
-	return &Service_NodeRed_Call{Call: _e.mock.On("NodeRed", s)}
+//   - cmdStr string
+func (_e *Service_Expecter) NodeRed(cmdStr interface{}) *Service_NodeRed_Call {
+	return &Service_NodeRed_Call{Call: _e.mock.On("NodeRed", cmdStr)}
 }
 
-func (_c *Service_NodeRed_Call) Run(run func(s string)) *Service_NodeRed_Call {
+func (_c *Service_NodeRed_Call) Run(run func(cmdStr string)) *Service_NodeRed_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 string
 		if args[0] != nil {
@@ -309,19 +309,19 @@ func (_c *Service_NodeRed_Call) Run(run func(s string)) *Service_NodeRed_Call {
 	return _c
 }
 
-func (_c *Service_NodeRed_Call) Return(s1 string, err error) *Service_NodeRed_Call {
-	_c.Call.Return(s1, err)
+func (_c *Service_NodeRed_Call) Return(s string, err error) *Service_NodeRed_Call {
+	_c.Call.Return(s, err)
 	return _c
 }
 
-func (_c *Service_NodeRed_Call) RunAndReturn(run func(s string) (string, error)) *Service_NodeRed_Call {
+func (_c *Service_NodeRed_Call) RunAndReturn(run func(cmdStr string) (string, error)) *Service_NodeRed_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Publish provides a mock function for the type Service
-func (_mock *Service) Publish(s string, s1 string) error {
-	ret := _mock.Called(s, s1)
+func (_mock *Service) Publish(topic string, payload string) error {
+	ret := _mock.Called(topic, payload)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Publish")
@@ -329,7 +329,7 @@ func (_mock *Service) Publish(s string, s1 string) error {
 
 	var r0 error
 	if returnFunc, ok := ret.Get(0).(func(string, string) error); ok {
-		r0 = returnFunc(s, s1)
+		r0 = returnFunc(topic, payload)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -342,13 +342,13 @@ type Service_Publish_Call struct {
 }
 
 // Publish is a helper method to define mock.On call
-//   - s string
-//   - s1 string
-func (_e *Service_Expecter) Publish(s interface{}, s1 interface{}) *Service_Publish_Call {
-	return &Service_Publish_Call{Call: _e.mock.On("Publish", s, s1)}
+//   - topic string
+//   - payload string
+func (_e *Service_Expecter) Publish(topic interface{}, payload interface{}) *Service_Publish_Call {
+	return &Service_Publish_Call{Call: _e.mock.On("Publish", topic, payload)}
 }
 
-func (_c *Service_Publish_Call) Run(run func(s string, s1 string)) *Service_Publish_Call {
+func (_c *Service_Publish_Call) Run(run func(topic string, payload string)) *Service_Publish_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 string
 		if args[0] != nil {
@@ -371,7 +371,7 @@ func (_c *Service_Publish_Call) Return(err error) *Service_Publish_Call {
 	return _c
 }
 
-func (_c *Service_Publish_Call) RunAndReturn(run func(s string, s1 string) error) *Service_Publish_Call {
+func (_c *Service_Publish_Call) RunAndReturn(run func(topic string, payload string) error) *Service_Publish_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -486,8 +486,8 @@ func (_c *Service_Services_Call) RunAndReturn(run func() []agent.Info) *Service_
 }
 
 // Terminal provides a mock function for the type Service
-func (_mock *Service) Terminal(s string, s1 string) error {
-	ret := _mock.Called(s, s1)
+func (_mock *Service) Terminal(uuid string, cmdStr string) error {
+	ret := _mock.Called(uuid, cmdStr)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Terminal")
@@ -495,7 +495,7 @@ func (_mock *Service) Terminal(s string, s1 string) error {
 
 	var r0 error
 	if returnFunc, ok := ret.Get(0).(func(string, string) error); ok {
-		r0 = returnFunc(s, s1)
+		r0 = returnFunc(uuid, cmdStr)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -508,13 +508,13 @@ type Service_Terminal_Call struct {
 }
 
 // Terminal is a helper method to define mock.On call
-//   - s string
-//   - s1 string
-func (_e *Service_Expecter) Terminal(s interface{}, s1 interface{}) *Service_Terminal_Call {
-	return &Service_Terminal_Call{Call: _e.mock.On("Terminal", s, s1)}
+//   - uuid string
+//   - cmdStr string
+func (_e *Service_Expecter) Terminal(uuid interface{}, cmdStr interface{}) *Service_Terminal_Call {
+	return &Service_Terminal_Call{Call: _e.mock.On("Terminal", uuid, cmdStr)}
 }
 
-func (_c *Service_Terminal_Call) Run(run func(s string, s1 string)) *Service_Terminal_Call {
+func (_c *Service_Terminal_Call) Run(run func(uuid string, cmdStr string)) *Service_Terminal_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 string
 		if args[0] != nil {
@@ -537,7 +537,7 @@ func (_c *Service_Terminal_Call) Return(err error) *Service_Terminal_Call {
 	return _c
 }
 
-func (_c *Service_Terminal_Call) RunAndReturn(run func(s string, s1 string) error) *Service_Terminal_Call {
+func (_c *Service_Terminal_Call) RunAndReturn(run func(uuid string, cmdStr string) error) *Service_Terminal_Call {
 	_c.Call.Return(run)
 	return _c
 }
