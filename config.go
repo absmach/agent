@@ -6,88 +6,75 @@ package agent
 import (
 	"crypto/tls"
 	"encoding/json"
-	"fmt"
-	"os"
 	"time"
 
 	"github.com/absmach/magistrala/pkg/errors"
-	"github.com/pelletier/go-toml"
 )
 
 type ServerConfig struct {
-	Port      string `toml:"port" json:"port"`
-	BrokerURL string `toml:"broker_url" json:"broker_url"`
+	Port      string `json:"port"`
+	BrokerURL string `json:"broker_url"`
 }
 
 type ChanConfig struct {
-	ID     string `toml:"id" json:"id"`
-	CtrlID string `toml:"ctrl_id" json:"ctrl_id"`
-	DataID string `toml:"data_id" json:"data_id"`
+	CtrlID string `json:"ctrl_id"`
+	DataID string `json:"data_id"`
 }
 
-// CtrlChan returns the control channel ID, falling back to ID for backward compatibility.
 func (c ChanConfig) CtrlChan() string {
-	if c.CtrlID != "" {
-		return c.CtrlID
-	}
-	return c.ID
+	return c.CtrlID
 }
 
-// DataChan returns the data channel ID, falling back to ID for backward compatibility.
 func (c ChanConfig) DataChan() string {
-	if c.DataID != "" {
-		return c.DataID
-	}
-	return c.ID
+	return c.DataID
 }
 
 type NodeRedConfig struct {
-	URL string `toml:"url" json:"url"`
+	URL string `json:"url"`
 }
 
 type LogConfig struct {
-	Level string `toml:"level"`
+	Level string `json:"level"`
 }
 
 type MQTTConfig struct {
-	URL         string          `json:"url" toml:"url"`
-	Username    string          `json:"username" toml:"username" mapstructure:"username"`
-	Password    string          `json:"password" toml:"password" mapstructure:"password"`
-	MTLS        bool            `json:"mtls" toml:"mtls" mapstructure:"mtls"`
-	SkipTLSVer  bool            `json:"skip_tls_ver" toml:"skip_tls_ver" mapstructure:"skip_tls_ver"`
-	Retain      bool            `json:"retain" toml:"retain" mapstructure:"retain"`
-	QoS         byte            `json:"qos" toml:"qos" mapstructure:"qos"`
-	CAPath      string          `json:"ca_path" toml:"ca_path" mapstructure:"ca_path"`
-	CertPath    string          `json:"cert_path" toml:"cert_path" mapstructure:"cert_path"`
-	PrivKeyPath string          `json:"priv_key_path" toml:"priv_key_path" mapstructure:"priv_key_path"`
-	CA          []byte          `json:"-" toml:"-"`
-	Cert        tls.Certificate `json:"-" toml:"-"`
-	ClientCert  string          `json:"client_cert" toml:"client_cert"`
-	ClientKey   string          `json:"client_key" toml:"client_key"`
-	CaCert      string          `json:"ca_cert" toml:"ca_cert"`
+	URL         string          `json:"url"`
+	Username    string          `json:"username"`
+	Password    string          `json:"password"`
+	MTLS        bool            `json:"mtls"`
+	SkipTLSVer  bool            `json:"skip_tls_ver"`
+	Retain      bool            `json:"retain"`
+	QoS         byte            `json:"qos"`
+	CAPath      string          `json:"ca_path"`
+	CertPath    string          `json:"cert_path"`
+	PrivKeyPath string          `json:"priv_key_path"`
+	CA          []byte          `json:"-"`
+	Cert        tls.Certificate `json:"-"`
+	ClientCert  string          `json:"client_cert"`
+	ClientKey   string          `json:"client_key"`
+	CaCert      string          `json:"ca_cert"`
 }
 
 type HeartbeatConfig struct {
-	Interval time.Duration `toml:"interval"`
+	Interval time.Duration
 }
 
 type TerminalConfig struct {
-	SessionTimeout time.Duration `toml:"session_timeout" json:"session_timeout"`
+	SessionTimeout time.Duration `json:"session_timeout"`
 }
 
 type Config struct {
-	Server    ServerConfig    `toml:"server" json:"server"`
-	Terminal  TerminalConfig  `toml:"terminal" json:"terminal"`
-	Heartbeat HeartbeatConfig `toml:"heartbeat" json:"heartbeat"`
-	Channels  ChanConfig      `toml:"channels" json:"channels"`
-	NodeRed   NodeRedConfig   `toml:"nodered" json:"nodered"`
-	Log       LogConfig       `toml:"log" json:"log"`
-	MQTT      MQTTConfig      `toml:"mqtt" json:"mqtt"`
-	DomainID  string          `toml:"domain_id" json:"domain_id"`
-	File      string
+	Server    ServerConfig    `json:"server"`
+	Terminal  TerminalConfig  `json:"terminal"`
+	Heartbeat HeartbeatConfig `json:"heartbeat"`
+	Channels  ChanConfig      `json:"channels"`
+	NodeRed   NodeRedConfig   `json:"nodered"`
+	Log       LogConfig       `json:"log"`
+	MQTT      MQTTConfig      `json:"mqtt"`
+	DomainID  string          `json:"domain_id"`
 }
 
-func NewConfig(sc ServerConfig, cc ChanConfig, nc NodeRedConfig, lc LogConfig, mc MQTTConfig, hc HeartbeatConfig, tc TerminalConfig, file string) Config {
+func NewConfig(sc ServerConfig, cc ChanConfig, nc NodeRedConfig, lc LogConfig, mc MQTTConfig, hc HeartbeatConfig, tc TerminalConfig) Config {
 	return Config{
 		Server:    sc,
 		Channels:  cc,
@@ -96,35 +83,7 @@ func NewConfig(sc ServerConfig, cc ChanConfig, nc NodeRedConfig, lc LogConfig, m
 		MQTT:      mc,
 		Heartbeat: hc,
 		Terminal:  tc,
-		File:      file,
 	}
-}
-
-// Save - store config in a file.
-func SaveConfig(c Config) error {
-	b, err := toml.Marshal(c)
-	if err != nil {
-		return errors.New(fmt.Sprintf("Error reading config file: %s", err))
-	}
-	if err := os.WriteFile(c.File, b, 0o644); err != nil {
-		return errors.New(fmt.Sprintf("Error writing toml: %s", err))
-	}
-	return nil
-}
-
-// ReadConfig - read config from a file.
-func ReadConfig(file string) (Config, error) {
-	data, err := os.ReadFile(file)
-	c := Config{}
-	if err != nil {
-		return c, errors.New(fmt.Sprintf("Error reading config file: %s", err))
-	}
-
-	if err := toml.Unmarshal(data, &c); err != nil {
-		return Config{}, errors.New(fmt.Sprintf("Error unmarshaling toml: %s", err))
-	}
-	c.File = file
-	return c, nil
 }
 
 // UnmarshalJSON parses the duration from JSON.

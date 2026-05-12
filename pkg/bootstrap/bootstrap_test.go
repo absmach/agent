@@ -21,7 +21,6 @@ func TestApplyBootstrapResponse(t *testing.T) {
 		agent.MQTTConfig{URL: "ssl://old.example.com:8883", SkipTLSVer: true},
 		agent.HeartbeatConfig{Interval: time.Second},
 		agent.TerminalConfig{SessionTimeout: time.Minute},
-		"config.toml",
 	)
 
 	cases := []struct {
@@ -34,12 +33,12 @@ func TestApplyBootstrapResponse(t *testing.T) {
 		password   string
 		ctrlID     string
 		dataID     string
-		channelID  string
 		clientCert string
 		clientKey  string
 		caCert     string
 		brokerURL  string
 		nodeRedURL string
+		err        bool
 	}{
 		{
 			desc:   "apply rendered bootstrap content successfully",
@@ -102,46 +101,39 @@ func TestApplyBootstrapResponse(t *testing.T) {
 			dataID:   "data-channel",
 		},
 		{
-			desc: "apply shared channel successfully",
+			desc: "reject missing channels",
 			response: bootstrapResponse{
 				Content: `{
 					"domain_id": "domain-id",
 					"mqtt": {
 						"client_id": "client-id",
 						"secret": "client-secret"
-					},
-					"channels": {
-						"id": "shared-channel"
 					}
 				}`,
 			},
-			domainID:  "domain-id",
-			username:  "client-id",
-			password:  "client-secret",
-			ctrlID:    "shared-channel",
-			dataID:    "shared-channel",
-			channelID: "shared-channel",
+			err: true,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			got, err := applyBootstrapResponse(tc.config, tc.response)
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
-			if err == nil {
-				assert.Equal(t, tc.domainID, got.DomainID, fmt.Sprintf("%s: unexpected domain id", tc.desc))
-				assert.Equal(t, tc.mqttURL, got.MQTT.URL, fmt.Sprintf("%s: unexpected mqtt url", tc.desc))
-				assert.Equal(t, tc.username, got.MQTT.Username, fmt.Sprintf("%s: unexpected mqtt username", tc.desc))
-				assert.Equal(t, tc.password, got.MQTT.Password, fmt.Sprintf("%s: unexpected mqtt password", tc.desc))
-				assert.Equal(t, tc.ctrlID, got.Channels.CtrlChan(), fmt.Sprintf("%s: unexpected control channel", tc.desc))
-				assert.Equal(t, tc.dataID, got.Channels.DataChan(), fmt.Sprintf("%s: unexpected data channel", tc.desc))
-				assert.Equal(t, tc.channelID, got.Channels.ID, fmt.Sprintf("%s: unexpected shared channel", tc.desc))
-				assert.Equal(t, tc.clientCert, got.MQTT.ClientCert, fmt.Sprintf("%s: unexpected client cert", tc.desc))
-				assert.Equal(t, tc.clientKey, got.MQTT.ClientKey, fmt.Sprintf("%s: unexpected client key", tc.desc))
-				assert.Equal(t, tc.caCert, got.MQTT.CaCert, fmt.Sprintf("%s: unexpected ca cert", tc.desc))
-				assert.Equal(t, tc.brokerURL, got.Server.BrokerURL, fmt.Sprintf("%s: unexpected broker url", tc.desc))
-				assert.Equal(t, tc.nodeRedURL, got.NodeRed.URL, fmt.Sprintf("%s: unexpected node-red url", tc.desc))
+			if tc.err {
+				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				return
 			}
+			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
+			assert.Equal(t, tc.domainID, got.DomainID, fmt.Sprintf("%s: unexpected domain id", tc.desc))
+			assert.Equal(t, tc.mqttURL, got.MQTT.URL, fmt.Sprintf("%s: unexpected mqtt url", tc.desc))
+			assert.Equal(t, tc.username, got.MQTT.Username, fmt.Sprintf("%s: unexpected mqtt username", tc.desc))
+			assert.Equal(t, tc.password, got.MQTT.Password, fmt.Sprintf("%s: unexpected mqtt password", tc.desc))
+			assert.Equal(t, tc.ctrlID, got.Channels.CtrlChan(), fmt.Sprintf("%s: unexpected control channel", tc.desc))
+			assert.Equal(t, tc.dataID, got.Channels.DataChan(), fmt.Sprintf("%s: unexpected data channel", tc.desc))
+			assert.Equal(t, tc.clientCert, got.MQTT.ClientCert, fmt.Sprintf("%s: unexpected client cert", tc.desc))
+			assert.Equal(t, tc.clientKey, got.MQTT.ClientKey, fmt.Sprintf("%s: unexpected client key", tc.desc))
+			assert.Equal(t, tc.caCert, got.MQTT.CaCert, fmt.Sprintf("%s: unexpected ca cert", tc.desc))
+			assert.Equal(t, tc.brokerURL, got.Server.BrokerURL, fmt.Sprintf("%s: unexpected broker url", tc.desc))
+			assert.Equal(t, tc.nodeRedURL, got.NodeRed.URL, fmt.Sprintf("%s: unexpected node-red url", tc.desc))
 		})
 	}
 }
