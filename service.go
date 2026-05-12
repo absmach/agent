@@ -87,10 +87,10 @@ var (
 // Service specifies API for publishing messages and subscribing to topics.
 type Service interface {
 	// Execute command.
-	Execute(string, string) (string, error)
+	Execute(uuid, cmd string) (string, error)
 
 	// Control command.
-	Control(string, string) error
+	Control(uuid, cmdStr string) error
 
 	// Update configuration file.
 	AddConfig(Config) error
@@ -105,13 +105,13 @@ type Service interface {
 	Services() []Info
 
 	// Terminal used for terminal control of gateway.
-	Terminal(string, string) error
+	Terminal(uuid, cmdStr string) error
 
 	// Publish message.
-	Publish(string, string) error
+	Publish(topic, payload string) error
 
 	// NodeRed manages Node-RED flow operations.
-	NodeRed(string) (string, error)
+	NodeRed(cmdStr string) (string, error)
 }
 
 var _ Service = (*agent)(nil)
