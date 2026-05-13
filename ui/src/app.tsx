@@ -6,6 +6,7 @@ import { Shell } from "@/components/layout/shell";
 import { ConfigPage } from "@/pages/config";
 import { ExecPage } from "@/pages/exec";
 import { HomePage } from "@/pages/home";
+import { LogsPage } from "@/pages/logs";
 import { NodeRedPage } from "@/pages/nodered";
 import { ServicesPage } from "@/pages/services";
 import { UI_BASE } from "@/routes";
@@ -21,6 +22,7 @@ export function App() {
           <Route path={`${UI_BASE}/services`} component={ServicesPage} />
           <Route path={`${UI_BASE}/exec`} component={ExecPage} />
           <Route path={`${UI_BASE}/nodered`} component={NodeRedPage} />
+          <Route path={`${UI_BASE}/logs`} component={LogsPage} />
         </Router>
       </Shell>
     </LocationProvider>

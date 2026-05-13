@@ -6,6 +6,7 @@ import {
   Home,
   Moon,
   Network,
+  ScrollText,
   Settings,
   Sun,
   Terminal,
@@ -22,6 +23,7 @@ const navItems = [
   { href: `${UI_BASE}/nodered`, label: "Node-RED", icon: Network },
   { href: `${UI_BASE}/services`, label: "Services", icon: Activity },
   { href: `${UI_BASE}/exec`, label: "Execute", icon: Terminal },
+  { href: `${UI_BASE}/logs`, label: "Logs", icon: ScrollText },
 ];
 
 type Status = "checking" | "online" | "offline";

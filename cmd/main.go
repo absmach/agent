@@ -23,6 +23,7 @@ import (
 	"github.com/absmach/agent/middleware"
 	"github.com/absmach/agent/pkg/bootstrap"
 	"github.com/absmach/agent/pkg/conn"
+	"github.com/absmach/agent/pkg/logstream"
 	"github.com/absmach/agent/pkg/nodered"
 	mglog "github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/errors"
@@ -92,6 +93,8 @@ func main() {
 		exitCode = 1
 		return
 	}
+	stream := logstream.New()
+	logger = slog.New(logstream.NewHandler(logger.Handler(), stream))
 
 	if hasBootstrapConfig(c) {
 		cfg, err = loadBootConfig(cfg, c, logger)
@@ -146,7 +149,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", cfg.Server.Port),
-		Handler: api.MakeHandler(svc, logger, ""),
+		Handler: api.MakeHandler(svc, logger, stream, ""),
 	}
 
 	g.Go(func() error {

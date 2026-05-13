@@ -53,7 +53,7 @@ define make_docker_dev
 		-f docker/Dockerfile.dev ./build
 endef
 
-all: $(SERVICES) 
+all: ui_prod $(SERVICES)
 
 arm: GOARCH=arm64
 arm: all

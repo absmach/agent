@@ -126,7 +126,10 @@ export function ExecCard() {
       </div>
 
       {/* Terminal body */}
-      <div className="min-h-72 max-h-[28rem] overflow-y-auto bg-zinc-900 p-4 font-mono text-sm">
+      <div
+        className="min-h-72 max-h-[28rem] overflow-y-auto bg-zinc-900 p-4 font-mono text-sm"
+        onClick={() => inputRef.current?.focus()}
+      >
         {history.length === 0 && !loading && (
           <p className="text-zinc-500 text-xs">
             Type a command and press{" "}

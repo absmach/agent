@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/logstream"
 	agentui "github.com/absmach/agent/ui"
 	"github.com/absmach/magistrala"
 	mgapi "github.com/absmach/magistrala/api/http"
@@ -23,7 +24,7 @@ import (
 )
 
 // MakeHandler returns a HTTP handler for API endpoints.
-func MakeHandler(svc agent.Service, logger *slog.Logger, instanceID string) http.Handler {
+func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Stream, instanceID string) http.Handler {
 	opts := []kithttp.ServerOption{
 		kithttp.ServerErrorEncoder(apiutil.LoggingErrorEncoder(logger, EncodeError)),
 	}
@@ -82,6 +83,9 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, instanceID string) http
 
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health", magistrala.Health("agent", instanceID))
+	if stream != nil {
+		r.Handle("/logs", logstream.SSEHandler(stream))
+	}
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/", http.StatusFound)
