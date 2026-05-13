@@ -100,14 +100,50 @@ func (b *broker) Resubscribe() {
 // handleBrokerMsg triggered when new message is received on MQTT broker.
 func (b *broker) handleBrokerMsg(mc mqtt.Client, msg mqtt.Message) {
 	ctx := context.Background()
-	message := messaging.Message{
-		Payload: msg.Payload(),
+
+	if svcname, svctype, ok := extractHeartbeat(msg.Topic(), msg.Payload()); ok {
+		if err := b.svc.UpdateLiveness(svcname, svctype); err != nil {
+			b.logger.Warn("Error updating service liveness", slog.Any("error", err))
+		}
+		return
 	}
+
 	if topic := extractBrokerTopic(msg.Topic()); topic != "" {
+		message := messaging.Message{Payload: msg.Payload()}
 		if err := b.messageBroker.Publish(ctx, topic, &message); err != nil {
 			b.logger.Warn("Error publishing message", slog.Any("error", err))
 		}
 	}
+}
+
+// extractHeartbeat checks whether the MQTT topic is a service heartbeat and,
+// if so, returns the service name and type parsed from the topic and SenML payload.
+func extractHeartbeat(mqttTopic string, payload []byte) (svcname, svctype string, ok bool) {
+	isEmpty := func(s string) bool { return len(s) == 0 }
+	channelParts := channelPartRegExp.FindStringSubmatch(mqttTopic)
+	if len(channelParts) < 4 || channelParts[3] == "" {
+		return "", "", false
+	}
+	parts := filter.Drop(strings.Split(channelParts[3], "/"), isEmpty).([]string)
+	if len(parts) < 2 || parts[len(parts)-1] != "heartbeat" {
+		return "", "", false
+	}
+	return parts[0], parseSvcType(payload), true
+}
+
+// parseSvcType extracts the service_type field from a SenML heartbeat payload,
+// defaulting to "service" if the payload cannot be parsed.
+func parseSvcType(payload []byte) string {
+	sm, err := senml.Decode(payload, senml.JSON)
+	if err != nil {
+		return "service"
+	}
+	for _, r := range sm.Records {
+		if r.Name == "service_type" && r.StringValue != nil {
+			return *r.StringValue
+		}
+	}
+	return "service"
 }
 
 func extractBrokerTopic(topic string) string {

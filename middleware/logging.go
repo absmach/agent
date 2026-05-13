@@ -163,6 +163,24 @@ func (lm *loggingMiddleware) Ping(uuid string) (err error) {
 	return lm.svc.Ping(uuid)
 }
 
+func (lm *loggingMiddleware) UpdateLiveness(svcname, svctype string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.String("svcname", svcname),
+			slog.String("svctype", svctype),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("Update liveness failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("Update liveness completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.UpdateLiveness(svcname, svctype)
+}
+
 func (lm *loggingMiddleware) NodeRed(cmdStr string) (resp string, err error) {
 	defer func(begin time.Time) {
 		args := []any{
