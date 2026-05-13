@@ -7,7 +7,8 @@ DOCKERS = $(addprefix docker_,$(SERVICES))
 DOCKERS_DEV = $(addprefix docker_dev_,$(SERVICES))
 CGO_ENABLED ?= 0
 GOARCH ?= amd64
-VERSION ?= $(shell git describe --abbrev=0 --tags)
+DOCKER_IMAGE_NAME_PREFIX ?= ghcr.io/absmach
+VERSION ?= $(shell git describe --abbrev=0 --tags 2>/dev/null || echo 'unknown')
 COMMIT ?= $(shell git rev-parse HEAD)
 TIME ?= $(shell date +%F_%T)
 MOCKERY = $(GOBIN)/mockery
@@ -39,7 +40,7 @@ define make_docker
 		--build-arg VERSION=$(VERSION) \
 		--build-arg COMMIT=$(COMMIT) \
 		--build-arg TIME=$(TIME) \
-		--tag=magistrala/$(svc) \
+		--tag=$(DOCKER_IMAGE_NAME_PREFIX)/$(svc) \
 		-f docker/Dockerfile .
 endef
 
@@ -49,7 +50,7 @@ define make_docker_dev
 	docker build \
 		--no-cache \
 		--build-arg SVC=$(svc) \
-		--tag=magistrala/$(svc) \
+		--tag=$(DOCKER_IMAGE_NAME_PREFIX)/$(svc) \
 		-f docker/Dockerfile.dev ./build
 endef
 
@@ -117,7 +118,7 @@ endif
 
 define docker_push
 	for svc in $(SERVICES); do \
-		docker push magistrala/$$svc:$(1); \
+		docker push $(DOCKER_IMAGE_NAME_PREFIX)/$$svc:$(1); \
 	done
 endef
 
@@ -132,7 +133,7 @@ release:
 	git checkout $(version)
 	$(MAKE) dockers
 	for svc in $(SERVICES); do \
-		docker tag magistrala/$$svc magistrala/$$svc:$(version); \
+		docker tag $(DOCKER_IMAGE_NAME_PREFIX)/$$svc $(DOCKER_IMAGE_NAME_PREFIX)/$$svc:$(version); \
 	done
 	$(call docker_push,$(version))
 
