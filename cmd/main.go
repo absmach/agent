@@ -26,7 +26,6 @@ import (
 	"github.com/absmach/agent/pkg/nodered"
 	mglog "github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/errors"
-	"github.com/absmach/magistrala/pkg/messaging/brokers"
 	"github.com/absmach/magistrala/pkg/prometheus"
 	"github.com/caarlos0/env/v9"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -38,7 +37,6 @@ type config struct {
 	NodeRedURL           string `env:"MG_AGENT_NODERED_URL" envDefault:"http://localhost:1880/"`
 	MqttURL              string `env:"MG_AGENT_MQTT_URL" envDefault:"localhost:1883"`
 	HTTPPort             string `env:"MG_AGENT_HTTP_PORT" envDefault:"9999"`
-	BrokerURL            string `env:"MG_AGENT_BROKER_URL" envDefault:"amqp://guest:guest@localhost:5682/"`
 	MqttSkipTLSVer       string `env:"MG_AGENT_MQTT_SKIP_TLS" envDefault:"true"`
 	MqttMTLS             string `env:"MG_AGENT_MQTT_MTLS" envDefault:"false"`
 	MqttCA               string `env:"MG_AGENT_MQTT_CA" envDefault:"ca.crt"`
@@ -106,14 +104,6 @@ func main() {
 		return
 	}
 
-	pubsub, err := brokers.NewPubSub(ctx, cfg.Server.BrokerURL, logger)
-	if err != nil {
-		logger.Error("Failed to connect to Broker", slog.Any("error", err), slog.String("broker_url", cfg.Server.BrokerURL))
-		exitCode = 1
-		return
-	}
-	defer pubsub.Close()
-
 	// onReconnect is called by the MQTT connect handler on every (re)connect.
 	// It is assigned after the broker is created so the closure captures it by reference.
 	var onReconnect func()
@@ -129,7 +119,7 @@ func main() {
 	}
 	noderedClient := nodered.NewClient(cfg.NodeRed.URL, logger)
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, pubsub, logger)
+	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger)
 	if err != nil {
 		logger.Error("Error in agent service", slog.Any("error", err))
 		exitCode = 1
@@ -139,7 +129,7 @@ func main() {
 	svc = middleware.NewLogging(svc, logger)
 	counter, latency := prometheus.MakeMetrics("agent", "api")
 	svc = middleware.NewMetrics(svc, counter, latency)
-	b := conn.NewBroker(svc, mqttClient, cfg.Channels.CtrlChan(), cfg.DomainID, pubsub, logger)
+	b := conn.NewBroker(svc, mqttClient, cfg.Channels.CtrlChan(), cfg.DomainID, logger)
 	onReconnect = b.Resubscribe
 
 	srv := &http.Server{
@@ -184,9 +174,6 @@ func validateRuntimeConfig(cfg agent.Config) error {
 			missing = append(missing, "mqtt.password")
 		}
 	}
-	if cfg.Server.BrokerURL == "" {
-		missing = append(missing, "server.broker_url")
-	}
 	if len(missing) > 0 {
 		return errors.New(fmt.Sprintf("%s: missing required runtime fields: %s", errInvalidRuntimeConfig, strings.Join(missing, ", ")))
 	}
@@ -199,8 +186,7 @@ func hasBootstrapConfig(cfg config) bool {
 
 func loadEnvConfig(cfg config) (agent.Config, error) {
 	sc := agent.ServerConfig{
-		BrokerURL: cfg.BrokerURL,
-		Port:      cfg.HTTPPort,
+		Port: cfg.HTTPPort,
 	}
 	interval, err := time.ParseDuration(cfg.HeartbeatInterval)
 	if err != nil {

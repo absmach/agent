@@ -21,7 +21,6 @@ import (
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/terminal"
 	"github.com/absmach/magistrala/pkg/errors"
-	"github.com/absmach/magistrala/pkg/messaging"
 	senml "github.com/absmach/senml"
 	paho "github.com/eclipse/paho.mqtt.golang"
 	toml "github.com/pelletier/go-toml"
@@ -134,19 +133,17 @@ type agent struct {
 	config        *Config
 	noderedClient nodered.Client
 	logger        *slog.Logger
-	broker        messaging.PubSub
 	svcs          map[string]Heartbeat
 	terminals     map[string]terminal.Session
 	workDir       string
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, broker messaging.PubSub, logger *slog.Logger) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger) (Service, error) {
 	ag := &agent{
 		mqttClient:    mc,
 		noderedClient: nc,
 		config:        cfg,
-		broker:        broker,
 		logger:        logger,
 		svcs:          make(map[string]Heartbeat),
 		terminals:     make(map[string]terminal.Session),
@@ -591,7 +588,7 @@ func (a *agent) saveConfig(ctx context.Context, service, fileName, fileCont stri
 		return errNoSuchService
 	}
 
-	return a.broker.Publish(ctx, fmt.Sprintf("%s.%s.%s", Commands, service, config), &messaging.Message{})
+	return nil
 }
 
 func saveExportConfig(fileName string, content []byte) error {

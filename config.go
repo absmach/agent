@@ -12,8 +12,7 @@ import (
 )
 
 type ServerConfig struct {
-	Port      string `json:"port"`
-	BrokerURL string `json:"broker_url"`
+	Port string `json:"port"`
 }
 
 type ChanConfig struct {
