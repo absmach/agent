@@ -5,9 +5,12 @@ package api
 
 import (
 	"context"
+	"net/http"
 	"strings"
 
-	"github.com/absmach/agent/pkg/agent"
+	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/nodered"
+	mgerrors "github.com/absmach/magistrala/pkg/errors"
 	"github.com/go-kit/kit/endpoint"
 )
 
@@ -26,9 +29,9 @@ func pubEndpoint(svc agent.Service) endpoint.Endpoint {
 			return nil, err
 		}
 
-		return genericRes{
+		return publishRes{
 			Service:  "agent",
-			Response: "config",
+			Response: "publish",
 		}, nil
 	}
 }
@@ -78,7 +81,7 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 			return nil, err
 		}
 
-		return genericRes{
+		return addConfigRes{
 			Service:  "agent",
 			Response: "config",
 		}, nil
@@ -87,14 +90,13 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 
 func viewConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 	return func(_ context.Context, request any) (any, error) {
-		c := svc.Config()
-		return c, nil
+		return viewConfigRes{Config: svc.Config()}, nil
 	}
 }
 
 func viewServicesEndpoint(svc agent.Service) endpoint.Endpoint {
 	return func(_ context.Context, request any) (any, error) {
-		return svc.Services(), nil
+		return viewServicesRes(svc.Services()), nil
 	}
 }
 
@@ -113,10 +115,13 @@ func nodeRedEndpoint(svc agent.Service) endpoint.Endpoint {
 
 		resp, err := svc.NodeRed(cmdStr)
 		if err != nil {
+			if mgerrors.Contains(err, nodered.ErrFlowConflict) {
+				return nil, mgerrors.NewSDKErrorWithStatus(err, http.StatusConflict)
+			}
 			return nil, err
 		}
 
-		return genericRes{
+		return nodeRedRes{
 			Service:  "agent",
 			Response: resp,
 		}, nil

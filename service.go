@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -49,7 +51,7 @@ var (
 	errInvalidCommand = errors.New("invalid command")
 
 	// ErrMalformedEntity indicates malformed entity specification.
-	ErrMalformedEntity = errors.New("malformed entity specification")
+	ErrMalformedEntity = errors.ErrMalformedEntity
 
 	// ErrInvalidQueryParams indicates malformed URL.
 	ErrInvalidQueryParams = errors.New("invalid query params")
@@ -85,10 +87,10 @@ var (
 // Service specifies API for publishing messages and subscribing to topics.
 type Service interface {
 	// Execute command.
-	Execute(string, string) (string, error)
+	Execute(uuid, cmd string) (string, error)
 
 	// Control command.
-	Control(string, string) error
+	Control(uuid, cmdStr string) error
 
 	// Update configuration file.
 	AddConfig(Config) error
@@ -103,13 +105,13 @@ type Service interface {
 	Services() []Info
 
 	// Terminal used for terminal control of gateway.
-	Terminal(string, string) error
+	Terminal(uuid, cmdStr string) error
 
 	// Publish message.
-	Publish(string, string) error
+	Publish(topic, payload string) error
 
 	// NodeRed manages Node-RED flow operations.
-	NodeRed(string) (string, error)
+	NodeRed(cmdStr string) (string, error)
 }
 
 var _ Service = (*agent)(nil)
@@ -394,7 +396,7 @@ func (a *agent) NodeRed(cmdStr string) (string, error) {
 		if decErr != nil {
 			return "", errors.Wrap(errNodeRedFailed, decErr)
 		}
-		resp, err = a.noderedClient.DeployFlows(a.patchNodeRedClientID(string(flowData)))
+		resp, err = a.noderedClient.DeployFlows(a.normalizeNodeRedFlow(string(flowData)))
 	case "nodered-add-flow":
 		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
 			return "", errInvalidCommand
@@ -403,7 +405,7 @@ func (a *agent) NodeRed(cmdStr string) (string, error) {
 		if decErr != nil {
 			return "", errors.Wrap(errNodeRedFailed, decErr)
 		}
-		resp, err = a.noderedClient.AddFlow(a.patchNodeRedClientID(string(flowData)))
+		resp, err = a.noderedClient.AddFlow(a.normalizeNodeRedFlow(string(flowData)))
 	case "nodered-flows":
 		resp, err = a.noderedClient.FetchFlows()
 	case "nodered-state":
@@ -421,14 +423,177 @@ func (a *agent) NodeRed(cmdStr string) (string, error) {
 	return resp, nil
 }
 
-// patchNodeRedClientID replaces the agent's MQTT clientid with a "-nr" suffixed
-// version in flow JSON so Node-RED does not steal the agent's MQTT session.
-func (a *agent) patchNodeRedClientID(flowJSON string) string {
-	clientID := a.config.MQTT.Username
-	if clientID == "" {
+// normalizeNodeRedFlow updates deployed flow JSON so Node-RED follows the same
+// MQTT target and credentials as the agent runtime config.
+func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
+	var payload any
+	if err := json.Unmarshal([]byte(flowJSON), &payload); err != nil {
 		return flowJSON
 	}
-	return strings.ReplaceAll(flowJSON, `"clientid": "`+clientID+`"`, `"clientid": "`+clientID+`-nr"`)
+
+	host, port, useTLS := nodeRedMQTTEndpoint(a.config.MQTT.URL)
+	dataChannel := a.config.Channels.DataChan()
+	brokerIDs := map[string]struct{}{}
+
+	patchNodeRedValue(payload, func(node map[string]any) {
+		nodeType, _ := node["type"].(string)
+		switch nodeType {
+		case "mqtt-broker":
+			id, _ := node["id"].(string)
+			if id != "" {
+				brokerIDs[id] = struct{}{}
+			}
+			if host != "" {
+				node["broker"] = host
+			}
+			node["port"] = port
+			node["clientid"] = a.config.MQTT.Username + "-nr"
+			node["usetls"] = useTLS
+			if useTLS && a.config.MQTT.SkipTLSVer {
+				node["tls"] = nodeRedTLSConfigID
+			} else {
+				delete(node, "tls")
+			}
+			node["credentials"] = map[string]any{
+				"user":     a.config.MQTT.Username,
+				"password": a.config.MQTT.Password,
+			}
+		case "function":
+			if fn, ok := node["func"].(string); ok {
+				node["func"] = patchNodeRedTopic(fn, a.config.DomainID, dataChannel)
+			}
+		}
+
+		if topic, ok := node["topic"].(string); ok {
+			node["topic"] = patchNodeRedTopic(topic, a.config.DomainID, dataChannel)
+		}
+	})
+
+	if len(brokerIDs) == 1 {
+		var brokerID string
+		for id := range brokerIDs {
+			brokerID = id
+		}
+		patchNodeRedValue(payload, func(node map[string]any) {
+			nodeType, _ := node["type"].(string)
+			if nodeType != "mqtt out" {
+				return
+			}
+			ref, _ := node["broker"].(string)
+			if _, ok := brokerIDs[ref]; !ok {
+				node["broker"] = brokerID
+			}
+		})
+	}
+
+	if useTLS && a.config.MQTT.SkipTLSVer {
+		payload = ensureNodeRedTLSConfig(payload)
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return flowJSON
+	}
+	return string(b)
+}
+
+const nodeRedTLSConfigID = "magistrala-agent-tls"
+
+var nodeRedTopicPattern = regexp.MustCompile(`m/[^/"'\s]*/c/[^/"'\s]*/(?:data|msg)`)
+
+func nodeRedMQTTEndpoint(rawURL string) (host, port string, useTLS bool) {
+	if rawURL == "" {
+		return "", "1883", false
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Host == "" {
+		host = rawURL
+		if strings.Contains(host, "://") {
+			host = strings.SplitN(host, "://", 2)[1]
+		}
+		if idx := strings.Index(host, "/"); idx >= 0 {
+			host = host[:idx]
+		}
+		if strings.Contains(host, ":") {
+			parts := strings.Split(host, ":")
+			return parts[0], parts[len(parts)-1], false
+		}
+		return host, "1883", false
+	}
+
+	host = parsed.Hostname()
+	port = parsed.Port()
+	if port == "" {
+		port = "1883"
+	}
+	switch parsed.Scheme {
+	case "ssl", "tls", "mqtts":
+		useTLS = true
+	}
+
+	return host, port, useTLS
+}
+
+func patchNodeRedTopic(value, domainID, channelID string) string {
+	if domainID == "" || channelID == "" {
+		return value
+	}
+	return nodeRedTopicPattern.ReplaceAllString(value, fmt.Sprintf("m/%s/c/%s/msg", domainID, channelID))
+}
+
+func patchNodeRedValue(value any, patch func(map[string]any)) {
+	switch typed := value.(type) {
+	case []any:
+		for _, item := range typed {
+			patchNodeRedValue(item, patch)
+		}
+	case map[string]any:
+		patch(typed)
+		for _, item := range typed {
+			patchNodeRedValue(item, patch)
+		}
+	}
+}
+
+func ensureNodeRedTLSConfig(payload any) any {
+	tlsNode := map[string]any{
+		"id":               nodeRedTLSConfigID,
+		"type":             "tls-config",
+		"name":             "Magistrala MQTT TLS",
+		"cert":             "",
+		"key":              "",
+		"ca":               "",
+		"certname":         "",
+		"keyname":          "",
+		"caname":           "",
+		"servername":       "",
+		"verifyservercert": false,
+		"alpnprotocol":     "",
+	}
+
+	switch typed := payload.(type) {
+	case []any:
+		for _, item := range typed {
+			node, ok := item.(map[string]any)
+			if ok && node["id"] == nodeRedTLSConfigID {
+				return payload
+			}
+		}
+		return append(typed, tlsNode)
+	case map[string]any:
+		configs, _ := typed["configs"].([]any)
+		for _, item := range configs {
+			node, ok := item.(map[string]any)
+			if ok && node["id"] == nodeRedTLSConfigID {
+				return payload
+			}
+		}
+		typed["configs"] = append(configs, tlsNode)
+		return typed
+	default:
+		return payload
+	}
 }
 
 func (a *agent) processResponse(uuid, cmd, resp string) error {
@@ -513,14 +678,13 @@ func (a *agent) Publish(t, payload string) error {
 
 func (a *agent) getTopic(topic string) (t string) {
 	domainID := a.config.DomainID
-	chan_ := a.config.Channels.ID
 	switch topic {
 	case control:
-		t = fmt.Sprintf("m/%s/c/%s/res", domainID, chan_)
+		t = fmt.Sprintf("m/%s/c/%s/res", domainID, a.config.Channels.CtrlChan())
 	case data:
-		t = fmt.Sprintf("m/%s/c/%s/msg", domainID, chan_)
+		t = fmt.Sprintf("m/%s/c/%s/msg", domainID, a.config.Channels.DataChan())
 	default:
-		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, chan_, topic)
+		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, a.config.Channels.CtrlChan(), topic)
 	}
 	return t
 }

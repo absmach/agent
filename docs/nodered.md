@@ -24,7 +24,7 @@ make all && make dockers_dev
 make run
 ```
 
-This starts: Agent (:9999), Node-RED (:1880), FluxMQ (:5682), Agent UI (:3000).
+This starts: Agent (:9999), Node-RED (:1880), FluxMQ (:5682), Agent UI (:3002).
 
 ### 3. Verify services
 
@@ -38,7 +38,7 @@ curl -s -X POST http://localhost:9999/nodered \
   -d '{"command":"nodered-ping"}'
 
 # Open the Agent UI
-open http://localhost:3000
+open http://localhost:3002
 
 # Open Node-RED UI
 open http://localhost:1880
@@ -46,44 +46,78 @@ open http://localhost:1880
 
 ## Provisioning with Magistrala
 
-If you have a running Magistrala instance, use the provisioning script to automatically create Clients, Channels, and Rule Engine rules:
+If you have a running Magistrala instance, use the provisioning script to automatically create Clients, Channels, Bootstrap Profile resources, and Rule Engine rules:
 
 ```bash
+export MG_AGENT_BOOTSTRAP_EXTERNAL_ID='01:6:0:sb:sa'
+export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY='secret'
 export MG_PAT=<personal-access-token>
 export MG_DOMAIN_ID=<domain-id>
 make run_provision
 ```
 
+Use your real PAT in the shell, but do not commit it to files. The agent and Node-RED do not consume a generated `config.toml`; they fetch the rendered bootstrap profile at startup.
+
+The PAT used for provisioning must be able to create bootstrap configs, rules, clients, and channels in the target domain. The script expects scopes such as:
+
+- `bootstrap:create`
+- `rules:create`
+- `clients:create`
+- `clients:view`
+- `clients:connect_to_channel`
+- `channels:create`
+- `channels:view`
+- `channels:connect_client`
+
 Or with a custom API URL:
 
 ```bash
-MG_API=https://my-instance/api make run_provision MG_DOMAIN_ID=<domain-id> MG_PAT=<pat>
+MG_API=https://my-instance/api \
+MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<device-external-id> \
+MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<device-external-key> \
+MG_DOMAIN_ID=<domain-id> \
+MG_PAT=<pat> \
+make run_provision
 ```
+
+For Magistrala Cloud specifically, use:
+
+```bash
+MG_API=https://cloud.magistrala.absmach.eu/api \
+MG_AGENT_MQTT_URL=ssl://messaging.magistrala.absmach.eu:8883 \
+MG_AGENT_MQTT_SKIP_TLS=false \
+MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<device-external-id> \
+MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<device-external-key> \
+MG_DOMAIN_ID=<domain-id> \
+MG_PAT=<pat> \
+make run_provision
+```
+
+That combination targets the cloud APIs for provisioning and the cloud MQTT broker for runtime messaging.
 
 Or run the script directly:
 
 ```bash
+export MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<device-external-id>
+export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<device-external-key>
 export MG_PAT=<personal-access-token>
 export MG_DOMAIN_ID=<domain-id>
-bash docker/nodered/provision.sh
+bash scripts/provision.sh
 ```
 
 This will:
 1. Create a Client (device) with credentials
-2. Create a Channel
-3. Connect the Client to the Channel
-4. Set up Bootstrap configuration
-5. Configure a Rule Engine rule with `save_senml` output to persist all messages
-6. Update `docker/.env` with the provisioned IDs
+2. Create telemetry and commands Channels
+3. Create a Bootstrap Profile and Enrollment with `external_id` and `external_key`
+4. Bind the profile slots to the provisioned client and channels
+5. Configure a Rule Engine rule with `save_senml` output for telemetry messages
 
-**Alternatively**, if you prefer to set up resources manually via the Magistrala UI or API, simply edit `docker/.env` directly with your values:
+**Alternatively**, if you prefer to set up resources manually via the Magistrala UI or API, create the Client, telemetry Channel, commands Channel, Bootstrap Profile, Enrollment, bindings, and Rule Engine rule, then edit `docker/.env` with the bootstrap values:
 
 ```env
-MG_AGENT_MQTT_URL=ssl://messaging.example.com:8883
-MG_AGENT_CLIENT_ID=<client-id>
-MG_AGENT_CLIENT_SECRET=<client-secret>
-MG_AGENT_DOMAIN_ID=<domain-id>
-MG_AGENT_CHANNEL=<channel-id>
+MG_AGENT_BOOTSTRAP_URL=http://bootstrap:9013/clients/bootstrap
+MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<external-id>
+MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<external-key>
 ```
 
 Then restart the agent:
@@ -95,7 +129,7 @@ docker compose up -d
 
 ### Via Agent UI
 
-Open `http://localhost:3000` in a browser. The **Node-RED** panel lets you:
+Open `http://localhost:3002` in a browser. The **Node-RED** panel lets you:
 
 - **Ping** — check that Node-RED is reachable
 - **State** — get the current runtime state
@@ -134,7 +168,7 @@ curl -s -X POST http://localhost:9999/nodered \
 
 ### Via MQTT (from Magistrala cloud)
 
-Send a SenML array to `m/<domain-id>/c/<channel-id>/req`:
+Send a SenML array to `m/<domain-id>/c/<commands-channel-id>/req`:
 
 Supported commands:
 - `nodered-deploy,<base64-flow>` — **Replace all running flows** with the provided flow JSON
@@ -182,9 +216,9 @@ FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
 mosquitto_pub \
   -h <mqtt-host> -p 8883 \
   --capath /etc/ssl/certs \
-  -I "Client" \
+  -I "agent-mock-device" \
   -u <client-id> -P <client-secret> \
-  -t "m/<domain-id>/c/<channel-id>/req" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
   -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-deploy,$FLOWS\"}]"
 ```
 
@@ -201,9 +235,9 @@ The agent will:
 mosquitto_pub \
   -h <mqtt-host> -p 8883 \
   --capath /etc/ssl/certs \
-  -I "Client" \
+  -I "agent-mock-device" \
   -u <client-id> -P <client-secret> \
-  -t "m/<domain-id>/c/<channel-id>/req" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
   -m '[{"bn":"req-2:", "n":"nodered", "vs":"nodered-flows"}]'
 ```
 
@@ -212,25 +246,22 @@ The agent logs will show:
 {"level":"INFO","msg":"NodeRed command \"nodered-deploy,...\" completed successfully.","duration":"...","uuid":"req-1"}
 ```
 
-Node-RED will start publishing speed data to `m/<domain-id>/c/<channel-id>/data` within 3 seconds of deployment.
+Node-RED will start publishing speed data to the telemetry topic from the rendered profile, normally `m/<domain-id>/c/<telemetry-channel-id>/msg`, within 3 seconds of deployment.
 
 ## Configuration
 
-The Node-RED URL is configured via:
+The Node-RED URL is configured via environment variable:
 
 - **Environment variable**: `MG_AGENT_NODERED_URL` (default: `http://localhost:1880/`)
-- **Config file** (`config.toml`):
-  ```toml
-  [nodered]
-    url = "http://localhost:1880/"
-  ```
+
+Device identity, MQTT credentials, domain ID, and telemetry/commands channel IDs come from the rendered bootstrap profile.
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MG_AGENT_NODERED_URL` | `http://localhost:1880/` | Node-RED REST API base URL |
-| `MG_AGENT_CLIENT_ID` | (pre-set UUID) | Magistrala Client ID |
-| `MG_AGENT_CLIENT_SECRET` | (pre-set UUID) | Magistrala Client Secret |
-| `MG_AGENT_CHANNEL` | (pre-set UUID) | Channel ID (req/data/res subtopics) |
-| `MG_UI_PORT` | `3000` | Agent UI port |
+| `MG_AGENT_BOOTSTRAP_URL` | `http://bootstrap:9013/clients/bootstrap` | Bootstrap fetch URL |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_ID` | | Bootstrap external ID |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` | | Bootstrap external key |
+| `MG_UI_PORT` | `3002` | Agent UI port |

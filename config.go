@@ -20,7 +20,25 @@ type ServerConfig struct {
 }
 
 type ChanConfig struct {
-	ID string `toml:"id" json:"id"`
+	ID     string `toml:"id" json:"id"`
+	CtrlID string `toml:"ctrl_id" json:"ctrl_id"`
+	DataID string `toml:"data_id" json:"data_id"`
+}
+
+// CtrlChan returns the control channel ID, falling back to ID for backward compatibility.
+func (c ChanConfig) CtrlChan() string {
+	if c.CtrlID != "" {
+		return c.CtrlID
+	}
+	return c.ID
+}
+
+// DataChan returns the data channel ID, falling back to ID for backward compatibility.
+func (c ChanConfig) DataChan() string {
+	if c.DataID != "" {
+		return c.DataID
+	}
+	return c.ID
 }
 
 type NodeRedConfig struct {
@@ -92,6 +110,21 @@ func SaveConfig(c Config) error {
 		return errors.New(fmt.Sprintf("Error writing toml: %s", err))
 	}
 	return nil
+}
+
+// ReadConfig - read config from a file.
+func ReadConfig(file string) (Config, error) {
+	data, err := os.ReadFile(file)
+	c := Config{}
+	if err != nil {
+		return c, errors.New(fmt.Sprintf("Error reading config file: %s", err))
+	}
+
+	if err := toml.Unmarshal(data, &c); err != nil {
+		return Config{}, errors.New(fmt.Sprintf("Error unmarshaling toml: %s", err))
+	}
+	c.File = file
+	return c, nil
 }
 
 // UnmarshalJSON parses the duration from JSON.

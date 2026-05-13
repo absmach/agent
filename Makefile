@@ -136,14 +136,16 @@ release:
 	done
 	$(call docker_push,$(version))
 
-run_provision:
-	@MG_API="$(MG_API)" MG_DOMAIN_ID="$(MG_DOMAIN_ID)" MG_PAT="$(MG_PAT)" bash docker/nodered/provision.sh
+run_provision: provision
+
+provision:
+	@bash scripts/provision.sh
 
 run:
-	docker compose -f docker/docker-compose.yml --env-file docker/.env up -d
+	docker compose -p magistrala_agent -f docker/docker-compose.yml --env-file docker/.env up -d
 
 stop:
-	docker compose -f docker/docker-compose.yml --env-file docker/.env down
+	docker compose -p magistrala_agent -f docker/docker-compose.yml --env-file docker/.env down
 
 clean_volumes:
-	docker compose -f docker/docker-compose.yml --env-file docker/.env down -v
+	docker compose -p magistrala_agent -f docker/docker-compose.yml --env-file docker/.env down -v

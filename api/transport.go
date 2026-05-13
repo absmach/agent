@@ -9,10 +9,11 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/absmach/agent/pkg/agent"
+	"github.com/absmach/agent"
 	"github.com/absmach/magistrala"
 	mgapi "github.com/absmach/magistrala/api/http"
 	apiutil "github.com/absmach/magistrala/api/http/util"
+	mgerrors "github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/uuid"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -23,7 +24,7 @@ import (
 // MakeHandler returns a HTTP handler for API endpoints.
 func MakeHandler(svc agent.Service, logger *slog.Logger, instanceID string) http.Handler {
 	opts := []kithttp.ServerOption{
-		kithttp.ServerErrorEncoder(apiutil.LoggingErrorEncoder(logger, mgapi.EncodeError)),
+		kithttp.ServerErrorEncoder(apiutil.LoggingErrorEncoder(logger, EncodeError)),
 	}
 
 	idp := uuid.New()
@@ -39,42 +40,42 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, instanceID string) http
 	r.Post("/pub", kithttp.NewServer(
 		pubEndpoint(svc),
 		decodePublishRequest,
-		mgapi.EncodeResponse,
+		EncodeResponse,
 		opts...,
 	).ServeHTTP)
 
 	r.Post("/exec", kithttp.NewServer(
 		execEndpoint(svc),
 		decodeExecRequest,
-		mgapi.EncodeResponse,
+		EncodeResponse,
 		opts...,
 	).ServeHTTP)
 
 	r.Post("/config", kithttp.NewServer(
 		addConfigEndpoint(svc),
 		decodeAddConfigRequest,
-		mgapi.EncodeResponse,
+		EncodeResponse,
 		opts...,
 	).ServeHTTP)
 
 	r.Get("/config", kithttp.NewServer(
 		viewConfigEndpoint(svc),
 		decodeRequest,
-		mgapi.EncodeResponse,
+		EncodeResponse,
 		opts...,
 	).ServeHTTP)
 
 	r.Get("/services", kithttp.NewServer(
 		viewServicesEndpoint(svc),
 		decodeRequest,
-		mgapi.EncodeResponse,
+		EncodeResponse,
 		opts...,
 	).ServeHTTP)
 
 	r.Post("/nodered", kithttp.NewServer(
 		nodeRedEndpoint(svc),
 		decodeNodeRedRequest,
-		mgapi.EncodeResponse,
+		EncodeResponse,
 		opts...,
 	).ServeHTTP)
 
@@ -91,7 +92,7 @@ func decodeRequest(_ context.Context, r *http.Request) (any, error) {
 func decodePublishRequest(_ context.Context, r *http.Request) (any, error) {
 	req := pubReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return nil, err
+		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
 	}
 
 	return req, nil
@@ -100,7 +101,7 @@ func decodePublishRequest(_ context.Context, r *http.Request) (any, error) {
 func decodeExecRequest(_ context.Context, r *http.Request) (any, error) {
 	req := execReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return nil, err
+		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
 	}
 
 	return req, nil
@@ -109,7 +110,7 @@ func decodeExecRequest(_ context.Context, r *http.Request) (any, error) {
 func decodeAddConfigRequest(_ context.Context, r *http.Request) (any, error) {
 	req := addConfigReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return nil, err
+		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
 	}
 
 	return req, nil
@@ -118,7 +119,7 @@ func decodeAddConfigRequest(_ context.Context, r *http.Request) (any, error) {
 func decodeNodeRedRequest(_ context.Context, r *http.Request) (any, error) {
 	req := nodeRedReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return nil, err
+		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
 	}
 
 	return req, nil
