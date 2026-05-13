@@ -64,7 +64,7 @@ func toJSON(data any) string {
 
 func validAgentConfig() agent.Config {
 	return agent.Config{
-		Server:    agent.ServerConfig{Port: "9999", BrokerURL: "amqp://fluxmq:5682"},
+		Server:    agent.ServerConfig{Port: "9999"},
 		Channels:  agent.ChanConfig{CtrlID: "ctrl-channel", DataID: "data-channel"},
 		NodeRed:   agent.NodeRedConfig{URL: "http://nodered:1880"},
 		Log:       agent.LogConfig{Level: "info"},
@@ -376,7 +376,6 @@ func TestViewConfig(t *testing.T) {
 	err = json.NewDecoder(res.Body).Decode(&body)
 	assert.Nil(t, err)
 	assert.Equal(t, cfg.Server.Port, body["server"].(map[string]any)["port"])
-	assert.Equal(t, cfg.Server.BrokerURL, body["server"].(map[string]any)["broker_url"])
 	assert.Equal(t, cfg.Channels.CtrlID, body["channels"].(map[string]any)["ctrl_id"])
 	assert.Equal(t, cfg.Channels.DataID, body["channels"].(map[string]any)["data_id"])
 	assert.Equal(t, cfg.NodeRed.URL, body["nodered"].(map[string]any)["url"])
