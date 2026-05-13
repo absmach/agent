@@ -1,7 +1,7 @@
 // Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
-import { CheckCircle, Settings, XCircle } from "lucide-react";
+import { Check, CheckCircle, Copy, Eye, EyeOff, Settings, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +32,63 @@ const emptyConfig: Config = {
 };
 
 type Status = { ok: boolean; message: string } | null;
+
+function SecretField({
+  id,
+  label,
+  placeholder,
+  value,
+  onInput,
+}: {
+  id: string;
+  label: string;
+  placeholder: string;
+  value: string;
+  onInput: (e: Event) => void;
+}) {
+  const [visible, setVisible] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="relative flex items-center">
+        <Input
+          id={id}
+          type={visible ? "text" : "password"}
+          placeholder={placeholder}
+          value={value}
+          className="pr-16"
+          onInput={onInput}
+        />
+        <div className="absolute right-1 flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => setVisible((v) => !v)}
+            className="rounded p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+            title={visible ? "Hide" : "Show"}
+          >
+            {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={copy}
+            className="rounded p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+            title="Copy to clipboard"
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function ConfigCard() {
   const [config, setConfig] = useState<Config>(emptyConfig);
@@ -132,12 +189,18 @@ export function ConfigCard() {
       <CardContent className="space-y-4">
         {field("httpPort", "HTTP Port", "Agent HTTP API port")}
         {field("clientID", "Client ID", "Magistrala client ID (MQTT username)")}
-        {field(
-          "clientKey",
-          "Client Key",
-          "Magistrala client secret (MQTT password)",
-          "password",
-        )}
+        <SecretField
+          id="clientKey"
+          label="Client Key"
+          placeholder="Magistrala client secret (MQTT password)"
+          value={config.clientKey}
+          onInput={(e) =>
+            setConfig((c) => ({
+              ...c,
+              clientKey: (e.target as HTMLInputElement).value,
+            }))
+          }
+        />
         {field("channelID", "Channel ID", "Magistrala channel ID")}
         {field("mqttURL", "MQTT URL", "Magistrala MQTT broker URL")}
         {field("nodeRedURL", "Node-RED URL", "Node-RED API URL")}

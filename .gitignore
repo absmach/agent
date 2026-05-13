@@ -4,8 +4,7 @@ configs/config.toml
 
 # UI (Vite/Preact)
 ui/node_modules/
-ui/dist/*
-!ui/dist/.gitkeep
+ui/dist/
 ui/.env.local
 ui/tsconfig.tsbuildinfo
 
