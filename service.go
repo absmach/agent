@@ -28,9 +28,8 @@ import (
 )
 
 const (
-	HeartbeatTopic = "channels.heartbeat.>"
-	Commands       = "commands"
-	config         = "config"
+	Commands = "commands"
+	config   = "config"
 
 	view = "view"
 	save = "save"
@@ -42,8 +41,6 @@ const (
 	data    = "data"
 
 	export = "export"
-
-	pubSubID = "agent"
 )
 
 var startTime = time.Now()
@@ -70,9 +67,6 @@ var (
 
 	// errUnknownCommand indicates that command is not found.
 	errUnknownCommand = errors.New("Unknown command")
-
-	// errSubscribing indicates problem with sub to topic for heartbeat.
-	errSubscribing = errors.New("failed to subscribe to heartbeat topic")
 
 	// errNoSuchService indicates service not supported.
 	errNoSuchService = errors.New("no such service")
@@ -127,6 +121,10 @@ type Service interface {
 
 	// NodeRed manages Node-RED flow operations.
 	NodeRed(cmdStr string) (string, error)
+
+	// UpdateLiveness registers or refreshes the liveness of a local service from
+	// an authenticated MQTT heartbeat message.
+	UpdateLiveness(svcname, svctype string) error
 }
 
 var _ Service = (*agent)(nil)
@@ -140,40 +138,6 @@ type agent struct {
 	svcs          map[string]Heartbeat
 	terminals     map[string]terminal.Session
 	workDir       string
-}
-
-func (ag *agent) handle(cfg HeartbeatConfig) handleFunc {
-	return func(msg *messaging.Message) error {
-		sub := msg.Channel
-		tok := strings.Split(sub, ".")
-		if len(tok) < 3 {
-			ag.logger.Error(fmt.Sprintf("Failed: Subject has incorrect length %s", sub))
-			return fmt.Errorf("failed: Subject has incorrect length %s", sub)
-		}
-		svcname := tok[1]
-		svctype := tok[2]
-		// Service name is extracted from the subtopic
-		// if there is multiple instances of the same service
-		// we will have to add another distinction.
-		if _, ok := ag.svcs[svcname]; !ok {
-			svc := NewHeartbeat(svcname, svctype, cfg.Interval)
-			ag.svcs[svcname] = svc
-			ag.logger.Info(fmt.Sprintf("Services '%s-%s' registered", svcname, svctype))
-		}
-		serv := ag.svcs[svcname]
-		serv.Update()
-		return nil
-	}
-}
-
-type handleFunc func(msg *messaging.Message) error
-
-func (h handleFunc) Handle(msg *messaging.Message) error {
-	return h(msg)
-}
-
-func (h handleFunc) Cancel() error {
-	return nil
 }
 
 // New returns agent service implementation.
@@ -191,18 +155,6 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, br
 
 	if cfg.Heartbeat.Interval <= 0 {
 		ag.logger.Error(fmt.Sprintf("invalid heartbeat interval %d", cfg.Heartbeat.Interval))
-	}
-
-	subConfig := messaging.SubscriberConfig{
-		ID:             pubSubID,
-		Topic:          HeartbeatTopic,
-		Handler:        ag.handle(cfg.Heartbeat),
-		DeliveryPolicy: messaging.DeliverAllPolicy,
-	}
-
-	err := ag.broker.Subscribe(ctx, subConfig)
-	if err != nil {
-		return ag, errors.Wrap(errSubscribing, err)
 	}
 
 	return ag, nil
@@ -691,6 +643,16 @@ func (a *agent) Publish(t, payload string) error {
 	if err != nil {
 		return errors.New(err.Error())
 	}
+	return nil
+}
+
+func (a *agent) UpdateLiveness(svcname, svctype string) error {
+	if _, ok := a.svcs[svcname]; !ok {
+		svc := NewHeartbeat(svcname, svctype, a.config.Heartbeat.Interval)
+		a.svcs[svcname] = svc
+		a.logger.Info(fmt.Sprintf("Services '%s-%s' registered", svcname, svctype))
+	}
+	a.svcs[svcname].Update()
 	return nil
 }
 
