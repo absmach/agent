@@ -94,8 +94,9 @@ func FetchAgentConfig(cfg Config, agentCfg agent.Config, logger *slog.Logger) (a
 		logger.Error("Fetching bootstrap failed", slog.Any("error", fetchErr))
 
 		if i < int(retries)-1 {
-			logger.Debug("Retrying...", slog.Int("attempt", i+1), slog.Uint64("retries", retries), slog.Uint64("delay_sec", retryDelaySec))
-			time.Sleep(time.Duration(retryDelaySec) * time.Second)
+			delay := backoffDelay(i, retryDelaySec)
+			logger.Debug("Retrying...", slog.Int("attempt", i+1), slog.Uint64("retries", retries), slog.Uint64("delay_sec", delay))
+			time.Sleep(time.Duration(delay) * time.Second)
 		}
 	}
 	if fetchErr != nil {
@@ -225,4 +226,19 @@ func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) 
 
 func bootstrapConfigURL(bsSvrURL, bsID string) string {
 	return fmt.Sprintf("%s/%s", strings.TrimRight(bsSvrURL, "/"), strings.TrimLeft(bsID, "/"))
+}
+
+// backoffDelay returns the retry wait in seconds for the given attempt using
+// exponential backoff: baseSec × 2^attempt, with the exponent capped at 5 and
+// the result capped at 120 seconds.
+func backoffDelay(attempt int, baseSec uint64) uint64 {
+	exp := uint(attempt)
+	if exp > 5 {
+		exp = 5
+	}
+	delay := baseSec * (1 << exp)
+	if delay > 120 {
+		delay = 120
+	}
+	return delay
 }

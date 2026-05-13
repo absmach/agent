@@ -146,6 +146,38 @@ func TestApplyBootstrapResponse(t *testing.T) {
 	}
 }
 
+func TestBackoffDelay(t *testing.T) {
+	cases := []struct {
+		attempt int
+		baseSec uint64
+		want    uint64
+	}{
+		{attempt: 0, baseSec: 10, want: 10},
+		{attempt: 1, baseSec: 10, want: 20},
+		{attempt: 2, baseSec: 10, want: 40},
+		{attempt: 3, baseSec: 10, want: 80},
+		{attempt: 4, baseSec: 10, want: 120}, // 160 capped at 120
+		{attempt: 5, baseSec: 10, want: 120}, // 320 capped at 120
+		{attempt: 6, baseSec: 10, want: 120}, // exponent capped at 5, still 320 → 120
+		{attempt: 0, baseSec: 3, want: 3},
+		{attempt: 1, baseSec: 3, want: 6},
+		{attempt: 2, baseSec: 3, want: 12},
+		{attempt: 3, baseSec: 3, want: 24},
+		{attempt: 4, baseSec: 3, want: 48},
+		{attempt: 5, baseSec: 3, want: 96},
+		{attempt: 6, baseSec: 3, want: 96},  // exponent capped at 5, 3×32=96 (below 120 cap)
+		{attempt: 5, baseSec: 4, want: 120}, // 4×32=128 capped at 120
+		{attempt: 6, baseSec: 4, want: 120}, // exponent capped at 5, same as above
+	}
+
+	for _, tc := range cases {
+		got := backoffDelay(tc.attempt, tc.baseSec)
+		assert.Equal(t, tc.want, got,
+			fmt.Sprintf("backoffDelay(attempt=%d, base=%d): want %d got %d",
+				tc.attempt, tc.baseSec, tc.want, got))
+	}
+}
+
 func TestBootstrapConfigURL(t *testing.T) {
 	cases := []struct {
 		desc    string
