@@ -11,6 +11,7 @@ import (
 	"context"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/health"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -646,6 +647,42 @@ func (_c *Service_UpdateLiveness_Call) Return(err error) *Service_UpdateLiveness
 }
 
 func (_c *Service_UpdateLiveness_Call) RunAndReturn(run func(svcname string, svctype string) error) *Service_UpdateLiveness_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+func (_mock *Service) Health() *health.Metrics {
+	ret := _mock.Called()
+	var r0 *health.Metrics
+	if rf, ok := ret.Get(0).(func() *health.Metrics); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*health.Metrics)
+		}
+	}
+	return r0
+}
+
+type Service_Health_Call struct {
+	*mock.Call
+}
+
+func (_e *Service_Expecter) Health() *Service_Health_Call {
+	return &Service_Health_Call{Call: _e.mock.On("Health")}
+}
+
+func (_c *Service_Health_Call) Run(run func()) *Service_Health_Call {
+	_c.Call.Run(func(args mock.Arguments) { run() })
+	return _c
+}
+
+func (_c *Service_Health_Call) Return(m *health.Metrics) *Service_Health_Call {
+	_c.Call.Return(m)
+	return _c
+}
+
+func (_c *Service_Health_Call) RunAndReturn(run func() *health.Metrics) *Service_Health_Call {
 	_c.Call.Return(run)
 	return _c
 }

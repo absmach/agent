@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/health"
 	"github.com/go-kit/kit/metrics"
 )
 
@@ -119,6 +120,15 @@ func (ms *metricsMiddleware) UpdateLiveness(svcname, svctype string) error {
 	}(time.Now())
 
 	return ms.svc.UpdateLiveness(svcname, svctype)
+}
+
+func (ms *metricsMiddleware) Health() *health.Metrics {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "health").Add(1)
+		ms.latency.With("method", "health").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.Health()
 }
 
 func (ms *metricsMiddleware) NodeRed(cmdStr string) (string, error) {

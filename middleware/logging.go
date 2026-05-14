@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/health"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
@@ -179,6 +180,14 @@ func (lm *loggingMiddleware) UpdateLiveness(svcname, svctype string) (err error)
 	}(time.Now())
 
 	return lm.svc.UpdateLiveness(svcname, svctype)
+}
+
+func (lm *loggingMiddleware) Health() *health.Metrics {
+	defer func(begin time.Time) {
+		lm.logger.Info("Retrieve health completed successfully.", slog.String("duration", time.Since(begin).String()))
+	}(time.Now())
+
+	return lm.svc.Health()
 }
 
 func (lm *loggingMiddleware) NodeRed(cmdStr string) (resp string, err error) {

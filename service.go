@@ -15,9 +15,11 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/absmach/agent/pkg/encoder"
+	"github.com/absmach/agent/pkg/health"
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/terminal"
 	"github.com/absmach/magistrala/pkg/errors"
@@ -124,6 +126,9 @@ type Service interface {
 	// UpdateLiveness registers or refreshes the liveness of a local service from
 	// an authenticated MQTT heartbeat message.
 	UpdateLiveness(svcname, svctype string) error
+
+	// Health returns the latest gateway health metrics, or nil if not yet collected.
+	Health() *health.Metrics
 }
 
 var _ Service = (*agent)(nil)
@@ -136,6 +141,7 @@ type agent struct {
 	svcs          map[string]Heartbeat
 	terminals     map[string]terminal.Session
 	workDir       string
+	latestHealth  atomic.Pointer[health.Metrics]
 }
 
 // New returns agent service implementation.
@@ -150,9 +156,13 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		workDir:       "/",
 	}
 
-	topic := fmt.Sprintf("m/%s/c/%s/services/agent/heartbeat",
+	selfTopic := fmt.Sprintf("m/%s/c/%s/services/agent/heartbeat",
 		cfg.DomainID, cfg.Channels.CtrlChan())
-	go ag.selfHeartbeat(ctx, topic, cfg.Heartbeat.Interval, cfg.MQTT.QoS)
+	go ag.selfHeartbeat(ctx, selfTopic, cfg.Heartbeat.Interval, cfg.MQTT.QoS)
+
+	healthTopic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat",
+		cfg.DomainID, cfg.Channels.DataChan())
+	go ag.healthHeartbeat(ctx, healthTopic, cfg.Heartbeat.Interval, cfg.MQTT.QoS)
 
 	return ag, nil
 }
@@ -667,6 +677,60 @@ func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.D
 			return
 		}
 	}
+}
+
+func (a *agent) healthHeartbeat(ctx context.Context, topic string, interval time.Duration, qos byte) {
+	collector := health.NewCollector(Version)
+	publish := func() {
+		m := collector.Collect()
+		a.latestHealth.Store(&m)
+
+		now := float64(m.Timestamp.Unix())
+		vb := true
+		cpu := m.CPUUsage
+		memAvail := float64(m.MemAvailable)
+		diskFree := float64(m.DiskFree)
+		netRx := float64(m.NetRxBytes)
+		netTx := float64(m.NetTxBytes)
+		goroutines := float64(m.Goroutines)
+		uptime := m.Uptime
+
+		pack := senml.Pack{Records: []senml.Record{
+			{BaseName: "gw:", BaseTime: now, Name: "heartbeat", BoolValue: &vb},
+			{Name: "uptime", Unit: "s", Value: &uptime},
+			{Name: "cpu_usage", Unit: "%", Value: &cpu},
+			{Name: "mem_available", Unit: "By", Value: &memAvail},
+			{Name: "disk_free", Unit: "By", Value: &diskFree},
+			{Name: "net_rx_bytes", Unit: "By", Value: &netRx},
+			{Name: "net_tx_bytes", Unit: "By", Value: &netTx},
+			{Name: "goroutines", Value: &goroutines},
+			{Name: "firmware_version", StringValue: &m.Version},
+		}}
+		payload, err := senml.Encode(pack, senml.JSON)
+		if err != nil {
+			a.logger.Error("failed to encode health heartbeat", slog.Any("error", err))
+			return
+		}
+		token := a.mqttClient.Publish(topic, qos, false, payload)
+		token.Wait()
+		if err := token.Error(); err != nil {
+			a.logger.Warn("health heartbeat publish failed", slog.Any("error", err))
+		}
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			publish()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (a *agent) Health() *health.Metrics {
+	return a.latestHealth.Load()
 }
 
 func (a *agent) UpdateLiveness(svcname, svctype string) error {

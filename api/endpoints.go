@@ -14,6 +14,12 @@ import (
 	"github.com/go-kit/kit/endpoint"
 )
 
+func healthEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, _ any) (any, error) {
+		return healthRes{Metrics: svc.Health()}, nil
+	}
+}
+
 func pubEndpoint(svc agent.Service) endpoint.Endpoint {
 	return func(_ context.Context, request any) (any, error) {
 		req := request.(pubReq)
