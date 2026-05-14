@@ -174,29 +174,9 @@ func TestHeartbeat(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	cases := []struct {
-		desc     string
-		interval time.Duration
-	}{
-		{
-			desc:     "create service successfully",
-			interval: time.Hour,
-		},
-		{
-			desc:     "create service with invalid heartbeat interval",
-			interval: 0,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.desc, func(t *testing.T) {
-			cfg := testConfig()
-			cfg.Heartbeat.Interval = tc.interval
-			svc, _, _, err := newService(t, cfg)
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
-			assert.NotNil(t, svc, fmt.Sprintf("%s: expected service", tc.desc))
-		})
-	}
+	svc, _, _, err := newService(t, testConfig())
+	assert.Nil(t, err, "unexpected error creating service")
+	assert.NotNil(t, svc, "expected service to be non-nil")
 }
 
 func TestExecute(t *testing.T) {

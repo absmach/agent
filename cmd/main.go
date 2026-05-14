@@ -177,6 +177,9 @@ func validateRuntimeConfig(cfg agent.Config) error {
 			missing = append(missing, "mqtt.password")
 		}
 	}
+	if cfg.Heartbeat.Interval <= 0 {
+		missing = append(missing, "heartbeat.interval")
+	}
 	if len(missing) > 0 {
 		return errors.New(fmt.Sprintf("%s: missing required runtime fields: %s", errInvalidRuntimeConfig, strings.Join(missing, ", ")))
 	}

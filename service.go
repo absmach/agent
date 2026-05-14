@@ -150,11 +150,9 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		workDir:       "/",
 	}
 
-	if cfg.Heartbeat.Interval <= 0 {
-		ag.logger.Error(fmt.Sprintf("invalid heartbeat interval %d", cfg.Heartbeat.Interval))
-	} else {
-		go ag.selfHeartbeat(ctx)
-	}
+	topic := fmt.Sprintf("m/%s/c/%s/services/agent/heartbeat",
+		cfg.DomainID, cfg.Channels.CtrlChan())
+	go ag.selfHeartbeat(ctx, topic, cfg.Heartbeat.Interval, cfg.MQTT.QoS)
 
 	return ag, nil
 }
@@ -314,22 +312,18 @@ func (a *agent) terminalOpen(uuid string, timeout time.Duration) error {
 		a.terminals[uuid] = term
 		go func() {
 			for range term.IsDone() {
-				// Terminal is inactive, should be closed.
-				a.logger.Debug((fmt.Sprintf("Closing terminal session %s", uuid)))
 				a.terminalClose(uuid)
 				delete(a.terminals, uuid)
 				return
 			}
 		}()
 	}
-	a.logger.Debug(fmt.Sprintf("Opened terminal session %s", uuid))
 	return nil
 }
 
 func (a *agent) terminalClose(uuid string) error {
 	if _, ok := a.terminals[uuid]; ok {
 		delete(a.terminals, uuid)
-		a.logger.Debug(fmt.Sprintf("Terminal session: %s closed", uuid))
 		return nil
 	}
 	return errors.Wrap(errNoSuchTerminalSession, fmt.Errorf("session :%s", uuid))
@@ -575,7 +569,7 @@ func (a *agent) processResponse(uuid, cmd, resp string) error {
 	return nil
 }
 
-func (a *agent) saveConfig(ctx context.Context, service, fileName, fileCont string) error {
+func (a *agent) saveConfig(_ context.Context, service, fileName, fileCont string) error {
 	switch service {
 	case export:
 		content, err := base64.StdEncoding.DecodeString(fileCont)
@@ -645,9 +639,7 @@ func (a *agent) Publish(t, payload string) error {
 	return nil
 }
 
-func (a *agent) selfHeartbeat(ctx context.Context) {
-	topic := fmt.Sprintf("m/%s/c/%s/services/agent/heartbeat",
-		a.config.DomainID, a.config.Channels.CtrlChan())
+func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.Duration, qos byte) {
 	svcType := "agent"
 	pack := senml.Pack{Records: []senml.Record{
 		{BaseName: "agent:", Name: "service_type", StringValue: &svcType},
@@ -659,13 +651,13 @@ func (a *agent) selfHeartbeat(ctx context.Context) {
 	}
 
 	publish := func() {
-		token := a.mqttClient.Publish(topic, a.config.MQTT.QoS, false, payload)
+		token := a.mqttClient.Publish(topic, qos, false, payload)
 		token.Wait()
 		if err := token.Error(); err != nil {
 			a.logger.Warn("self-heartbeat publish failed", slog.Any("error", err))
 		}
 	}
-	ticker := time.NewTicker(a.config.Heartbeat.Interval)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -681,7 +673,6 @@ func (a *agent) UpdateLiveness(svcname, svctype string) error {
 	if _, ok := a.svcs[svcname]; !ok {
 		svc := NewHeartbeat(svcname, svctype, a.config.Heartbeat.Interval)
 		a.svcs[svcname] = svc
-		a.logger.Info(fmt.Sprintf("Services '%s-%s' registered", svcname, svctype))
 	}
 	a.svcs[svcname].Update()
 	return nil
