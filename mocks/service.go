@@ -625,7 +625,10 @@ func (_c *Service_UpdateLiveness_Call) Run(run func(svcname string, svctype stri
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		run(arg0, arg1)
+		run(
+			arg0,
+			arg1,
+		)
 	})
 	return _c
 }
@@ -635,7 +638,7 @@ func (_c *Service_UpdateLiveness_Call) Return(err error) *Service_UpdateLiveness
 	return _c
 }
 
-func (_c *Service_UpdateLiveness_Call) RunAndReturn(run func(string, string) error) *Service_UpdateLiveness_Call {
+func (_c *Service_UpdateLiveness_Call) RunAndReturn(run func(svcname string, svctype string) error) *Service_UpdateLiveness_Call {
 	_c.Call.Return(run)
 	return _c
 }

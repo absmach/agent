@@ -53,7 +53,10 @@ func newService(t *testing.T, cfg agent.Config) (agent.Service, *agentmocks.MQTT
 	mqttClient := agentmocks.NewMQTTClient(t)
 	nodeRed := nrmocks.NewClient(t)
 
-	svc, err := agent.New(context.Background(), mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return svc, mqttClient, nodeRed, err
 }
 
