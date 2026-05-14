@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/health"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
@@ -144,6 +145,49 @@ func (lm *loggingMiddleware) Terminal(uuid, cmdStr string) (err error) {
 	}(time.Now())
 
 	return lm.svc.Terminal(uuid, cmdStr)
+}
+
+func (lm *loggingMiddleware) Ping(uuid string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.String("uuid", uuid),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("Ping failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("Ping completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.Ping(uuid)
+}
+
+func (lm *loggingMiddleware) UpdateLiveness(svcname, svctype string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.String("svcname", svcname),
+			slog.String("svctype", svctype),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("Update liveness failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("Update liveness completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.UpdateLiveness(svcname, svctype)
+}
+
+func (lm *loggingMiddleware) Health() *health.Metrics {
+	defer func(begin time.Time) {
+		lm.logger.Info("Retrieve health completed successfully.", slog.String("duration", time.Since(begin).String()))
+	}(time.Now())
+
+	return lm.svc.Health()
 }
 
 func (lm *loggingMiddleware) NodeRed(cmdStr string) (resp string, err error) {

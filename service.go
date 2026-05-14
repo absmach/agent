@@ -15,22 +15,22 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/absmach/agent/pkg/encoder"
+	"github.com/absmach/agent/pkg/health"
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/terminal"
 	"github.com/absmach/magistrala/pkg/errors"
-	"github.com/absmach/magistrala/pkg/messaging"
+	senml "github.com/absmach/senml"
 	paho "github.com/eclipse/paho.mqtt.golang"
 	toml "github.com/pelletier/go-toml"
 )
 
 const (
-	Path           = "./config.toml"
-	HeartbeatTopic = "channels.heartbeat.>"
-	Commands       = "commands"
-	config         = "config"
+	Commands = "commands"
+	config   = "config"
 
 	view = "view"
 	save = "save"
@@ -42,9 +42,19 @@ const (
 	data    = "data"
 
 	export = "export"
-
-	pubSubID = "agent"
 )
+
+var startTime = time.Now()
+
+// execAllowlist is the set of command names permitted via the exec MQTT command.
+var execAllowlist = map[string]bool{
+	"cat": true, "cd": true, "curl": true, "date": true, "df": true,
+	"echo": true, "env": true, "false": true, "free": true, "hostname": true,
+	"id": true, "ifconfig": true, "ip": true, "journalctl": true, "ls": true,
+	"netstat": true, "ping": true, "printf": true, "ps": true, "pwd": true,
+	"ss": true, "systemctl": true, "true": true, "uname": true, "uptime": true,
+	"who": true,
+}
 
 var (
 	// errInvalidCommand indicates malformed command.
@@ -58,9 +68,6 @@ var (
 
 	// errUnknownCommand indicates that command is not found.
 	errUnknownCommand = errors.New("Unknown command")
-
-	// errSubscribing indicates problem with sub to topic for heartbeat.
-	errSubscribing = errors.New("failed to subscribe to heartbeat topic")
 
 	// errNoSuchService indicates service not supported.
 	errNoSuchService = errors.New("no such service")
@@ -110,8 +117,18 @@ type Service interface {
 	// Publish message.
 	Publish(topic, payload string) error
 
+	// Ping publishes an immediate heartbeat SenML record to the control channel.
+	Ping(uuid string) error
+
 	// NodeRed manages Node-RED flow operations.
 	NodeRed(cmdStr string) (string, error)
+
+	// UpdateLiveness registers or refreshes the liveness of a local service from
+	// an authenticated MQTT heartbeat message.
+	UpdateLiveness(svcname, svctype string) error
+
+	// Health returns the latest gateway health metrics, or nil if not yet collected.
+	Health() *health.Metrics
 }
 
 var _ Service = (*agent)(nil)
@@ -121,74 +138,31 @@ type agent struct {
 	config        *Config
 	noderedClient nodered.Client
 	logger        *slog.Logger
-	broker        messaging.PubSub
 	svcs          map[string]Heartbeat
 	terminals     map[string]terminal.Session
 	workDir       string
-}
-
-func (ag *agent) handle(cfg HeartbeatConfig) handleFunc {
-	return func(msg *messaging.Message) error {
-		sub := msg.Channel
-		tok := strings.Split(sub, ".")
-		if len(tok) < 3 {
-			ag.logger.Error(fmt.Sprintf("Failed: Subject has incorrect length %s", sub))
-			return fmt.Errorf("failed: Subject has incorrect length %s", sub)
-		}
-		svcname := tok[1]
-		svctype := tok[2]
-		// Service name is extracted from the subtopic
-		// if there is multiple instances of the same service
-		// we will have to add another distinction.
-		if _, ok := ag.svcs[svcname]; !ok {
-			svc := NewHeartbeat(svcname, svctype, cfg.Interval)
-			ag.svcs[svcname] = svc
-			ag.logger.Info(fmt.Sprintf("Services '%s-%s' registered", svcname, svctype))
-		}
-		serv := ag.svcs[svcname]
-		serv.Update()
-		return nil
-	}
-}
-
-type handleFunc func(msg *messaging.Message) error
-
-func (h handleFunc) Handle(msg *messaging.Message) error {
-	return h(msg)
-}
-
-func (h handleFunc) Cancel() error {
-	return nil
+	latestHealth  atomic.Pointer[health.Metrics]
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, broker messaging.PubSub, logger *slog.Logger) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger) (Service, error) {
 	ag := &agent{
 		mqttClient:    mc,
 		noderedClient: nc,
 		config:        cfg,
-		broker:        broker,
 		logger:        logger,
 		svcs:          make(map[string]Heartbeat),
 		terminals:     make(map[string]terminal.Session),
 		workDir:       "/",
 	}
 
-	if cfg.Heartbeat.Interval <= 0 {
-		ag.logger.Error(fmt.Sprintf("invalid heartbeat interval %d", cfg.Heartbeat.Interval))
-	}
+	selfTopic := fmt.Sprintf("m/%s/c/%s/services/agent/heartbeat",
+		cfg.DomainID, cfg.Channels.CtrlChan())
+	go ag.selfHeartbeat(ctx, selfTopic, cfg.Heartbeat.Interval, cfg.MQTT.QoS)
 
-	subConfig := messaging.SubscriberConfig{
-		ID:             pubSubID,
-		Topic:          HeartbeatTopic,
-		Handler:        ag.handle(cfg.Heartbeat),
-		DeliveryPolicy: messaging.DeliverAllPolicy,
-	}
-
-	err := ag.broker.Subscribe(ctx, subConfig)
-	if err != nil {
-		return ag, errors.Wrap(errSubscribing, err)
-	}
+	healthTopic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat",
+		cfg.DomainID, cfg.Channels.DataChan())
+	go ag.healthHeartbeat(ctx, healthTopic, cfg.Heartbeat.Interval, cfg.MQTT.QoS)
 
 	return ag, nil
 }
@@ -215,20 +189,22 @@ func (a *agent) Execute(uuid, cmd string) (string, error) {
 		return "", errInvalidCommand
 	}
 
-	shellCmd := strings.Join(cmdArr, " ")
-
 	if cmdArr[0] == "cd" {
 		return a.changeDir(cmdArr)
 	}
 
-	execCmd := exec.Command("sh", "-c", shellCmd)
+	if !execAllowlist[cmdArr[0]] {
+		return "", errInvalidCommand
+	}
+
+	execCmd := exec.Command(cmdArr[0], cmdArr[1:]...)
 	execCmd.Dir = a.workDir
 	out, err := execCmd.CombinedOutput()
 	if err != nil && len(out) == 0 {
 		return "", errors.Wrap(errFailedExecute, err)
 	}
 
-	payload, err := encoder.EncodeSenML(uuid, shellCmd, string(out))
+	payload, err := encoder.EncodeSenML(uuid, strings.Join(cmdArr, " "), string(out))
 	if err != nil {
 		return "", errors.Wrap(errFailedEncode, err)
 	}
@@ -346,22 +322,18 @@ func (a *agent) terminalOpen(uuid string, timeout time.Duration) error {
 		a.terminals[uuid] = term
 		go func() {
 			for range term.IsDone() {
-				// Terminal is inactive, should be closed.
-				a.logger.Debug((fmt.Sprintf("Closing terminal session %s", uuid)))
 				a.terminalClose(uuid)
 				delete(a.terminals, uuid)
 				return
 			}
 		}()
 	}
-	a.logger.Debug(fmt.Sprintf("Opened terminal session %s", uuid))
 	return nil
 }
 
 func (a *agent) terminalClose(uuid string) error {
 	if _, ok := a.terminals[uuid]; ok {
 		delete(a.terminals, uuid)
-		a.logger.Debug(fmt.Sprintf("Terminal session: %s closed", uuid))
 		return nil
 	}
 	return errors.Wrap(errNoSuchTerminalSession, fmt.Errorf("session :%s", uuid))
@@ -607,7 +579,7 @@ func (a *agent) processResponse(uuid, cmd, resp string) error {
 	return nil
 }
 
-func (a *agent) saveConfig(ctx context.Context, service, fileName, fileCont string) error {
+func (a *agent) saveConfig(_ context.Context, service, fileName, fileCont string) error {
 	switch service {
 	case export:
 		content, err := base64.StdEncoding.DecodeString(fileCont)
@@ -622,7 +594,7 @@ func (a *agent) saveConfig(ctx context.Context, service, fileName, fileCont stri
 		return errNoSuchService
 	}
 
-	return a.broker.Publish(ctx, fmt.Sprintf("%s.%s.%s", Commands, service, config), &messaging.Message{})
+	return nil
 }
 
 func saveExportConfig(fileName string, content []byte) error {
@@ -643,7 +615,8 @@ func saveExportConfig(fileName string, content []byte) error {
 }
 
 func (a *agent) AddConfig(c Config) error {
-	return SaveConfig(c)
+	*a.config = c
+	return nil
 }
 
 func (a *agent) Config() Config {
@@ -674,6 +647,114 @@ func (a *agent) Publish(t, payload string) error {
 		return errors.New(err.Error())
 	}
 	return nil
+}
+
+func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.Duration, qos byte) {
+	svcType := "agent"
+	pack := senml.Pack{Records: []senml.Record{
+		{BaseName: "agent:", Name: "service_type", StringValue: &svcType},
+	}}
+	payload, err := senml.Encode(pack, senml.JSON)
+	if err != nil {
+		a.logger.Error("failed to encode self-heartbeat", slog.Any("error", err))
+		return
+	}
+
+	publish := func() {
+		token := a.mqttClient.Publish(topic, qos, false, payload)
+		token.Wait()
+		if err := token.Error(); err != nil {
+			a.logger.Warn("self-heartbeat publish failed", slog.Any("error", err))
+		}
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			publish()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (a *agent) healthHeartbeat(ctx context.Context, topic string, interval time.Duration, qos byte) {
+	collector := health.NewCollector(Version)
+	publish := func() {
+		m := collector.Collect()
+		a.latestHealth.Store(&m)
+
+		now := float64(m.Timestamp.Unix())
+		vb := true
+		cpu := m.CPUUsage
+		memAvail := float64(m.MemAvailable)
+		diskFree := float64(m.DiskFree)
+		netRx := float64(m.NetRxBytes)
+		netTx := float64(m.NetTxBytes)
+		goroutines := float64(m.Goroutines)
+		uptime := m.Uptime
+
+		pack := senml.Pack{Records: []senml.Record{
+			{BaseName: "gw:", BaseTime: now, Name: "heartbeat", BoolValue: &vb},
+			{Name: "uptime", Unit: "s", Value: &uptime},
+			{Name: "cpu_usage", Unit: "%", Value: &cpu},
+			{Name: "mem_available", Unit: "By", Value: &memAvail},
+			{Name: "disk_free", Unit: "By", Value: &diskFree},
+			{Name: "net_rx_bytes", Unit: "By", Value: &netRx},
+			{Name: "net_tx_bytes", Unit: "By", Value: &netTx},
+			{Name: "goroutines", Value: &goroutines},
+			{Name: "firmware_version", StringValue: &m.Version},
+		}}
+		payload, err := senml.Encode(pack, senml.JSON)
+		if err != nil {
+			a.logger.Error("failed to encode health heartbeat", slog.Any("error", err))
+			return
+		}
+		token := a.mqttClient.Publish(topic, qos, false, payload)
+		token.Wait()
+		if err := token.Error(); err != nil {
+			a.logger.Warn("health heartbeat publish failed", slog.Any("error", err))
+		}
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			publish()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (a *agent) Health() *health.Metrics {
+	return a.latestHealth.Load()
+}
+
+func (a *agent) UpdateLiveness(svcname, svctype string) error {
+	if _, ok := a.svcs[svcname]; !ok {
+		svc := NewHeartbeat(svcname, svctype, a.config.Heartbeat.Interval)
+		a.svcs[svcname] = svc
+	}
+	a.svcs[svcname].Update()
+	return nil
+}
+
+func (a *agent) Ping(uuid string) error {
+	now := float64(time.Now().Unix())
+	vb := true
+	uptime := time.Since(startTime).Seconds()
+	pack := senml.Pack{Records: []senml.Record{
+		{BaseName: "gw:", BaseTime: now, Name: "heartbeat", BoolValue: &vb},
+		{Name: "uptime", Unit: "s", Value: &uptime},
+	}}
+	b, err := senml.Encode(pack, senml.JSON)
+	if err != nil {
+		return err
+	}
+	return a.Publish(control, string(b))
 }
 
 func (a *agent) getTopic(topic string) (t string) {

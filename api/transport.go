@@ -82,6 +82,13 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, instanceID string) http
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health", magistrala.Health("agent", instanceID))
 
+	r.Get("/api/health", kithttp.NewServer(
+		healthEndpoint(svc),
+		decodeRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+
 	return r
 }
 

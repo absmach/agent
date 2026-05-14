@@ -9,23 +9,8 @@ networks:
 
 volumes:
   nodered-data:
-  fluxmq-data:
 
 services:
-  fluxmq:
-    image: ghcr.io/absmach/fluxmq:latest
-    container_name: agent-fluxmq
-    restart: on-failure
-    user: "0:0"
-    command: ["-config", "/etc/fluxmq/config.yaml"]
-    ports:
-      - "5692:5682"
-    networks:
-      - magistrala-agent-base-net
-    volumes:
-      - ./fluxmq/config.yaml:/etc/fluxmq/config.yaml:ro
-      - fluxmq-data:/tmp/fluxmq
-
   nodered:
     image: nodered/node-red:latest
     container_name: agent-nodered
@@ -62,7 +47,6 @@ services:
       - "host.docker.internal:host-gateway"
       - "bootstrap:host-gateway"
     depends_on:
-      - fluxmq
       - nodered
     ports:
       - "${MG_AGENT_HTTP_PORT}:${MG_AGENT_HTTP_PORT}"
@@ -74,7 +58,6 @@ services:
       MG_AGENT_MQTT_URL: ${MG_AGENT_MQTT_URL}
       MG_AGENT_MQTT_SKIP_TLS: ${MG_AGENT_MQTT_SKIP_TLS}
       MG_AGENT_MQTT_MTLS: ${MG_AGENT_MQTT_MTLS}
-      MG_AGENT_BROKER_URL: ${MG_AGENT_BROKER_URL}
       MG_AGENT_NODERED_URL: ${MG_AGENT_NODERED_URL}
       MG_AGENT_HEARTBEAT_INTERVAL: ${MG_AGENT_HEARTBEAT_INTERVAL}
       MG_AGENT_TERMINAL_SESSION_TIMEOUT: ${MG_AGENT_TERMINAL_SESSION_TIMEOUT}

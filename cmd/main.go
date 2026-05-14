@@ -26,7 +26,6 @@ import (
 	"github.com/absmach/agent/pkg/nodered"
 	mglog "github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/errors"
-	"github.com/absmach/magistrala/pkg/messaging/brokers"
 	"github.com/absmach/magistrala/pkg/prometheus"
 	"github.com/caarlos0/env/v9"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -34,12 +33,10 @@ import (
 )
 
 type config struct {
-	ConfigFile           string `env:"MG_AGENT_CONFIG_FILE" envDefault:"config.toml"`
 	LogLevel             string `env:"MG_AGENT_LOG_LEVEL" envDefault:"info"`
 	NodeRedURL           string `env:"MG_AGENT_NODERED_URL" envDefault:"http://localhost:1880/"`
 	MqttURL              string `env:"MG_AGENT_MQTT_URL" envDefault:"localhost:1883"`
 	HTTPPort             string `env:"MG_AGENT_HTTP_PORT" envDefault:"9999"`
-	BrokerURL            string `env:"MG_AGENT_BROKER_URL" envDefault:"amqp://guest:guest@localhost:5682/"`
 	MqttSkipTLSVer       string `env:"MG_AGENT_MQTT_SKIP_TLS" envDefault:"true"`
 	MqttMTLS             string `env:"MG_AGENT_MQTT_MTLS" envDefault:"false"`
 	MqttCA               string `env:"MG_AGENT_MQTT_CA" envDefault:"ca.crt"`
@@ -61,7 +58,6 @@ var (
 	errFailedToSetupMTLS       = errors.New("Failed to set up mtls certs")
 	errFailedToConfigHeartbeat = errors.New("Failed to configure heartbeat")
 	errFetchingBootstrapFailed = errors.New("Fetching bootstrap failed with error")
-	errFailedToReadConfig      = errors.New("Failed to read config")
 	errInvalidRuntimeConfig    = errors.New("Invalid runtime config")
 )
 
@@ -103,18 +99,10 @@ func main() {
 	}
 
 	if err := validateRuntimeConfig(cfg); err != nil {
-		logger.Error("Failed to validate config", slog.Any("error", err), slog.String("config_file", cfg.File))
+		logger.Error("Failed to validate config", slog.Any("error", err))
 		exitCode = 1
 		return
 	}
-
-	pubsub, err := brokers.NewPubSub(ctx, cfg.Server.BrokerURL, logger)
-	if err != nil {
-		logger.Error("Failed to connect to Broker", slog.Any("error", err), slog.String("broker_url", cfg.Server.BrokerURL))
-		exitCode = 1
-		return
-	}
-	defer pubsub.Close()
 
 	// onReconnect is called by the MQTT connect handler on every (re)connect.
 	// It is assigned after the broker is created so the closure captures it by reference.
@@ -131,7 +119,7 @@ func main() {
 	}
 	noderedClient := nodered.NewClient(cfg.NodeRed.URL, logger)
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, pubsub, logger)
+	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger)
 	if err != nil {
 		logger.Error("Error in agent service", slog.Any("error", err))
 		exitCode = 1
@@ -141,7 +129,7 @@ func main() {
 	svc = middleware.NewLogging(svc, logger)
 	counter, latency := prometheus.MakeMetrics("agent", "api")
 	svc = middleware.NewMetrics(svc, counter, latency)
-	b := conn.NewBroker(svc, mqttClient, cfg.Channels.CtrlChan(), cfg.DomainID, pubsub, logger)
+	b := conn.NewBroker(svc, mqttClient, cfg.Channels.CtrlChan(), cfg.DomainID, logger)
 	onReconnect = b.Resubscribe
 
 	srv := &http.Server{
@@ -186,8 +174,8 @@ func validateRuntimeConfig(cfg agent.Config) error {
 			missing = append(missing, "mqtt.password")
 		}
 	}
-	if cfg.Server.BrokerURL == "" {
-		missing = append(missing, "server.broker_url")
+	if cfg.Heartbeat.Interval <= 0 {
+		missing = append(missing, "heartbeat.interval")
 	}
 	if len(missing) > 0 {
 		return errors.New(fmt.Sprintf("%s: missing required runtime fields: %s", errInvalidRuntimeConfig, strings.Join(missing, ", ")))
@@ -201,8 +189,7 @@ func hasBootstrapConfig(cfg config) bool {
 
 func loadEnvConfig(cfg config) (agent.Config, error) {
 	sc := agent.ServerConfig{
-		BrokerURL: cfg.BrokerURL,
-		Port:      cfg.HTTPPort,
+		Port: cfg.HTTPPort,
 	}
 	interval, err := time.ParseDuration(cfg.HeartbeatInterval)
 	if err != nil {
@@ -253,76 +240,8 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 		Retain:      retain,
 	}
 
-	file := cfg.ConfigFile
-	cc := agent.ChanConfig{}
-	c := agent.NewConfig(sc, cc, nc, lc, mc, ch, ct, file)
-
-	if hasBootstrapConfig(cfg) {
-		return c, nil
-	}
-
-	if info, err := os.Stat(file); err == nil {
-		if info.IsDir() {
-			return c, errors.New(fmt.Sprintf("config file %q is a directory", file))
-		}
-		fc, err := agent.ReadConfig(file)
-		if err != nil {
-			return c, errors.Wrap(errFailedToReadConfig, err)
-		}
-		c = mergeConfig(c, fc)
-	} else if os.IsNotExist(err) {
-		if err := agent.SaveConfig(c); err != nil {
-			return c, err
-		}
-	} else {
-		return c, err
-	}
-
-	mc, err = loadCertificate(c.MQTT)
-	if err != nil {
-		return c, errors.Wrap(errFailedToSetupMTLS, err)
-	}
-
-	c.MQTT = mc
+	c := agent.NewConfig(sc, agent.ChanConfig{}, nc, lc, mc, ch, ct)
 	return c, nil
-}
-
-func mergeConfig(defaults, file agent.Config) agent.Config {
-	c := file
-	c.File = defaults.File
-
-	if c.Server.Port == "" {
-		c.Server.Port = defaults.Server.Port
-	}
-	if c.Server.BrokerURL == "" {
-		c.Server.BrokerURL = defaults.Server.BrokerURL
-	}
-	if c.NodeRed.URL == "" {
-		c.NodeRed.URL = defaults.NodeRed.URL
-	}
-	if c.Log.Level == "" {
-		c.Log.Level = defaults.Log.Level
-	}
-	if c.MQTT.URL == "" {
-		c.MQTT.URL = defaults.MQTT.URL
-	}
-	if c.MQTT.CAPath == "" {
-		c.MQTT.CAPath = defaults.MQTT.CAPath
-	}
-	if c.MQTT.CertPath == "" {
-		c.MQTT.CertPath = defaults.MQTT.CertPath
-	}
-	if c.MQTT.PrivKeyPath == "" {
-		c.MQTT.PrivKeyPath = defaults.MQTT.PrivKeyPath
-	}
-	if c.Heartbeat.Interval <= 0 {
-		c.Heartbeat.Interval = defaults.Heartbeat.Interval
-	}
-	if c.Terminal.SessionTimeout <= 0 {
-		c.Terminal.SessionTimeout = defaults.Terminal.SessionTimeout
-	}
-
-	return c
 }
 
 func connectToMQTTBroker(conf agent.MQTTConfig, logger *slog.Logger, onConnect func()) (mqtt.Client, error) {
@@ -466,7 +385,6 @@ func initLogger(levelText string) (*slog.Logger, error) {
 }
 
 func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Config, error) {
-	file := cfg.ConfigFile
 	missing := []string{}
 	if cfg.BootstrapURL == "" {
 		missing = append(missing, "MG_AGENT_BOOTSTRAP_URL")
@@ -499,8 +417,6 @@ func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Conf
 	if err != nil {
 		return c, errors.Wrap(errFetchingBootstrapFailed, err)
 	}
-	bsc.File = file
-
 	mc, err := loadCertificate(bsc.MQTT)
 	if err != nil {
 		return bsc, errors.Wrap(errFailedToSetupMTLS, err)

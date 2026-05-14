@@ -11,6 +11,7 @@ import (
 	"context"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/health"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -319,6 +320,57 @@ func (_c *Service_NodeRed_Call) RunAndReturn(run func(cmdStr string) (string, er
 	return _c
 }
 
+// Ping provides a mock function for the type Service
+func (_mock *Service) Ping(uuid string) error {
+	ret := _mock.Called(uuid)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Ping")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string) error); ok {
+		r0 = returnFunc(uuid)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Service_Ping_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Ping'
+type Service_Ping_Call struct {
+	*mock.Call
+}
+
+// Ping is a helper method to define mock.On call
+//   - uuid string
+func (_e *Service_Expecter) Ping(uuid interface{}) *Service_Ping_Call {
+	return &Service_Ping_Call{Call: _e.mock.On("Ping", uuid)}
+}
+
+func (_c *Service_Ping_Call) Run(run func(uuid string)) *Service_Ping_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *Service_Ping_Call) Return(err error) *Service_Ping_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_Ping_Call) RunAndReturn(run func(uuid string) error) *Service_Ping_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Publish provides a mock function for the type Service
 func (_mock *Service) Publish(topic string, payload string) error {
 	ret := _mock.Called(topic, payload)
@@ -538,6 +590,99 @@ func (_c *Service_Terminal_Call) Return(err error) *Service_Terminal_Call {
 }
 
 func (_c *Service_Terminal_Call) RunAndReturn(run func(uuid string, cmdStr string) error) *Service_Terminal_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateLiveness provides a mock function for the type Service
+func (_mock *Service) UpdateLiveness(svcname string, svctype string) error {
+	ret := _mock.Called(svcname, svctype)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateLiveness")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string, string) error); ok {
+		r0 = returnFunc(svcname, svctype)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Service_UpdateLiveness_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateLiveness'
+type Service_UpdateLiveness_Call struct {
+	*mock.Call
+}
+
+// UpdateLiveness is a helper method to define mock.On call
+//   - svcname string
+//   - svctype string
+func (_e *Service_Expecter) UpdateLiveness(svcname interface{}, svctype interface{}) *Service_UpdateLiveness_Call {
+	return &Service_UpdateLiveness_Call{Call: _e.mock.On("UpdateLiveness", svcname, svctype)}
+}
+
+func (_c *Service_UpdateLiveness_Call) Run(run func(svcname string, svctype string)) *Service_UpdateLiveness_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *Service_UpdateLiveness_Call) Return(err error) *Service_UpdateLiveness_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_UpdateLiveness_Call) RunAndReturn(run func(svcname string, svctype string) error) *Service_UpdateLiveness_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+func (_mock *Service) Health() *health.Metrics {
+	ret := _mock.Called()
+	var r0 *health.Metrics
+	if rf, ok := ret.Get(0).(func() *health.Metrics); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*health.Metrics)
+		}
+	}
+	return r0
+}
+
+type Service_Health_Call struct {
+	*mock.Call
+}
+
+func (_e *Service_Expecter) Health() *Service_Health_Call {
+	return &Service_Health_Call{Call: _e.mock.On("Health")}
+}
+
+func (_c *Service_Health_Call) Run(run func()) *Service_Health_Call {
+	_c.Call.Run(func(args mock.Arguments) { run() })
+	return _c
+}
+
+func (_c *Service_Health_Call) Return(m *health.Metrics) *Service_Health_Call {
+	_c.Call.Return(m)
+	return _c
+}
+
+func (_c *Service_Health_Call) RunAndReturn(run func() *health.Metrics) *Service_Health_Call {
 	_c.Call.Return(run)
 	return _c
 }

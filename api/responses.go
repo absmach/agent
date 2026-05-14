@@ -7,12 +7,14 @@ import (
 	"net/http"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/health"
 	"github.com/absmach/magistrala"
 )
 
 var (
 	_ magistrala.Response = (*publishRes)(nil)
 	_ magistrala.Response = (*execRes)(nil)
+	_ magistrala.Response = (*healthRes)(nil)
 	_ magistrala.Response = (*addConfigRes)(nil)
 	_ magistrala.Response = (*viewConfigRes)(nil)
 	_ magistrala.Response = (*viewServicesRes)(nil)
@@ -116,4 +118,23 @@ func (res nodeRedRes) Headers() map[string]string {
 
 func (res nodeRedRes) Empty() bool {
 	return false
+}
+
+type healthRes struct {
+	*health.Metrics
+}
+
+func (res healthRes) Code() int {
+	if res.Metrics == nil {
+		return http.StatusServiceUnavailable
+	}
+	return http.StatusOK
+}
+
+func (res healthRes) Headers() map[string]string {
+	return map[string]string{}
+}
+
+func (res healthRes) Empty() bool {
+	return res.Metrics == nil
 }

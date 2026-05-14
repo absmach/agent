@@ -64,15 +64,14 @@ func toJSON(data any) string {
 
 func validAgentConfig() agent.Config {
 	return agent.Config{
-		Server:    agent.ServerConfig{Port: "9999", BrokerURL: "amqp://fluxmq:5682"},
-		Channels:  agent.ChanConfig{ID: "channel-id"},
+		Server:    agent.ServerConfig{Port: "9999"},
+		Channels:  agent.ChanConfig{CtrlID: "ctrl-channel", DataID: "data-channel"},
 		NodeRed:   agent.NodeRedConfig{URL: "http://nodered:1880"},
 		Log:       agent.LogConfig{Level: "info"},
 		MQTT:      agent.MQTTConfig{URL: "ssl://broker:8883", Username: "user", Password: "pass"},
 		Heartbeat: agent.HeartbeatConfig{Interval: time.Second},
 		Terminal:  agent.TerminalConfig{SessionTimeout: time.Minute},
 		DomainID:  "domain-id",
-		File:      "/tmp/config.toml",
 	}
 }
 
@@ -272,7 +271,7 @@ func TestAddConfig(t *testing.T) {
 			desc: "add config",
 			req: toJSON(map[string]any{
 				"server":   map[string]string{"port": "7777"},
-				"channels": map[string]string{"id": "new-channel"},
+				"channels": map[string]string{"ctrl_id": "new-ctrl", "data_id": "new-data"},
 				"nodered":  map[string]string{"url": "http://new-nodered:1880"},
 				"log":      map[string]string{"level": "debug"},
 				"mqtt": map[string]string{
@@ -303,7 +302,7 @@ func TestAddConfig(t *testing.T) {
 			desc: "add config service error",
 			req: toJSON(map[string]any{
 				"server":   map[string]string{"port": "7777"},
-				"channels": map[string]string{"id": "new-channel"},
+				"channels": map[string]string{"ctrl_id": "new-ctrl", "data_id": "new-data"},
 				"nodered":  map[string]string{"url": "http://new-nodered:1880"},
 				"log":      map[string]string{"level": "debug"},
 				"mqtt": map[string]string{
@@ -377,8 +376,8 @@ func TestViewConfig(t *testing.T) {
 	err = json.NewDecoder(res.Body).Decode(&body)
 	assert.Nil(t, err)
 	assert.Equal(t, cfg.Server.Port, body["server"].(map[string]any)["port"])
-	assert.Equal(t, cfg.Server.BrokerURL, body["server"].(map[string]any)["broker_url"])
-	assert.Equal(t, cfg.Channels.ID, body["channels"].(map[string]any)["id"])
+	assert.Equal(t, cfg.Channels.CtrlID, body["channels"].(map[string]any)["ctrl_id"])
+	assert.Equal(t, cfg.Channels.DataID, body["channels"].(map[string]any)["data_id"])
 	assert.Equal(t, cfg.NodeRed.URL, body["nodered"].(map[string]any)["url"])
 	assert.Equal(t, cfg.MQTT.URL, body["mqtt"].(map[string]any)["url"])
 	assert.Equal(t, cfg.MQTT.Username, body["mqtt"].(map[string]any)["username"])

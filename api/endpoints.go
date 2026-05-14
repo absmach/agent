@@ -14,6 +14,12 @@ import (
 	"github.com/go-kit/kit/endpoint"
 )
 
+func healthEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, _ any) (any, error) {
+		return healthRes{Metrics: svc.Health()}, nil
+	}
+}
+
 func pubEndpoint(svc agent.Service) endpoint.Endpoint {
 	return func(_ context.Context, request any) (any, error) {
 		req := request.(pubReq)
@@ -70,7 +76,8 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 		current := svc.Config()
 
 		current.Server.Port = req.Server.Port
-		current.Channels.ID = req.Channels.ID
+		current.Channels.CtrlID = req.Channels.CtrlID
+		current.Channels.DataID = req.Channels.DataID
 		current.NodeRed.URL = req.NodeRed.Url
 		current.Log.Level = req.Log.Level
 		current.MQTT.URL = req.Mqtt.Url
