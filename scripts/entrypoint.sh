@@ -135,6 +135,7 @@ async function fetchBootstrap() {
       MG_AGENT_CLIENT_SECRET: process.env.MG_AGENT_CLIENT_SECRET || mqtt.secret || mqtt.password || "",
       MG_AGENT_DOMAIN_ID: process.env.MG_AGENT_DOMAIN_ID || content.domain_id || "",
       MG_AGENT_CHANNEL: process.env.MG_AGENT_CHANNEL || telemetry.channel_id || channels.data_id || channels.id || "",
+      MG_AGENT_CTRL_CHANNEL: process.env.MG_AGENT_CTRL_CHANNEL || channels.ctrl_id || channels.id || "",
       MG_AGENT_MQTT_URL: process.env.MG_AGENT_MQTT_URL || mqtt.url || ""
     };
 
@@ -161,8 +162,10 @@ if [ -f "$CONFIG_FILE" ]; then
     MG_AGENT_CLIENT_SECRET="${MG_AGENT_CLIENT_SECRET:-$(toml_value mqtt password)}"
     MG_AGENT_DOMAIN_ID="${MG_AGENT_DOMAIN_ID:-$(toml_value "" domain_id)}"
     MG_AGENT_CHANNEL="${MG_AGENT_CHANNEL:-$(toml_value channels id)}"
+    MG_AGENT_CTRL_CHANNEL="${MG_AGENT_CTRL_CHANNEL:-$(toml_value channels ctrl_id)}"
     MG_AGENT_MQTT_URL="${MG_AGENT_MQTT_URL:-$(toml_value mqtt url)}"
 fi
+MG_AGENT_CTRL_CHANNEL="${MG_AGENT_CTRL_CHANNEL:-$MG_AGENT_CHANNEL}"
 
 MQTT_HOST=""
 MQTT_PORT=""
@@ -189,6 +192,7 @@ export MG_AGENT_CLIENT_ID
 export MG_AGENT_CLIENT_SECRET
 export MG_AGENT_DOMAIN_ID
 export MG_AGENT_CHANNEL
+export MG_AGENT_CTRL_CHANNEL
 export MQTT_HOST
 export MQTT_PORT
 export MQTT_USETLS
@@ -280,5 +284,60 @@ for (const id of brokerIDs) {
 fs.writeFileSync(flowFile, `${JSON.stringify(nodes, null, 4)}\n`);
 fs.writeFileSync(credFile, `${JSON.stringify(credentials, null, 4)}\n`);
 NODE
+
+# Publish heartbeat so Node-RED appears in the agent's services list.
+# Runs as a background Node.js process using the mqtt package bundled with Node-RED.
+node <<'HEARTBEAT' &
+const path = require("path");
+
+let mqttLib;
+try {
+  mqttLib = require(path.join("/usr/src/node-red/node_modules", "mqtt"));
+} catch (e) {
+  process.stderr.write("mqtt package not found, heartbeat disabled\n");
+  process.exit(0);
+}
+
+const host        = process.env.MQTT_HOST             || "";
+const port        = parseInt(process.env.MQTT_PORT    || "1883", 10);
+const useTLS      = process.env.MQTT_USETLS           === "true";
+const skipTLS     = process.env.MQTT_SKIP_TLS         === "true";
+const clientID    = process.env.MG_AGENT_CLIENT_ID    || "";
+const secret      = process.env.MG_AGENT_CLIENT_SECRET || "";
+const domainID    = process.env.MG_AGENT_DOMAIN_ID    || "";
+const ctrlChannel = process.env.MG_AGENT_CTRL_CHANNEL || "";
+
+if (!host || !domainID || !ctrlChannel) {
+  process.stderr.write("Incomplete MQTT config, heartbeat disabled\n");
+  process.exit(0);
+}
+
+// Publish at 80% of the agent heartbeat interval to stay safely within the window.
+const rawInterval = (process.env.MG_AGENT_HEARTBEAT_INTERVAL || "10s").replace(/[^0-9]/g, "");
+const intervalSec = parseInt(rawInterval, 10) || 10;
+const publishMs   = Math.max(Math.floor(intervalSec * 0.8) * 1000, 1000);
+
+const brokerURL = (useTLS ? "mqtts" : "mqtt") + "://" + host + ":" + port;
+const topic     = "m/" + domainID + "/c/" + ctrlChannel + "/services/nodered/heartbeat";
+const payload   = JSON.stringify([{"bn": "nodered:", "n": "service_type", "vs": "nodered"}]);
+
+const client = mqttLib.connect(brokerURL, {
+  clientId:          clientID + "-hb",
+  username:          clientID,
+  password:          secret,
+  rejectUnauthorized: !skipTLS,
+  reconnectPeriod:   5000,
+});
+
+client.on("connect", function () {
+  var publish = function () { client.publish(topic, payload, {qos: 0, retain: false}); };
+  publish();
+  setInterval(publish, publishMs);
+});
+
+client.on("error", function (err) {
+  process.stderr.write("Heartbeat error: " + err.message + "\n");
+});
+HEARTBEAT
 
 exec /usr/src/node-red/node_modules/.bin/node-red --settings /data/settings.js "$@"
