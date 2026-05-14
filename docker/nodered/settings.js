@@ -1,3 +1,6 @@
+// Copyright (c) Abstract Machines
+// SPDX-License-Identifier: Apache-2.0
+
 module.exports = {
     // Disable credential encryption so credentials in flows.json are used as-is.
     credentialSecret: false,

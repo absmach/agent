@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/senml"
 	"github.com/absmach/magistrala/pkg/messaging"
-	"github.com/absmach/senml"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"robpike.io/filter"
 )
@@ -123,19 +123,19 @@ func extractBrokerTopic(topic string) string {
 
 // handleMsg triggered when new message is received on MQTT broker.
 func (b *broker) handleMsg(mc mqtt.Client, msg mqtt.Message) {
-	sm, err := senml.Decode(msg.Payload(), senml.JSON)
+	records, err := senml.Decode(msg.Payload())
 	if err != nil {
 		b.logger.Warn("SenML decode failed", slog.Any("error", err))
 		return
 	}
 
-	if len(sm.Records) == 0 {
+	if len(records) == 0 {
 		b.logger.Error("SenML payload empty", slog.Any("payload", msg.Payload()))
 		return
 	}
-	cmdType := sm.Records[0].Name
-	cmdStr := *sm.Records[0].StringValue
-	uuid := strings.TrimSuffix(sm.Records[0].BaseName, ":")
+	cmdType := records[0].Name
+	cmdStr := *records[0].StringValue
+	uuid := strings.TrimSuffix(records[0].BaseName, ":")
 
 	switch cmdType {
 	case control:
