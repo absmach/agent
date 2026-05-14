@@ -152,6 +152,8 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 
 	if cfg.Heartbeat.Interval <= 0 {
 		ag.logger.Error(fmt.Sprintf("invalid heartbeat interval %d", cfg.Heartbeat.Interval))
+	} else {
+		go ag.selfHeartbeat(ctx)
 	}
 
 	return ag, nil
@@ -641,6 +643,39 @@ func (a *agent) Publish(t, payload string) error {
 		return errors.New(err.Error())
 	}
 	return nil
+}
+
+func (a *agent) selfHeartbeat(ctx context.Context) {
+	topic := fmt.Sprintf("m/%s/c/%s/services/agent/heartbeat",
+		a.config.DomainID, a.config.Channels.CtrlChan())
+	svcType := "agent"
+	pack := senml.Pack{Records: []senml.Record{
+		{BaseName: "agent:", Name: "service_type", StringValue: &svcType},
+	}}
+	payload, err := senml.Encode(pack, senml.JSON)
+	if err != nil {
+		a.logger.Error("failed to encode self-heartbeat", slog.Any("error", err))
+		return
+	}
+
+	publish := func() {
+		token := a.mqttClient.Publish(topic, a.config.MQTT.QoS, false, payload)
+		token.Wait()
+		if err := token.Error(); err != nil {
+			a.logger.Warn("self-heartbeat publish failed", slog.Any("error", err))
+		}
+	}
+	publish()
+	ticker := time.NewTicker(a.config.Heartbeat.Interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			publish()
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (a *agent) UpdateLiveness(svcname, svctype string) error {
