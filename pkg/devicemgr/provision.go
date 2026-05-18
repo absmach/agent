@@ -39,7 +39,7 @@ type provisionRequest struct {
 }
 
 type provisionResponse struct {
-	Clients  []struct {
+	Clients []struct {
 		ID     string `json:"id"`
 		Secret string `json:"secret"`
 		Name   string `json:"name"`

@@ -1034,6 +1034,7 @@ func provisionHandlerOK(t *testing.T, deviceID, deviceKey, channelID string) htt
 }
 
 func TestDeviceManager_NilManager(t *testing.T) {
+	// nolint:dogsled
 	svc, _, _, _, _, err := newService(t, testConfig(), nil)
 	require.NoError(t, err)
 
