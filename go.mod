@@ -13,6 +13,7 @@ require (
 	github.com/pelletier/go-toml v1.9.5
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
+	go.etcd.io/bbolt v1.4.3
 	golang.org/x/sync v0.20.0
 	robpike.io/filter v0.0.0-20150108201509-2984852a2183
 )

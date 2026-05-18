@@ -63,6 +63,13 @@ type TerminalConfig struct {
 	SessionTimeout time.Duration `json:"session_timeout"`
 }
 
+type ProvisionConfig struct {
+	URL      string `json:"url"`
+	Token    string `json:"token"`
+	DBPath   string `json:"db_path"`
+	DomainID string `json:"domain_id"`
+}
+
 type Config struct {
 	Server    ServerConfig    `json:"server"`
 	Terminal  TerminalConfig  `json:"terminal"`
@@ -71,6 +78,7 @@ type Config struct {
 	NodeRed   NodeRedConfig   `json:"nodered"`
 	Log       LogConfig       `json:"log"`
 	MQTT      MQTTConfig      `json:"mqtt"`
+	Provision ProvisionConfig `json:"provision"`
 	DomainID  string          `json:"domain_id"`
 }
 

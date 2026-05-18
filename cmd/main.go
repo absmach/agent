@@ -23,6 +23,7 @@ import (
 	"github.com/absmach/agent/middleware"
 	"github.com/absmach/agent/pkg/bootstrap"
 	"github.com/absmach/agent/pkg/conn"
+	"github.com/absmach/agent/pkg/devicemgr"
 	"github.com/absmach/agent/pkg/nodered"
 	mglog "github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/errors"
@@ -54,6 +55,9 @@ type config struct {
 	BootstrapRetries     string `env:"MG_AGENT_BOOTSTRAP_RETRIES" envDefault:"5"`
 	BootstrapRetryDelay  string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
 	BootstrapSkipTLS     string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS" envDefault:"false"`
+	ProvisionURL         string `env:"MG_AGENT_PROVISION_URL" envDefault:""`
+	ProvisionToken       string `env:"MG_AGENT_PROVISION_TOKEN" envDefault:""`
+	DeviceDBPath         string `env:"MG_AGENT_DEVICE_DB_PATH" envDefault:"/var/lib/agent/devices.db"`
 }
 
 var (
@@ -129,7 +133,22 @@ func main() {
 	}
 	noderedClient := nodered.NewClient(cfg.NodeRed.URL, logger)
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, pubsub, logger)
+	var devices *devicemgr.Manager
+	if c.ProvisionURL != "" {
+		devices, err = devicemgr.New(c.DeviceDBPath, devicemgr.ProvisionConfig{
+			URL:      c.ProvisionURL,
+			Token:    c.ProvisionToken,
+			DomainID: cfg.DomainID,
+		})
+		if err != nil {
+			logger.Error("Failed to open device store", slog.Any("error", err))
+			exitCode = 1
+			return
+		}
+		defer devices.Close()
+	}
+
+	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, pubsub, logger, devices)
 	if err != nil {
 		logger.Error("Error in agent service", slog.Any("error", err))
 		exitCode = 1

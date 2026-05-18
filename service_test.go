@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,10 +20,12 @@ import (
 
 	"github.com/absmach/agent"
 	agentmocks "github.com/absmach/agent/mocks"
+	"github.com/absmach/agent/pkg/devicemgr"
 	nrmocks "github.com/absmach/agent/pkg/nodered/mocks"
 	"github.com/absmach/magistrala/pkg/messaging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 var domainID = "1e7295a6-8de9-4c3c-8e36-387217f131f6"
@@ -60,7 +64,7 @@ func newService(t *testing.T, cfg agent.Config, subscribeErr error) (agent.Servi
 		subConfig = args.Get(1).(messaging.SubscriberConfig)
 	}).Return(subscribeErr).Once()
 
-	svc, err := agent.New(context.Background(), mqttClient, &cfg, nodeRed, pubsub, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	svc, err := agent.New(context.Background(), mqttClient, &cfg, nodeRed, pubsub, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	return svc, mqttClient, pubsub, nodeRed, subConfig, err
 }
 
@@ -986,6 +990,143 @@ func TestGetTopic(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			got := agent.GetTopicForTest(cfg, tc.topic)
 			assert.Equal(t, tc.want, got, fmt.Sprintf("%s: expected topic %s got %s", tc.desc, tc.want, got))
+		})
+	}
+}
+
+// newServiceWithDevices creates a service wired to a real devicemgr.Manager
+// backed by a temp BoltDB file. The provision URL is taken from srv.URL when
+// srv is non-nil; pass nil to disable provisioning.
+func newServiceWithDevices(t *testing.T, srv *httptest.Server) (agent.Service, *agentmocks.MQTTClient) {
+	t.Helper()
+	cfg := testConfig()
+	cfg.DomainID = domainID
+
+	provisionURL := ""
+	if srv != nil {
+		provisionURL = srv.URL
+	}
+
+	mgr, err := devicemgr.New(
+		filepath.Join(t.TempDir(), "devices.db"),
+		devicemgr.ProvisionConfig{URL: provisionURL, DomainID: domainID},
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { mgr.Close() })
+
+	mqttClient := agentmocks.NewMQTTClient(t)
+	pubsub := agentmocks.NewPubSub(t)
+	nodeRed := nrmocks.NewClient(t)
+
+	pubsub.On("Subscribe", context.Background(), mock.Anything).Return(error(nil)).Once()
+
+	svc, err := agent.New(context.Background(), mqttClient, &cfg, nodeRed, pubsub, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr)
+	require.NoError(t, err)
+	return svc, mqttClient
+}
+
+// provisionHandlerOK returns a handler that always responds with one client and one channel.
+func provisionHandlerOK(t *testing.T, deviceID, deviceKey, channelID string) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		resp := map[string]any{
+			"clients":  []map[string]any{{"id": deviceID, "secret": deviceKey, "name": "test-device"}},
+			"channels": []map[string]any{{"id": channelID}},
+		}
+		b, err := json.Marshal(resp)
+		assert.NoError(t, err)
+		_, err = w.Write(b)
+		assert.NoError(t, err)
+	}
+}
+
+func TestDeviceManager_NilManager(t *testing.T) {
+	svc, _, _, _, _, err := newService(t, testConfig(), nil)
+	require.NoError(t, err)
+
+	err = svc.DeviceManager("uuid-1", "list")
+	assert.Error(t, err, "expected error when device manager is not configured")
+}
+
+func TestDeviceManager(t *testing.T) {
+	const (
+		deviceID  = "device-uuid-123"
+		deviceKey = "device-key-abc"
+		channelID = "channel-uuid-456"
+	)
+
+	provSrv := httptest.NewServer(provisionHandlerOK(t, deviceID, deviceKey, channelID))
+	t.Cleanup(provSrv.Close)
+
+	svc, mqttClient := newServiceWithDevices(t, provSrv)
+
+	expectPublish := func(t *testing.T) {
+		t.Helper()
+		token := agentmocks.NewMQTTToken(t)
+		token.On("Wait").Return(true)
+		token.On("Error").Return(error(nil))
+		mqttClient.On("Publish", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(token).Once()
+	}
+
+	t.Run("list empty store", func(t *testing.T) {
+		expectPublish(t)
+		err := svc.DeviceManager("uuid-1", "list")
+		assert.NoError(t, err)
+	})
+
+	t.Run("add device via provision API", func(t *testing.T) {
+		expectPublish(t)
+		err := svc.DeviceManager("uuid-2", "add,test-device,ext-id,ext-key,ble,AA:BB:CC:DD:EE:FF")
+		assert.NoError(t, err)
+	})
+
+	t.Run("list after add returns one device", func(t *testing.T) {
+		expectPublish(t)
+		err := svc.DeviceManager("uuid-3", "list")
+		assert.NoError(t, err)
+	})
+
+	t.Run("get existing device", func(t *testing.T) {
+		expectPublish(t)
+		err := svc.DeviceManager("uuid-4", "get,"+deviceID)
+		assert.NoError(t, err)
+	})
+
+	t.Run("mark device seen", func(t *testing.T) {
+		expectPublish(t)
+		err := svc.DeviceManager("uuid-5", "seen,"+deviceID)
+		assert.NoError(t, err)
+	})
+
+	t.Run("remove device", func(t *testing.T) {
+		expectPublish(t)
+		err := svc.DeviceManager("uuid-6", "remove,"+deviceID)
+		assert.NoError(t, err)
+	})
+
+	t.Run("get removed device returns error", func(t *testing.T) {
+		err := svc.DeviceManager("uuid-7", "get,"+deviceID)
+		assert.Error(t, err)
+	})
+
+	cases := []struct {
+		desc   string
+		cmdStr string
+	}{
+		{desc: "empty command", cmdStr: ""},
+		{desc: "unknown subcommand", cmdStr: "bogus"},
+		{desc: "add missing args", cmdStr: "add,name,ext-id"},
+		{desc: "remove missing id", cmdStr: "remove"},
+		{desc: "get missing id", cmdStr: "get"},
+		{desc: "seen missing id", cmdStr: "seen"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			err := svc.DeviceManager("uuid-e", tc.cmdStr)
+			assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
 		})
 	}
 }
