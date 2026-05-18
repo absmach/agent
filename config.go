@@ -62,6 +62,12 @@ type TerminalConfig struct {
 	SessionTimeout time.Duration `json:"session_timeout"`
 }
 
+type OTAConfig struct {
+	Enabled     bool   `json:"enabled"`
+	BinaryPath  string `json:"binary_path"`
+	DownloadDir string `json:"download_dir"`
+}
+
 type Config struct {
 	Server    ServerConfig    `json:"server"`
 	Terminal  TerminalConfig  `json:"terminal"`
@@ -70,10 +76,11 @@ type Config struct {
 	NodeRed   NodeRedConfig   `json:"nodered"`
 	Log       LogConfig       `json:"log"`
 	MQTT      MQTTConfig      `json:"mqtt"`
+	OTA       OTAConfig       `json:"ota"`
 	DomainID  string          `json:"domain_id"`
 }
 
-func NewConfig(sc ServerConfig, cc ChanConfig, nc NodeRedConfig, lc LogConfig, mc MQTTConfig, hc HeartbeatConfig, tc TerminalConfig) Config {
+func NewConfig(sc ServerConfig, cc ChanConfig, nc NodeRedConfig, lc LogConfig, mc MQTTConfig, hc HeartbeatConfig, tc TerminalConfig, oc OTAConfig) Config {
 	return Config{
 		Server:    sc,
 		Channels:  cc,
@@ -82,6 +89,7 @@ func NewConfig(sc ServerConfig, cc ChanConfig, nc NodeRedConfig, lc LogConfig, m
 		MQTT:      mc,
 		Heartbeat: hc,
 		Terminal:  tc,
+		OTA:       oc,
 	}
 }
 

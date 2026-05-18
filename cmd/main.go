@@ -47,6 +47,9 @@ type config struct {
 	MqttPrivateKey       string `env:"MG_AGENT_MQTT_CLIENT_KEY" envDefault:"client.key"`
 	HeartbeatInterval    string `env:"MG_AGENT_HEARTBEAT_INTERVAL" envDefault:"10s"`
 	TermSessionTimeout   string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT" envDefault:"60s"`
+	OTAEnabled           string `env:"MG_AGENT_OTA_ENABLED" envDefault:"false"`
+	OTABinaryPath        string `env:"MG_AGENT_OTA_BINARY_PATH" envDefault:"/usr/local/bin/agent"`
+	OTADownloadDir       string `env:"MG_AGENT_OTA_DOWNLOAD_DIR" envDefault:"/tmp"`
 	BootstrapURL         string `env:"MG_AGENT_BOOTSTRAP_URL" envDefault:""`
 	BootstrapExternalID  string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_ID" envDefault:""`
 	BootstrapExternalKey string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_KEY" envDefault:""`
@@ -212,6 +215,16 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 	nc := agent.NodeRedConfig{URL: cfg.NodeRedURL}
 	lc := agent.LogConfig{Level: cfg.LogLevel}
 
+	otaEnabled, err := strconv.ParseBool(cfg.OTAEnabled)
+	if err != nil {
+		otaEnabled = false
+	}
+	oc := agent.OTAConfig{
+		Enabled:     otaEnabled,
+		BinaryPath:  cfg.OTABinaryPath,
+		DownloadDir: cfg.OTADownloadDir,
+	}
+
 	mtls, err := strconv.ParseBool(cfg.MqttMTLS)
 	if err != nil {
 		mtls = false
@@ -243,7 +256,7 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 		Retain:      retain,
 	}
 
-	c := agent.NewConfig(sc, agent.ChanConfig{}, nc, lc, mc, ch, ct)
+	c := agent.NewConfig(sc, agent.ChanConfig{}, nc, lc, mc, ch, ct, oc)
 	return c, nil
 }
 

@@ -121,6 +121,15 @@ func (ms *metricsMiddleware) UpdateLiveness(svcname, svctype string) error {
 	return ms.svc.UpdateLiveness(svcname, svctype)
 }
 
+func (ms *metricsMiddleware) OTA(ctx context.Context, url string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "ota").Add(1)
+		ms.latency.With("method", "ota").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.OTA(ctx, url)
+}
+
 func (ms *metricsMiddleware) NodeRed(cmdStr string) (string, error) {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "nodered").Add(1)

@@ -45,6 +45,7 @@ func testConfig() agent.Config {
 		},
 		agent.HeartbeatConfig{Interval: time.Hour},
 		agent.TerminalConfig{SessionTimeout: time.Minute},
+		agent.OTAConfig{Enabled: false, BinaryPath: "/usr/local/bin/agent", DownloadDir: "/tmp"},
 	)
 }
 

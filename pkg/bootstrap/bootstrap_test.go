@@ -21,6 +21,7 @@ func TestApplyBootstrapResponse(t *testing.T) {
 		agent.MQTTConfig{URL: "ssl://old.example.com:8883", SkipTLSVer: true},
 		agent.HeartbeatConfig{Interval: time.Second},
 		agent.TerminalConfig{SessionTimeout: time.Minute},
+		agent.OTAConfig{},
 	)
 
 	cases := []struct {

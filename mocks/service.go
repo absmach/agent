@@ -319,6 +319,63 @@ func (_c *Service_NodeRed_Call) RunAndReturn(run func(cmdStr string) (string, er
 	return _c
 }
 
+// OTA provides a mock function for the type Service
+func (_mock *Service) OTA(ctx context.Context, url string) error {
+	ret := _mock.Called(ctx, url)
+
+	if len(ret) == 0 {
+		panic("no return value specified for OTA")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, url)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Service_OTA_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OTA'
+type Service_OTA_Call struct {
+	*mock.Call
+}
+
+// OTA is a helper method to define mock.On call
+//   - ctx context.Context
+//   - url string
+func (_e *Service_Expecter) OTA(ctx interface{}, url interface{}) *Service_OTA_Call {
+	return &Service_OTA_Call{Call: _e.mock.On("OTA", ctx, url)}
+}
+
+func (_c *Service_OTA_Call) Run(run func(ctx context.Context, url string)) *Service_OTA_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *Service_OTA_Call) Return(err error) *Service_OTA_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_OTA_Call) RunAndReturn(run func(ctx context.Context, url string) error) *Service_OTA_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Ping provides a mock function for the type Service
 func (_mock *Service) Ping() error {
 	ret := _mock.Called()
