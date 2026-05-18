@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/absmach/agent/pkg/devicemgr"
+	"github.com/absmach/agent/pkg/iface"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +28,7 @@ func makeDevice(id string) devicemgr.Device {
 		ID:            id,
 		Key:           "key-" + id,
 		ChannelID:     "ch-" + id,
-		InterfaceType: devicemgr.InterfaceBLE,
+		InterfaceType: iface.InterfaceBLE,
 		InterfaceAddr: "AA:BB:CC:DD:EE:FF",
 		Name:          "device-" + id,
 		Active:        true,

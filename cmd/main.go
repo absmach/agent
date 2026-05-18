@@ -24,6 +24,7 @@ import (
 	"github.com/absmach/agent/pkg/bootstrap"
 	"github.com/absmach/agent/pkg/conn"
 	"github.com/absmach/agent/pkg/devicemgr"
+	"github.com/absmach/agent/pkg/iface"
 	"github.com/absmach/agent/pkg/nodered"
 	mglog "github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/errors"
@@ -139,7 +140,7 @@ func main() {
 			URL:      c.ProvisionURL,
 			Token:    c.ProvisionToken,
 			DomainID: cfg.DomainID,
-		})
+		}, iface.Config{})
 		if err != nil {
 			logger.Error("Failed to open device store", slog.Any("error", err))
 			exitCode = 1

@@ -21,6 +21,7 @@ import (
 	"github.com/absmach/agent"
 	agentmocks "github.com/absmach/agent/mocks"
 	"github.com/absmach/agent/pkg/devicemgr"
+	"github.com/absmach/agent/pkg/iface"
 	nrmocks "github.com/absmach/agent/pkg/nodered/mocks"
 	"github.com/absmach/magistrala/pkg/messaging"
 	"github.com/stretchr/testify/assert"
@@ -1010,6 +1011,7 @@ func newServiceWithDevices(t *testing.T, srv *httptest.Server) (agent.Service, *
 	mgr, err := devicemgr.New(
 		filepath.Join(t.TempDir(), "devices.db"),
 		devicemgr.ProvisionConfig{URL: provisionURL, DomainID: domainID},
+		iface.Config{},
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { mgr.Close() })
@@ -1112,6 +1114,26 @@ func TestDeviceManager(t *testing.T) {
 		assert.Error(t, err)
 	})
 
+	t.Run("open interface for unknown device returns error", func(t *testing.T) {
+		err := svc.DeviceManager("uuid-8", "open,no-such-device")
+		assert.Error(t, err)
+	})
+
+	t.Run("close interface not open returns error", func(t *testing.T) {
+		err := svc.DeviceManager("uuid-9", "close,no-such-device")
+		assert.Error(t, err)
+	})
+
+	t.Run("read interface not open returns error", func(t *testing.T) {
+		err := svc.DeviceManager("uuid-10", "read,no-such-device,4")
+		assert.Error(t, err)
+	})
+
+	t.Run("write interface not open returns error", func(t *testing.T) {
+		err := svc.DeviceManager("uuid-11", "write,no-such-device,deadbeef")
+		assert.Error(t, err)
+	})
+
 	cases := []struct {
 		desc   string
 		cmdStr string
@@ -1122,6 +1144,11 @@ func TestDeviceManager(t *testing.T) {
 		{desc: "remove missing id", cmdStr: "remove"},
 		{desc: "get missing id", cmdStr: "get"},
 		{desc: "seen missing id", cmdStr: "seen"},
+		{desc: "open missing id", cmdStr: "open"},
+		{desc: "close missing id", cmdStr: "close"},
+		{desc: "read missing args", cmdStr: "read,dev-id"},
+		{desc: "read invalid n", cmdStr: "read,dev-id,notanumber"},
+		{desc: "write missing hex", cmdStr: "write,dev-id"},
 	}
 
 	for _, tc := range cases {
