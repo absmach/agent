@@ -9,6 +9,7 @@ networks:
 
 volumes:
   nodered-data:
+  agent-data:
 
 services:
   nodered:
@@ -70,6 +71,9 @@ services:
       MG_AGENT_OTA_ENABLED: ${MG_AGENT_OTA_ENABLED}
       MG_AGENT_OTA_BINARY_PATH: ${MG_AGENT_OTA_BINARY_PATH}
       MG_AGENT_OTA_DOWNLOAD_DIR: ${MG_AGENT_OTA_DOWNLOAD_DIR}
+      MG_AGENT_PROVISION_URL: ${MG_AGENT_PROVISION_URL}
+      MG_AGENT_PROVISION_TOKEN: ${MG_AGENT_PROVISION_TOKEN}
+      MG_AGENT_DEVICE_DB_PATH: ${MG_AGENT_DEVICE_DB_PATH}
     volumes:
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
-
+      - agent-data:/var/lib/agent

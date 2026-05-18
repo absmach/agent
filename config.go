@@ -68,6 +68,13 @@ type OTAConfig struct {
 	DownloadDir string `json:"download_dir"`
 }
 
+type ProvisionConfig struct {
+	URL      string `json:"url"`
+	Token    string `json:"token"`
+	DBPath   string `json:"db_path"`
+	DomainID string `json:"domain_id"`
+}
+
 type Config struct {
 	Server    ServerConfig    `json:"server"`
 	Terminal  TerminalConfig  `json:"terminal"`
@@ -77,6 +84,7 @@ type Config struct {
 	Log       LogConfig       `json:"log"`
 	MQTT      MQTTConfig      `json:"mqtt"`
 	OTA       OTAConfig       `json:"ota"`
+	Provision ProvisionConfig `json:"provision"`
 	DomainID  string          `json:"domain_id"`
 }
 

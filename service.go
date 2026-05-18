@@ -18,11 +18,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/absmach/agent/pkg/devicemgr"
 	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/ota"
 	"github.com/absmach/agent/pkg/terminal"
 	"github.com/absmach/magistrala/pkg/errors"
+	"github.com/absmach/magistrala/pkg/messaging"
 	senml "github.com/absmach/senml"
 	paho "github.com/eclipse/paho.mqtt.golang"
 	toml "github.com/pelletier/go-toml"
@@ -89,6 +91,12 @@ var (
 
 	// errNodeRedFailed.
 	errNodeRedFailed = errors.New("failed to execute node-red operation")
+
+	// errDeviceManagerFailed.
+	errDeviceManagerFailed = errors.New("device manager operation failed")
+
+	// errDeviceManagerDisabled indicates device manager is not configured.
+	errDeviceManagerDisabled = errors.New("device manager not configured")
 )
 
 // Service specifies API for publishing messages and subscribing to topics.
@@ -132,6 +140,9 @@ type Service interface {
 	// Shutdown performs a graceful shutdown: stops all service heartbeat
 	// tickers and disconnects the MQTT client.
 	Shutdown()
+
+	// DeviceManager handles downstream device registration and provisioning commands.
+	DeviceManager(uuid, cmdStr string) error
 }
 
 var _ Service = (*agent)(nil)
@@ -143,12 +154,13 @@ type agent struct {
 	logger        *slog.Logger
 	svcs          map[string]Heartbeat
 	terminals     map[string]terminal.Session
+	devices       *devicemgr.Manager
 	workDir       string
 	otaBusy       atomic.Bool
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager) (Service, error) {
 	ag := &agent{
 		mqttClient:    mc,
 		noderedClient: nc,
@@ -156,6 +168,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		logger:        logger,
 		svcs:          make(map[string]Heartbeat),
 		terminals:     make(map[string]terminal.Session),
+		devices:       devices,
 		workDir:       "/",
 	}
 
@@ -764,4 +777,96 @@ func (a *agent) getTopic(topic string) (t string) {
 		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, a.config.Channels.CtrlChan(), topic)
 	}
 	return t
+}
+
+// DeviceManager handles downstream device management commands.
+// cmdStr is comma-delimited: <subcommand>[,args...]
+//
+//	list                                         → JSON array of all devices
+//	add,<name>,<ext_id>,<ext_key>,<iface>,<addr> → provision + register
+//	remove,<device_id>                           → deregister
+//	get,<device_id>                              → JSON for one device
+//	seen,<device_id>                             → mark device active/last-seen
+func (a *agent) DeviceManager(uuid, cmdStr string) error {
+	if a.devices == nil {
+		return errDeviceManagerDisabled
+	}
+
+	args := strings.Split(strings.TrimSpace(cmdStr), ",")
+	if len(args) == 0 || args[0] == "" {
+		return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+	}
+
+	sub := args[0]
+	var (
+		resp string
+		err  error
+	)
+
+	switch sub {
+	case "list":
+		devs, lerr := a.devices.List()
+		if lerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, lerr)
+		}
+		b, jerr := json.Marshal(devs)
+		if jerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, jerr)
+		}
+		resp = string(b)
+
+	case "add":
+		if len(args) < 6 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		name, extID, extKey := args[1], args[2], args[3]
+		ifaceType := devicemgr.ParseInterfaceType(args[4])
+		ifaceAddr := args[5]
+		d, aerr := a.devices.Add(name, extID, extKey, ifaceType, ifaceAddr)
+		if aerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, aerr)
+		}
+		b, jerr := json.Marshal(d)
+		if jerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, jerr)
+		}
+		resp = string(b)
+
+	case "remove":
+		if len(args) < 2 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		if err = a.devices.Remove(args[1]); err != nil {
+			return errors.Wrap(errDeviceManagerFailed, err)
+		}
+		resp = "ok"
+
+	case "get":
+		if len(args) < 2 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		d, gerr := a.devices.Get(args[1])
+		if gerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, gerr)
+		}
+		b, jerr := json.Marshal(d)
+		if jerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, jerr)
+		}
+		resp = string(b)
+
+	case "seen":
+		if len(args) < 2 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		if err = a.devices.MarkSeen(args[1]); err != nil {
+			return errors.Wrap(errDeviceManagerFailed, err)
+		}
+		resp = "ok"
+
+	default:
+		return errors.Wrap(errDeviceManagerFailed, errUnknownCommand)
+	}
+
+	return a.processResponse(uuid, sub, resp)
 }
