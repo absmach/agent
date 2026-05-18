@@ -19,6 +19,7 @@ import (
 
 	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/nodered"
+	"github.com/absmach/agent/pkg/ota"
 	"github.com/absmach/agent/pkg/terminal"
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/messaging"
@@ -127,6 +128,9 @@ type Service interface {
 
 	// NodeRed manages Node-RED flow operations.
 	NodeRed(cmdStr string) (string, error)
+
+	// OTA triggers an over-the-air binary update by downloading from url.
+	OTA(ctx context.Context, url string) error
 }
 
 var _ Service = (*agent)(nil)
@@ -707,6 +711,45 @@ func (a *agent) Ping(uuid string) error {
 		return err
 	}
 	return a.Publish(control, string(b))
+}
+
+func (a *agent) OTA(ctx context.Context, cmdStr string) error {
+	if !a.config.OTA.Enabled {
+		return errors.New("OTA is disabled")
+	}
+
+	trigger, err := ota.ParseTrigger(cmdStr)
+	if err != nil {
+		return err
+	}
+
+	otaCfg := ota.Config{
+		Enabled:     a.config.OTA.Enabled,
+		BinaryPath:  a.config.OTA.BinaryPath,
+		DownloadDir: a.config.OTA.DownloadDir,
+	}
+
+	domainID := a.config.DomainID
+	ctrlChan := a.config.Channels.CtrlChan()
+	qos := a.config.MQTT.QoS
+	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
+
+	progressFn := func(state ota.State, progress float64) {
+		now := float64(time.Now().Unix())
+		vs := fmt.Sprintf("%s: %.0f%%", strings.ToLower(state.String()), progress)
+		pack := senml.Pack{Records: []senml.Record{
+			{BaseName: "gw:", BaseTime: now, Name: "ota", StringValue: &vs},
+		}}
+		b, err := senml.Encode(pack, senml.JSON)
+		if err != nil {
+			a.logger.Warn("Failed to encode OTA status", slog.Any("error", err))
+			return
+		}
+		token := a.mqttClient.Publish(statusTopic, qos, false, b)
+		token.Wait()
+	}
+
+	return ota.Run(ctx, otaCfg, trigger.URL, trigger.SHA256Hex, progressFn)
 }
 
 func (a *agent) getTopic(topic string) (t string) {

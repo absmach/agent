@@ -32,6 +32,7 @@ const (
 	nred    = "nodered"
 	ping    = "ping"
 	reset   = "reset"
+	otaCmd  = "ota"
 )
 
 var channelPartRegExp = regexp.MustCompile(`^m/([\w\-]+)/c/([\w\-]+)/services(/[^?]*)?(\?.*)?$`)
@@ -181,6 +182,11 @@ func (b *broker) handleMsg(mc mqtt.Client, msg mqtt.Message) {
 		b.logger.Info("Reset command received, restarting process", slog.String("uuid", uuid))
 		if err := syscall.Exec(os.Args[0], os.Args, os.Environ()); err != nil {
 			b.logger.Error("Reset failed", slog.Any("error", err))
+		}
+	case otaCmd:
+		b.logger.Info("OTA command", slog.String("uuid", uuid), slog.String("url", cmdStr))
+		if err := b.svc.OTA(b.ctx, cmdStr); err != nil {
+			b.logger.Warn("OTA operation failed", slog.Any("error", err))
 		}
 	}
 }

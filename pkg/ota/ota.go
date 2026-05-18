@@ -1,0 +1,277 @@
+// Copyright (c) Abstract Machines
+// SPDX-License-Identifier: Apache-2.0
+
+package ota
+
+import (
+	"context"
+	"crypto/sha256"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+)
+
+// State represents the OTA update state machine.
+type State int
+
+const (
+	StateIdle State = iota
+	StateTriggered
+	StateDownloading
+	StateVerifying
+	StateReady
+	StateRestarting
+)
+
+func (s State) String() string {
+	switch s {
+	case StateIdle:
+		return "IDLE"
+	case StateTriggered:
+		return "TRIGGERED"
+	case StateDownloading:
+		return "DOWNLOADING"
+	case StateVerifying:
+		return "VERIFYING"
+	case StateReady:
+		return "READY"
+	case StateRestarting:
+		return "RESTARTING"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+// ProgressFn is called on state transitions and during download.
+// progress is 0–100 and is only meaningful in StateDownloading.
+type ProgressFn func(state State, progress float64)
+
+// Config holds the OTA updater parameters.
+type Config struct {
+	Enabled     bool
+	BinaryPath  string // absolute path to the running binary, e.g. /usr/local/bin/agent
+	DownloadDir string // directory for the temporary download file, e.g. /tmp
+}
+
+// Trigger holds the parsed fields from an OTA SenML trigger payload.
+// The vs field format is: url[,sha256:<hex>][,<size>]
+// Example: "https://example.com/agent-v2.bin,sha256:abcdef...,153600"
+type Trigger struct {
+	URL       string
+	SHA256Hex string // hex-encoded expected SHA-256, empty if not provided
+	Size      uint64 // expected byte count, 0 if not provided
+}
+
+// ParseTrigger parses the vs string from an OTA SenML command record.
+// It is tolerant of missing optional fields.
+func ParseTrigger(vs string) (Trigger, error) {
+	fields := strings.Split(vs, ",")
+	if len(fields) == 0 || fields[0] == "" {
+		return Trigger{}, fmt.Errorf("ota trigger: empty url")
+	}
+	t := Trigger{URL: fields[0]}
+	for _, f := range fields[1:] {
+		f = strings.TrimSpace(f)
+		if strings.HasPrefix(f, "sha256:") {
+			t.SHA256Hex = strings.TrimPrefix(f, "sha256:")
+		} else if n, err := strconv.ParseUint(f, 10, 64); err == nil {
+			t.Size = n
+		}
+	}
+	return t, nil
+}
+
+// Run executes the full OTA cycle: download → verify → replace → restart.
+// sha256hex is the expected SHA-256 hex digest; if empty the sidecar at url+".sha256" is tried.
+// On success it never returns (the process is replaced via syscall.Exec).
+// On any failure it returns a descriptive error; the running binary is untouched.
+func Run(ctx context.Context, cfg Config, url, sha256hex string, progressFn ProgressFn) error {
+	progressFn(StateTriggered, 0)
+
+	progressFn(StateDownloading, 0)
+	tmpPath, err := download(ctx, url, cfg.DownloadDir, func(pct float64) {
+		progressFn(StateDownloading, pct)
+	})
+	if err != nil {
+		return fmt.Errorf("ota download: %w", err)
+	}
+
+	progressFn(StateVerifying, 100)
+	if err := verify(ctx, url, tmpPath, sha256hex); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("ota verify: %w", err)
+	}
+
+	progressFn(StateReady, 100)
+	if err := replace(tmpPath, cfg.BinaryPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("ota replace: %w", err)
+	}
+
+	progressFn(StateRestarting, 100)
+	return syscall.Exec(cfg.BinaryPath, os.Args, os.Environ())
+}
+
+// download fetches url into a temporary file under dir and returns its path.
+// pctFn is called each time download progress crosses a 5% threshold.
+func download(ctx context.Context, url, dir string, pctFn func(float64)) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	client := &http.Client{Timeout: 10 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("server returned HTTP %d", resp.StatusCode)
+	}
+
+	f, err := os.CreateTemp(dir, "agent-ota-*")
+	if err != nil {
+		return "", err
+	}
+	tmpName := f.Name()
+
+	total := resp.ContentLength
+	var written int64
+	lastPct := 0.0
+	buf := make([]byte, 32*1024)
+	pctFn(0)
+
+	for {
+		if ctx.Err() != nil {
+			f.Close()
+			os.Remove(tmpName)
+			return "", ctx.Err()
+		}
+		n, rerr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, werr := f.Write(buf[:n]); werr != nil {
+				f.Close()
+				os.Remove(tmpName)
+				return "", werr
+			}
+			written += int64(n)
+			if total > 0 {
+				pct := float64(written) / float64(total) * 100
+				if pct-lastPct >= 5 {
+					lastPct = pct
+					pctFn(pct)
+				}
+			}
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			f.Close()
+			os.Remove(tmpName)
+			return "", rerr
+		}
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmpName)
+		return "", err
+	}
+	pctFn(100)
+	return tmpName, nil
+}
+
+// verify checks the SHA-256 of tmpPath.
+// If sha256hex is non-empty it is used directly.
+// Otherwise a sidecar file at url+".sha256" is fetched; if absent, verification is skipped.
+func verify(ctx context.Context, url, tmpPath, sha256hex string) error {
+	expected := sha256hex
+	if expected == "" {
+		// fall back to sidecar
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url+".sha256", nil)
+		if err != nil {
+			return nil
+		}
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil // network error — skip
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil // no sidecar — skip
+		}
+		raw, err := io.ReadAll(io.LimitReader(resp.Body, 128))
+		if err != nil || len(raw) == 0 {
+			return nil
+		}
+		expected = strings.TrimSpace(strings.Fields(string(raw))[0])
+	}
+
+	f, err := os.Open(tmpPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	got := fmt.Sprintf("%x", h.Sum(nil))
+	if got != expected {
+		return fmt.Errorf("sha256 mismatch: got %s, want %s", got, expected)
+	}
+	return nil
+}
+
+// replace atomically installs src as dst.
+// It first tries os.Rename (fast, atomic when src and dst share a filesystem).
+// On a cross-device rename failure it falls back to a copy-then-rename into dst's directory.
+func replace(src, dst string) error {
+	if err := os.Chmod(src, 0o755); err != nil {
+		return err
+	}
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	// Cross-device fallback: write a temp file next to dst then rename.
+	dir := filepath.Dir(dst)
+	tmp, err := os.CreateTemp(dir, ".agent-ota-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+
+	in, err := os.Open(src)
+	if err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if _, err := io.Copy(tmp, in); err != nil {
+		in.Close()
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	in.Close()
+	if err := tmp.Chmod(0o755); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	tmp.Close()
+	if err := os.Rename(tmpName, dst); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	os.Remove(src)
+	return nil
+}
