@@ -30,7 +30,7 @@ func mqttTopic(channel, suffix string) string {
 	return fmt.Sprintf("m/%s/c/%s/%s", domainID, channel, suffix)
 }
 
-func testConfig(file string) agent.Config {
+func testConfig() agent.Config {
 	return agent.NewConfig(
 		agent.ServerConfig{Port: "9000", BrokerURL: "amqp://broker:5682"},
 		agent.ChanConfig{CtrlID: "ctrl-channel", DataID: "data-channel"},
@@ -46,7 +46,7 @@ func testConfig(file string) agent.Config {
 		},
 		agent.HeartbeatConfig{Interval: time.Hour},
 		agent.TerminalConfig{SessionTimeout: time.Minute},
-		file,
+		agent.OTAConfig{Enabled: false, BinaryPath: "/usr/local/bin/agent", DownloadDir: "/tmp"},
 	)
 }
 
@@ -72,70 +72,6 @@ func expectMQTTPublish(t *testing.T, mqttClient *agentmocks.MQTTClient, topic st
 	return mqttClient.On("Publish", topic, byte(1), true, mock.Anything).Return(token).Once()
 }
 
-func TestConfig(t *testing.T) {
-	tmp := t.TempDir()
-	configFile := filepath.Join(tmp, "config.toml")
-	cfg := testConfig(configFile)
-	cfg.DomainID = domainID
-
-	cases := []struct {
-		desc string
-		run  func(t *testing.T)
-	}{
-		{
-			desc: "create config successfully",
-			run: func(t *testing.T) {
-				got := agent.NewConfig(cfg.Server, cfg.Channels, cfg.NodeRed, cfg.Log, cfg.MQTT, cfg.Heartbeat, cfg.Terminal, configFile)
-				assert.Equal(t, cfg.Server, got.Server, fmt.Sprintf("%s: unexpected server config", t.Name()))
-				assert.Equal(t, cfg.Channels, got.Channels, fmt.Sprintf("%s: unexpected channel config", t.Name()))
-				assert.Equal(t, configFile, got.File, fmt.Sprintf("%s: unexpected file path", t.Name()))
-			},
-		},
-		{
-			desc: "save and read config successfully",
-			run: func(t *testing.T) {
-				err := agent.SaveConfig(cfg)
-				assert.Nil(t, err, fmt.Sprintf("%s: unexpected save error %v", t.Name(), err))
-				got, err := agent.ReadConfig(configFile)
-				assert.Nil(t, err, fmt.Sprintf("%s: unexpected read error %v", t.Name(), err))
-				assert.Equal(t, cfg.DomainID, got.DomainID, fmt.Sprintf("%s: unexpected domain id", t.Name()))
-				assert.Equal(t, cfg.Channels.DataID, got.Channels.DataID, fmt.Sprintf("%s: unexpected data channel", t.Name()))
-				assert.Equal(t, configFile, got.File, fmt.Sprintf("%s: unexpected file path", t.Name()))
-			},
-		},
-		{
-			desc: "read missing config",
-			run: func(t *testing.T) {
-				_, err := agent.ReadConfig(filepath.Join(tmp, "missing.toml"))
-				assert.Error(t, err, fmt.Sprintf("%s: expected missing file error", t.Name()))
-			},
-		},
-		{
-			desc: "read malformed config",
-			run: func(t *testing.T) {
-				file := filepath.Join(tmp, "bad.toml")
-				err := os.WriteFile(file, []byte("="), 0o644)
-				assert.Nil(t, err, fmt.Sprintf("%s: unexpected write error %v", t.Name(), err))
-				_, err = agent.ReadConfig(file)
-				assert.Error(t, err, fmt.Sprintf("%s: expected malformed config error", t.Name()))
-			},
-		},
-		{
-			desc: "save config write failure",
-			run: func(t *testing.T) {
-				bad := cfg
-				bad.File = tmp
-				err := agent.SaveConfig(bad)
-				assert.Error(t, err, fmt.Sprintf("%s: expected write failure", t.Name()))
-			},
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.desc, tc.run)
-	}
-}
-
 func TestChannelConfig(t *testing.T) {
 	cases := []struct {
 		desc string
@@ -145,15 +81,9 @@ func TestChannelConfig(t *testing.T) {
 	}{
 		{
 			desc: "use split channels",
-			cfg:  agent.ChanConfig{ID: "shared-channel", CtrlID: "ctrl-channel", DataID: "data-channel"},
+			cfg:  agent.ChanConfig{CtrlID: "ctrl-channel", DataID: "data-channel"},
 			ctrl: "ctrl-channel",
 			data: "data-channel",
-		},
-		{
-			desc: "fall back to shared channel",
-			cfg:  agent.ChanConfig{ID: "shared-channel"},
-			ctrl: "shared-channel",
-			data: "shared-channel",
 		},
 	}
 
@@ -275,7 +205,7 @@ func TestNew(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			cfg := testConfig("")
+			cfg := testConfig()
 			cfg.Heartbeat.Interval = tc.interval
 			svc, _, _, _, subConfig, err := newService(t, cfg, tc.subscribeErr)
 			if tc.err {
@@ -342,7 +272,7 @@ func TestExecute(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, _, _, _, err := newService(t, testConfig(""), nil)
+			svc, mqttClient, _, _, _, err := newService(t, testConfig(), nil)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			var payload any
 			if tc.topic != "" {
@@ -404,7 +334,7 @@ func TestControl(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, _, nodeRed, _, err := newService(t, testConfig(""), nil)
+			svc, mqttClient, _, nodeRed, _, err := newService(t, testConfig(), nil)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			if strings.HasPrefix(tc.cmd, "nodered-") {
 				clientErr := error(nil)
@@ -495,7 +425,7 @@ func TestServiceConfig(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, pubsub, _, subConfig, err := newService(t, testConfig(""), nil)
+			svc, mqttClient, pubsub, _, subConfig, err := newService(t, testConfig(), nil)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			if tc.registerSvc {
 				err = subConfig.Handler.Handle(&messaging.Message{Channel: "channels.nodered.service"})
@@ -554,7 +484,7 @@ func TestTerminal(t *testing.T) {
 			if tc.emptyPath {
 				t.Setenv("PATH", "")
 			}
-			svc, _, _, _, _, err := newService(t, testConfig(""), nil)
+			svc, _, _, _, _, err := newService(t, testConfig(), nil)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			err = svc.Terminal("uuid", tc.cmd)
 			if tc.err {
@@ -642,7 +572,7 @@ func TestNodeRed(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, _, _, nodeRed, _, err := newService(t, testConfig(""), nil)
+			svc, _, _, nodeRed, _, err := newService(t, testConfig(), nil)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			clientErr := error(nil)
 			if tc.fail {
@@ -677,22 +607,20 @@ func TestNodeRed(t *testing.T) {
 }
 
 func TestAddConfigAndConfig(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "config.toml")
 	// nolint:dogsled
-	svc, _, _, _, _, err := newService(t, testConfig(file), nil)
+	svc, _, _, _, _, err := newService(t, testConfig(), nil)
 	assert.Nil(t, err, fmt.Sprintf("unexpected setup error %v", err))
 
-	cfg := testConfig(file)
+	cfg := testConfig()
 	cfg.DomainID = domainID
 	err = svc.AddConfig(cfg)
 	assert.Nil(t, err, fmt.Sprintf("unexpected add config error %v", err))
-	assert.FileExists(t, file, "expected config file")
 	assert.Equal(t, cfg.DomainID, svc.Config().DomainID, "unexpected returned config")
 }
 
 func TestServices(t *testing.T) {
 	// nolint:dogsled
-	svc, _, _, _, subConfig, err := newService(t, testConfig(""), nil)
+	svc, _, _, _, subConfig, err := newService(t, testConfig(), nil)
 	assert.Nil(t, err, fmt.Sprintf("unexpected setup error %v", err))
 
 	err = subConfig.Handler.Handle(&messaging.Message{Channel: "channels"})
@@ -739,7 +667,7 @@ func TestPublish(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, _, _, _, err := newService(t, testConfig(""), nil)
+			svc, mqttClient, _, _, _, err := newService(t, testConfig(), nil)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			var payload any
 			expectMQTTPublish(t, mqttClient, tc.output, tc.err).Run(func(args mock.Arguments) {

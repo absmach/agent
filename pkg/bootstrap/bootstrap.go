@@ -51,7 +51,6 @@ type renderedContent struct {
 		ChannelID string `json:"channel_id"`
 	} `json:"commands"`
 	Channels struct {
-		ID     string `json:"id"`
 		CtrlID string `json:"ctrl_id"`
 		DataID string `json:"data_id"`
 	} `json:"channels"`
@@ -116,9 +115,14 @@ func applyBootstrapResponse(agentCfg agent.Config, br bootstrapResponse) (agent.
 		telemetryChannel = rc.Channels.DataID
 	}
 	if telemetryChannel == "" {
-		telemetryChannel = rc.Channels.ID
+		return agentCfg, agent.ErrMalformedEntity
 	}
-	if telemetryChannel == "" {
+
+	commandChannel := rc.Commands.ChannelID
+	if commandChannel == "" {
+		commandChannel = rc.Channels.CtrlID
+	}
+	if commandChannel == "" {
 		return agentCfg, agent.ErrMalformedEntity
 	}
 
@@ -144,36 +148,13 @@ func applyBootstrapResponse(agentCfg agent.Config, br bootstrapResponse) (agent.
 	if rc.MQTT.URL != "" {
 		agentCfg.MQTT.URL = rc.MQTT.URL
 	}
-	commandChannel := rc.Commands.ChannelID
-	if commandChannel == "" {
-		commandChannel = rc.Channels.CtrlID
-	}
-	if commandChannel != "" {
-		agentCfg.Channels.CtrlID = commandChannel
-		agentCfg.Channels.DataID = telemetryChannel
-		agentCfg.Channels.ID = ""
-	} else {
-		// Single-channel fallback: ID is used by both CtrlChan() and DataChan().
-		agentCfg.Channels.ID = telemetryChannel
-		agentCfg.Channels.CtrlID = ""
-		agentCfg.Channels.DataID = ""
-	}
+	agentCfg.Channels.CtrlID = commandChannel
+	agentCfg.Channels.DataID = telemetryChannel
 	agentCfg.MQTT.ClientCert = br.ClientCert
 	agentCfg.MQTT.ClientKey = br.ClientKey
 	agentCfg.MQTT.CaCert = br.CaCert
 
 	return agentCfg, nil
-}
-
-// Bootstrap preserves the legacy behavior of fetching bootstrap configuration
-// and writing it to a TOML config file.
-func Bootstrap(cfg Config, agentCfg agent.Config, logger *slog.Logger, file string) error {
-	bootCfg, err := FetchAgentConfig(cfg, agentCfg, logger)
-	if err != nil {
-		return err
-	}
-	bootCfg.File = file
-	return agent.SaveConfig(bootCfg)
 }
 
 func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) (bootstrapResponse, error) {

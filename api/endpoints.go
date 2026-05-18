@@ -70,7 +70,8 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 		current := svc.Config()
 
 		current.Server.Port = req.Server.Port
-		current.Channels.ID = req.Channels.ID
+		current.Channels.CtrlID = req.Channels.CtrlID
+		current.Channels.DataID = req.Channels.DataID
 		current.NodeRed.URL = req.NodeRed.Url
 		current.Log.Level = req.Log.Level
 		current.MQTT.URL = req.Mqtt.Url

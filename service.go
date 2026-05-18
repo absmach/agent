@@ -19,15 +19,16 @@ import (
 
 	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/nodered"
+	"github.com/absmach/agent/pkg/ota"
 	"github.com/absmach/agent/pkg/terminal"
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/messaging"
+	senml "github.com/absmach/senml"
 	paho "github.com/eclipse/paho.mqtt.golang"
 	toml "github.com/pelletier/go-toml"
 )
 
 const (
-	Path           = "./config.toml"
 	HeartbeatTopic = "channels.heartbeat.>"
 	Commands       = "commands"
 	config         = "config"
@@ -45,6 +46,18 @@ const (
 
 	pubSubID = "agent"
 )
+
+var startTime = time.Now()
+
+// execAllowlist is the set of command names permitted via the exec MQTT command.
+var execAllowlist = map[string]bool{
+	"cat": true, "cd": true, "curl": true, "date": true, "df": true,
+	"echo": true, "env": true, "false": true, "free": true, "hostname": true,
+	"id": true, "ifconfig": true, "ip": true, "journalctl": true, "ls": true,
+	"netstat": true, "ping": true, "printf": true, "ps": true, "pwd": true,
+	"ss": true, "systemctl": true, "true": true, "uname": true, "uptime": true,
+	"who": true,
+}
 
 var (
 	// errInvalidCommand indicates malformed command.
@@ -110,8 +123,14 @@ type Service interface {
 	// Publish message.
 	Publish(topic, payload string) error
 
+	// Ping publishes an immediate heartbeat SenML record to the control channel.
+	Ping(uuid string) error
+
 	// NodeRed manages Node-RED flow operations.
 	NodeRed(cmdStr string) (string, error)
+
+	// OTA triggers an over-the-air binary update by downloading from url.
+	OTA(ctx context.Context, url string) error
 }
 
 var _ Service = (*agent)(nil)
@@ -215,20 +234,22 @@ func (a *agent) Execute(uuid, cmd string) (string, error) {
 		return "", errInvalidCommand
 	}
 
-	shellCmd := strings.Join(cmdArr, " ")
-
 	if cmdArr[0] == "cd" {
 		return a.changeDir(cmdArr)
 	}
 
-	execCmd := exec.Command("sh", "-c", shellCmd)
+	if !execAllowlist[cmdArr[0]] {
+		return "", errInvalidCommand
+	}
+
+	execCmd := exec.Command(cmdArr[0], cmdArr[1:]...)
 	execCmd.Dir = a.workDir
 	out, err := execCmd.CombinedOutput()
 	if err != nil && len(out) == 0 {
 		return "", errors.Wrap(errFailedExecute, err)
 	}
 
-	payload, err := encoder.EncodeSenML(uuid, shellCmd, string(out))
+	payload, err := encoder.EncodeSenML(uuid, strings.Join(cmdArr, " "), string(out))
 	if err != nil {
 		return "", errors.Wrap(errFailedEncode, err)
 	}
@@ -643,7 +664,8 @@ func saveExportConfig(fileName string, content []byte) error {
 }
 
 func (a *agent) AddConfig(c Config) error {
-	return SaveConfig(c)
+	*a.config = c
+	return nil
 }
 
 func (a *agent) Config() Config {
@@ -674,6 +696,60 @@ func (a *agent) Publish(t, payload string) error {
 		return errors.New(err.Error())
 	}
 	return nil
+}
+
+func (a *agent) Ping(uuid string) error {
+	now := float64(time.Now().Unix())
+	vb := true
+	uptime := time.Since(startTime).Seconds()
+	pack := senml.Pack{Records: []senml.Record{
+		{BaseName: "gw:", BaseTime: now, Name: "heartbeat", BoolValue: &vb},
+		{Name: "uptime", Unit: "s", Value: &uptime},
+	}}
+	b, err := senml.Encode(pack, senml.JSON)
+	if err != nil {
+		return err
+	}
+	return a.Publish(control, string(b))
+}
+
+func (a *agent) OTA(ctx context.Context, cmdStr string) error {
+	if !a.config.OTA.Enabled {
+		return errors.New("OTA is disabled")
+	}
+
+	trigger, err := ota.ParseTrigger(cmdStr)
+	if err != nil {
+		return err
+	}
+
+	otaCfg := ota.Config{
+		Enabled:     a.config.OTA.Enabled,
+		BinaryPath:  a.config.OTA.BinaryPath,
+		DownloadDir: a.config.OTA.DownloadDir,
+	}
+
+	domainID := a.config.DomainID
+	ctrlChan := a.config.Channels.CtrlChan()
+	qos := a.config.MQTT.QoS
+	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
+
+	progressFn := func(state ota.State, progress float64) {
+		now := float64(time.Now().Unix())
+		vs := fmt.Sprintf("%s: %.0f%%", strings.ToLower(state.String()), progress)
+		pack := senml.Pack{Records: []senml.Record{
+			{BaseName: "gw:", BaseTime: now, Name: "ota", StringValue: &vs},
+		}}
+		b, err := senml.Encode(pack, senml.JSON)
+		if err != nil {
+			a.logger.Warn("Failed to encode OTA status", slog.Any("error", err))
+			return
+		}
+		token := a.mqttClient.Publish(statusTopic, qos, false, b)
+		token.Wait()
+	}
+
+	return ota.Run(ctx, otaCfg, trigger.URL, trigger.SHA256Hex, progressFn)
 }
 
 func (a *agent) getTopic(topic string) (t string) {
