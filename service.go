@@ -20,6 +20,7 @@ import (
 
 	"github.com/absmach/agent/pkg/devicemgr"
 	"github.com/absmach/agent/pkg/encoder"
+	"github.com/absmach/agent/pkg/iface"
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/ota"
 	"github.com/absmach/agent/pkg/terminal"
@@ -787,6 +788,10 @@ func (a *agent) getTopic(topic string) (t string) {
 //	remove,<device_id>                           → deregister
 //	get,<device_id>                              → JSON for one device
 //	seen,<device_id>                             → mark device active/last-seen
+//	open,<device_id>                             → open physical interface
+//	close,<device_id>                            → close physical interface
+//	read,<device_id>,<n_bytes>                   → read n bytes, reply as hex
+//	write,<device_id>,<hex_data>                 → write hex bytes to interface
 func (a *agent) DeviceManager(uuid, cmdStr string) error {
 	if a.devices == nil {
 		return errDeviceManagerDisabled
@@ -820,7 +825,7 @@ func (a *agent) DeviceManager(uuid, cmdStr string) error {
 			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
 		}
 		name, extID, extKey := args[1], args[2], args[3]
-		ifaceType := devicemgr.ParseInterfaceType(args[4])
+		ifaceType := iface.ParseInterfaceType(args[4])
 		ifaceAddr := args[5]
 		d, aerr := a.devices.Add(name, extID, extKey, ifaceType, ifaceAddr)
 		if aerr != nil {
@@ -863,6 +868,48 @@ func (a *agent) DeviceManager(uuid, cmdStr string) error {
 			return errors.Wrap(errDeviceManagerFailed, err)
 		}
 		resp = "ok"
+
+	case "open":
+		if len(args) < 2 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		if err = a.devices.OpenIface(args[1]); err != nil {
+			return errors.Wrap(errDeviceManagerFailed, err)
+		}
+		resp = "ok"
+
+	case "close":
+		if len(args) < 2 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		if err = a.devices.CloseIface(args[1]); err != nil {
+			return errors.Wrap(errDeviceManagerFailed, err)
+		}
+		resp = "ok"
+
+	case "read":
+		if len(args) < 3 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		var n int
+		if _, serr := fmt.Sscanf(args[2], "%d", &n); serr != nil || n <= 0 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		data, rerr := a.devices.ReadIface(args[1], n)
+		if rerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, rerr)
+		}
+		resp = fmt.Sprintf("%x", data)
+
+	case "write":
+		if len(args) < 3 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		written, werr := a.devices.WriteIface(args[1], args[2])
+		if werr != nil {
+			return errors.Wrap(errDeviceManagerFailed, werr)
+		}
+		resp = fmt.Sprintf("%d", written)
 
 	default:
 		return errors.Wrap(errDeviceManagerFailed, errUnknownCommand)
