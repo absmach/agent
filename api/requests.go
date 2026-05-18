@@ -12,7 +12,8 @@ type serverConfig struct {
 }
 
 type chanConfig struct {
-	ID string `json:"id"`
+	CtrlID string `json:"ctrl_id"`
+	DataID string `json:"data_id"`
 }
 
 type noderedConfig struct {
@@ -74,7 +75,7 @@ func (req addConfigReq) validate() error {
 	if req.Server.Port == "" ||
 		req.Mqtt.Username == "" ||
 		req.Mqtt.Password == "" ||
-		req.Channels.ID == "" ||
+		(req.Channels.CtrlID == "" || req.Channels.DataID == "") ||
 		req.Log.Level == "" ||
 		req.Mqtt.Url == "" {
 		return agent.ErrMalformedEntity

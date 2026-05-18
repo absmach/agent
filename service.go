@@ -17,17 +17,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/absmach/agent/pkg/devicemgr"
 	"github.com/absmach/agent/pkg/encoder"
+	"github.com/absmach/agent/pkg/iface"
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/terminal"
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/messaging"
+	senml "github.com/absmach/senml"
 	paho "github.com/eclipse/paho.mqtt.golang"
 	toml "github.com/pelletier/go-toml"
 )
 
 const (
-	Path           = "./config.toml"
 	HeartbeatTopic = "channels.heartbeat.>"
 	Commands       = "commands"
 	config         = "config"
@@ -45,6 +47,18 @@ const (
 
 	pubSubID = "agent"
 )
+
+var startTime = time.Now()
+
+// execAllowlist is the set of command names permitted via the exec MQTT command.
+var execAllowlist = map[string]bool{
+	"cat": true, "cd": true, "curl": true, "date": true, "df": true,
+	"echo": true, "env": true, "false": true, "free": true, "hostname": true,
+	"id": true, "ifconfig": true, "ip": true, "journalctl": true, "ls": true,
+	"netstat": true, "ping": true, "printf": true, "ps": true, "pwd": true,
+	"ss": true, "systemctl": true, "true": true, "uname": true, "uptime": true,
+	"who": true,
+}
 
 var (
 	// errInvalidCommand indicates malformed command.
@@ -82,6 +96,12 @@ var (
 
 	// errNodeRedFailed.
 	errNodeRedFailed = errors.New("failed to execute node-red operation")
+
+	// errDeviceManagerFailed.
+	errDeviceManagerFailed = errors.New("device manager operation failed")
+
+	// errDeviceManagerDisabled indicates device manager is not configured.
+	errDeviceManagerDisabled = errors.New("device manager not configured")
 )
 
 // Service specifies API for publishing messages and subscribing to topics.
@@ -110,8 +130,14 @@ type Service interface {
 	// Publish message.
 	Publish(topic, payload string) error
 
+	// Ping publishes an immediate heartbeat SenML record to the control channel.
+	Ping(uuid string) error
+
 	// NodeRed manages Node-RED flow operations.
 	NodeRed(cmdStr string) (string, error)
+
+	// DeviceManager handles downstream device registration and provisioning commands.
+	DeviceManager(uuid, cmdStr string) error
 }
 
 var _ Service = (*agent)(nil)
@@ -124,6 +150,7 @@ type agent struct {
 	broker        messaging.PubSub
 	svcs          map[string]Heartbeat
 	terminals     map[string]terminal.Session
+	devices       *devicemgr.Manager
 	workDir       string
 }
 
@@ -162,7 +189,7 @@ func (h handleFunc) Cancel() error {
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, broker messaging.PubSub, logger *slog.Logger) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, broker messaging.PubSub, logger *slog.Logger, devices *devicemgr.Manager) (Service, error) {
 	ag := &agent{
 		mqttClient:    mc,
 		noderedClient: nc,
@@ -171,6 +198,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, br
 		logger:        logger,
 		svcs:          make(map[string]Heartbeat),
 		terminals:     make(map[string]terminal.Session),
+		devices:       devices,
 		workDir:       "/",
 	}
 
@@ -215,20 +243,22 @@ func (a *agent) Execute(uuid, cmd string) (string, error) {
 		return "", errInvalidCommand
 	}
 
-	shellCmd := strings.Join(cmdArr, " ")
-
 	if cmdArr[0] == "cd" {
 		return a.changeDir(cmdArr)
 	}
 
-	execCmd := exec.Command("sh", "-c", shellCmd)
+	if !execAllowlist[cmdArr[0]] {
+		return "", errInvalidCommand
+	}
+
+	execCmd := exec.Command(cmdArr[0], cmdArr[1:]...)
 	execCmd.Dir = a.workDir
 	out, err := execCmd.CombinedOutput()
 	if err != nil && len(out) == 0 {
 		return "", errors.Wrap(errFailedExecute, err)
 	}
 
-	payload, err := encoder.EncodeSenML(uuid, shellCmd, string(out))
+	payload, err := encoder.EncodeSenML(uuid, strings.Join(cmdArr, " "), string(out))
 	if err != nil {
 		return "", errors.Wrap(errFailedEncode, err)
 	}
@@ -643,7 +673,8 @@ func saveExportConfig(fileName string, content []byte) error {
 }
 
 func (a *agent) AddConfig(c Config) error {
-	return SaveConfig(c)
+	*a.config = c
+	return nil
 }
 
 func (a *agent) Config() Config {
@@ -676,6 +707,21 @@ func (a *agent) Publish(t, payload string) error {
 	return nil
 }
 
+func (a *agent) Ping(uuid string) error {
+	now := float64(time.Now().Unix())
+	vb := true
+	uptime := time.Since(startTime).Seconds()
+	pack := senml.Pack{Records: []senml.Record{
+		{BaseName: "gw:", BaseTime: now, Name: "heartbeat", BoolValue: &vb},
+		{Name: "uptime", Unit: "s", Value: &uptime},
+	}}
+	b, err := senml.Encode(pack, senml.JSON)
+	if err != nil {
+		return err
+	}
+	return a.Publish(control, string(b))
+}
+
 func (a *agent) getTopic(topic string) (t string) {
 	domainID := a.config.DomainID
 	switch topic {
@@ -687,4 +733,142 @@ func (a *agent) getTopic(topic string) (t string) {
 		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, a.config.Channels.CtrlChan(), topic)
 	}
 	return t
+}
+
+// DeviceManager handles downstream device management commands.
+// cmdStr is comma-delimited: <subcommand>[,args...]
+//
+//	list                                         → JSON array of all devices
+//	add,<name>,<ext_id>,<ext_key>,<iface>,<addr> → provision + register
+//	remove,<device_id>                           → deregister
+//	get,<device_id>                              → JSON for one device
+//	seen,<device_id>                             → mark device active/last-seen
+//	open,<device_id>                             → open physical interface
+//	close,<device_id>                            → close physical interface
+//	read,<device_id>,<n_bytes>                   → read n bytes, reply as hex
+//	write,<device_id>,<hex_data>                 → write hex bytes to interface
+func (a *agent) DeviceManager(uuid, cmdStr string) error {
+	if a.devices == nil {
+		return errDeviceManagerDisabled
+	}
+
+	args := strings.Split(strings.TrimSpace(cmdStr), ",")
+	if len(args) == 0 || args[0] == "" {
+		return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+	}
+
+	sub := args[0]
+	var (
+		resp string
+		err  error
+	)
+
+	switch sub {
+	case "list":
+		devs, lerr := a.devices.List()
+		if lerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, lerr)
+		}
+		b, jerr := json.Marshal(devs)
+		if jerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, jerr)
+		}
+		resp = string(b)
+
+	case "add":
+		if len(args) < 6 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		name, extID, extKey := args[1], args[2], args[3]
+		ifaceType := iface.ParseInterfaceType(args[4])
+		ifaceAddr := args[5]
+		d, aerr := a.devices.Add(name, extID, extKey, ifaceType, ifaceAddr)
+		if aerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, aerr)
+		}
+		b, jerr := json.Marshal(d)
+		if jerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, jerr)
+		}
+		resp = string(b)
+
+	case "remove":
+		if len(args) < 2 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		if err = a.devices.Remove(args[1]); err != nil {
+			return errors.Wrap(errDeviceManagerFailed, err)
+		}
+		resp = "ok"
+
+	case "get":
+		if len(args) < 2 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		d, gerr := a.devices.Get(args[1])
+		if gerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, gerr)
+		}
+		b, jerr := json.Marshal(d)
+		if jerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, jerr)
+		}
+		resp = string(b)
+
+	case "seen":
+		if len(args) < 2 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		if err = a.devices.MarkSeen(args[1]); err != nil {
+			return errors.Wrap(errDeviceManagerFailed, err)
+		}
+		resp = "ok"
+
+	case "open":
+		if len(args) < 2 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		if err = a.devices.OpenIface(args[1]); err != nil {
+			return errors.Wrap(errDeviceManagerFailed, err)
+		}
+		resp = "ok"
+
+	case "close":
+		if len(args) < 2 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		if err = a.devices.CloseIface(args[1]); err != nil {
+			return errors.Wrap(errDeviceManagerFailed, err)
+		}
+		resp = "ok"
+
+	case "read":
+		if len(args) < 3 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		var n int
+		if _, serr := fmt.Sscanf(args[2], "%d", &n); serr != nil || n <= 0 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		data, rerr := a.devices.ReadIface(args[1], n)
+		if rerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, rerr)
+		}
+		resp = fmt.Sprintf("%x", data)
+
+	case "write":
+		if len(args) < 3 {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		written, werr := a.devices.WriteIface(args[1], args[2])
+		if werr != nil {
+			return errors.Wrap(errDeviceManagerFailed, werr)
+		}
+		resp = fmt.Sprintf("%d", written)
+
+	default:
+		return errors.Wrap(errDeviceManagerFailed, errUnknownCommand)
+	}
+
+	return a.processResponse(uuid, sub, resp)
 }

@@ -23,6 +23,8 @@ import (
 	"github.com/absmach/agent/middleware"
 	"github.com/absmach/agent/pkg/bootstrap"
 	"github.com/absmach/agent/pkg/conn"
+	"github.com/absmach/agent/pkg/devicemgr"
+	"github.com/absmach/agent/pkg/iface"
 	"github.com/absmach/agent/pkg/nodered"
 	mglog "github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/errors"
@@ -34,7 +36,6 @@ import (
 )
 
 type config struct {
-	ConfigFile           string `env:"MG_AGENT_CONFIG_FILE" envDefault:"config.toml"`
 	LogLevel             string `env:"MG_AGENT_LOG_LEVEL" envDefault:"info"`
 	NodeRedURL           string `env:"MG_AGENT_NODERED_URL" envDefault:"http://localhost:1880/"`
 	MqttURL              string `env:"MG_AGENT_MQTT_URL" envDefault:"localhost:1883"`
@@ -55,13 +56,15 @@ type config struct {
 	BootstrapRetries     string `env:"MG_AGENT_BOOTSTRAP_RETRIES" envDefault:"5"`
 	BootstrapRetryDelay  string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
 	BootstrapSkipTLS     string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS" envDefault:"false"`
+	ProvisionURL         string `env:"MG_AGENT_PROVISION_URL" envDefault:""`
+	ProvisionToken       string `env:"MG_AGENT_PROVISION_TOKEN" envDefault:""`
+	DeviceDBPath         string `env:"MG_AGENT_DEVICE_DB_PATH" envDefault:"/var/lib/agent/devices.db"`
 }
 
 var (
 	errFailedToSetupMTLS       = errors.New("Failed to set up mtls certs")
 	errFailedToConfigHeartbeat = errors.New("Failed to configure heartbeat")
 	errFetchingBootstrapFailed = errors.New("Fetching bootstrap failed with error")
-	errFailedToReadConfig      = errors.New("Failed to read config")
 	errInvalidRuntimeConfig    = errors.New("Invalid runtime config")
 )
 
@@ -103,7 +106,7 @@ func main() {
 	}
 
 	if err := validateRuntimeConfig(cfg); err != nil {
-		logger.Error("Failed to validate config", slog.Any("error", err), slog.String("config_file", cfg.File))
+		logger.Error("Failed to validate config", slog.Any("error", err))
 		exitCode = 1
 		return
 	}
@@ -131,7 +134,22 @@ func main() {
 	}
 	noderedClient := nodered.NewClient(cfg.NodeRed.URL, logger)
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, pubsub, logger)
+	var devices *devicemgr.Manager
+	if c.ProvisionURL != "" {
+		devices, err = devicemgr.New(c.DeviceDBPath, devicemgr.ProvisionConfig{
+			URL:      c.ProvisionURL,
+			Token:    c.ProvisionToken,
+			DomainID: cfg.DomainID,
+		}, iface.Config{})
+		if err != nil {
+			logger.Error("Failed to open device store", slog.Any("error", err))
+			exitCode = 1
+			return
+		}
+		defer devices.Close()
+	}
+
+	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, pubsub, logger, devices)
 	if err != nil {
 		logger.Error("Error in agent service", slog.Any("error", err))
 		exitCode = 1
@@ -253,76 +271,8 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 		Retain:      retain,
 	}
 
-	file := cfg.ConfigFile
-	cc := agent.ChanConfig{}
-	c := agent.NewConfig(sc, cc, nc, lc, mc, ch, ct, file)
-
-	if hasBootstrapConfig(cfg) {
-		return c, nil
-	}
-
-	if info, err := os.Stat(file); err == nil {
-		if info.IsDir() {
-			return c, errors.New(fmt.Sprintf("config file %q is a directory", file))
-		}
-		fc, err := agent.ReadConfig(file)
-		if err != nil {
-			return c, errors.Wrap(errFailedToReadConfig, err)
-		}
-		c = mergeConfig(c, fc)
-	} else if os.IsNotExist(err) {
-		if err := agent.SaveConfig(c); err != nil {
-			return c, err
-		}
-	} else {
-		return c, err
-	}
-
-	mc, err = loadCertificate(c.MQTT)
-	if err != nil {
-		return c, errors.Wrap(errFailedToSetupMTLS, err)
-	}
-
-	c.MQTT = mc
+	c := agent.NewConfig(sc, agent.ChanConfig{}, nc, lc, mc, ch, ct)
 	return c, nil
-}
-
-func mergeConfig(defaults, file agent.Config) agent.Config {
-	c := file
-	c.File = defaults.File
-
-	if c.Server.Port == "" {
-		c.Server.Port = defaults.Server.Port
-	}
-	if c.Server.BrokerURL == "" {
-		c.Server.BrokerURL = defaults.Server.BrokerURL
-	}
-	if c.NodeRed.URL == "" {
-		c.NodeRed.URL = defaults.NodeRed.URL
-	}
-	if c.Log.Level == "" {
-		c.Log.Level = defaults.Log.Level
-	}
-	if c.MQTT.URL == "" {
-		c.MQTT.URL = defaults.MQTT.URL
-	}
-	if c.MQTT.CAPath == "" {
-		c.MQTT.CAPath = defaults.MQTT.CAPath
-	}
-	if c.MQTT.CertPath == "" {
-		c.MQTT.CertPath = defaults.MQTT.CertPath
-	}
-	if c.MQTT.PrivKeyPath == "" {
-		c.MQTT.PrivKeyPath = defaults.MQTT.PrivKeyPath
-	}
-	if c.Heartbeat.Interval <= 0 {
-		c.Heartbeat.Interval = defaults.Heartbeat.Interval
-	}
-	if c.Terminal.SessionTimeout <= 0 {
-		c.Terminal.SessionTimeout = defaults.Terminal.SessionTimeout
-	}
-
-	return c
 }
 
 func connectToMQTTBroker(conf agent.MQTTConfig, logger *slog.Logger, onConnect func()) (mqtt.Client, error) {
@@ -466,7 +416,6 @@ func initLogger(levelText string) (*slog.Logger, error) {
 }
 
 func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Config, error) {
-	file := cfg.ConfigFile
 	missing := []string{}
 	if cfg.BootstrapURL == "" {
 		missing = append(missing, "MG_AGENT_BOOTSTRAP_URL")
@@ -499,8 +448,6 @@ func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Conf
 	if err != nil {
 		return c, errors.Wrap(errFetchingBootstrapFailed, err)
 	}
-	bsc.File = file
-
 	mc, err := loadCertificate(bsc.MQTT)
 	if err != nil {
 		return bsc, errors.Wrap(errFailedToSetupMTLS, err)

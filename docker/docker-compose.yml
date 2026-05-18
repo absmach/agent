@@ -10,6 +10,7 @@ networks:
 volumes:
   nodered-data:
   fluxmq-data:
+  agent-data:
 
 services:
   fluxmq:
@@ -84,8 +85,12 @@ services:
       MG_AGENT_BOOTSTRAP_RETRIES: ${MG_AGENT_BOOTSTRAP_RETRIES}
       MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS: ${MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS}
       MG_AGENT_BOOTSTRAP_SKIP_TLS: ${MG_AGENT_BOOTSTRAP_SKIP_TLS}
+      MG_AGENT_PROVISION_URL: ${MG_AGENT_PROVISION_URL}
+      MG_AGENT_PROVISION_TOKEN: ${MG_AGENT_PROVISION_TOKEN}
+      MG_AGENT_DEVICE_DB_PATH: ${MG_AGENT_DEVICE_DB_PATH}
     volumes:
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
+      - agent-data:/var/lib/agent
 
   ui:
     image: magistrala/ui:latest

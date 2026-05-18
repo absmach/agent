@@ -146,6 +146,23 @@ func (lm *loggingMiddleware) Terminal(uuid, cmdStr string) (err error) {
 	return lm.svc.Terminal(uuid, cmdStr)
 }
 
+func (lm *loggingMiddleware) Ping(uuid string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.String("uuid", uuid),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("Ping failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("Ping completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.Ping(uuid)
+}
+
 func (lm *loggingMiddleware) NodeRed(cmdStr string) (resp string, err error) {
 	defer func(begin time.Time) {
 		args := []any{
@@ -160,4 +177,22 @@ func (lm *loggingMiddleware) NodeRed(cmdStr string) (resp string, err error) {
 	}(time.Now())
 
 	return lm.svc.NodeRed(cmdStr)
+}
+
+func (lm *loggingMiddleware) DeviceManager(uuid, cmdStr string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.String("uuid", uuid),
+			slog.String("cmd", cmdStr),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("DeviceManager command failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("DeviceManager command completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.DeviceManager(uuid, cmdStr)
 }

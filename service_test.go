@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,10 +20,13 @@ import (
 
 	"github.com/absmach/agent"
 	agentmocks "github.com/absmach/agent/mocks"
+	"github.com/absmach/agent/pkg/devicemgr"
+	"github.com/absmach/agent/pkg/iface"
 	nrmocks "github.com/absmach/agent/pkg/nodered/mocks"
 	"github.com/absmach/magistrala/pkg/messaging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 var domainID = "1e7295a6-8de9-4c3c-8e36-387217f131f6"
@@ -30,7 +35,7 @@ func mqttTopic(channel, suffix string) string {
 	return fmt.Sprintf("m/%s/c/%s/%s", domainID, channel, suffix)
 }
 
-func testConfig(file string) agent.Config {
+func testConfig() agent.Config {
 	return agent.NewConfig(
 		agent.ServerConfig{Port: "9000", BrokerURL: "amqp://broker:5682"},
 		agent.ChanConfig{CtrlID: "ctrl-channel", DataID: "data-channel"},
@@ -46,7 +51,6 @@ func testConfig(file string) agent.Config {
 		},
 		agent.HeartbeatConfig{Interval: time.Hour},
 		agent.TerminalConfig{SessionTimeout: time.Minute},
-		file,
 	)
 }
 
@@ -61,7 +65,7 @@ func newService(t *testing.T, cfg agent.Config, subscribeErr error) (agent.Servi
 		subConfig = args.Get(1).(messaging.SubscriberConfig)
 	}).Return(subscribeErr).Once()
 
-	svc, err := agent.New(context.Background(), mqttClient, &cfg, nodeRed, pubsub, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	svc, err := agent.New(context.Background(), mqttClient, &cfg, nodeRed, pubsub, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	return svc, mqttClient, pubsub, nodeRed, subConfig, err
 }
 
@@ -70,70 +74,6 @@ func expectMQTTPublish(t *testing.T, mqttClient *agentmocks.MQTTClient, topic st
 	token.On("Wait").Return(true).Once()
 	token.On("Error").Return(err).Once()
 	return mqttClient.On("Publish", topic, byte(1), true, mock.Anything).Return(token).Once()
-}
-
-func TestConfig(t *testing.T) {
-	tmp := t.TempDir()
-	configFile := filepath.Join(tmp, "config.toml")
-	cfg := testConfig(configFile)
-	cfg.DomainID = domainID
-
-	cases := []struct {
-		desc string
-		run  func(t *testing.T)
-	}{
-		{
-			desc: "create config successfully",
-			run: func(t *testing.T) {
-				got := agent.NewConfig(cfg.Server, cfg.Channels, cfg.NodeRed, cfg.Log, cfg.MQTT, cfg.Heartbeat, cfg.Terminal, configFile)
-				assert.Equal(t, cfg.Server, got.Server, fmt.Sprintf("%s: unexpected server config", t.Name()))
-				assert.Equal(t, cfg.Channels, got.Channels, fmt.Sprintf("%s: unexpected channel config", t.Name()))
-				assert.Equal(t, configFile, got.File, fmt.Sprintf("%s: unexpected file path", t.Name()))
-			},
-		},
-		{
-			desc: "save and read config successfully",
-			run: func(t *testing.T) {
-				err := agent.SaveConfig(cfg)
-				assert.Nil(t, err, fmt.Sprintf("%s: unexpected save error %v", t.Name(), err))
-				got, err := agent.ReadConfig(configFile)
-				assert.Nil(t, err, fmt.Sprintf("%s: unexpected read error %v", t.Name(), err))
-				assert.Equal(t, cfg.DomainID, got.DomainID, fmt.Sprintf("%s: unexpected domain id", t.Name()))
-				assert.Equal(t, cfg.Channels.DataID, got.Channels.DataID, fmt.Sprintf("%s: unexpected data channel", t.Name()))
-				assert.Equal(t, configFile, got.File, fmt.Sprintf("%s: unexpected file path", t.Name()))
-			},
-		},
-		{
-			desc: "read missing config",
-			run: func(t *testing.T) {
-				_, err := agent.ReadConfig(filepath.Join(tmp, "missing.toml"))
-				assert.Error(t, err, fmt.Sprintf("%s: expected missing file error", t.Name()))
-			},
-		},
-		{
-			desc: "read malformed config",
-			run: func(t *testing.T) {
-				file := filepath.Join(tmp, "bad.toml")
-				err := os.WriteFile(file, []byte("="), 0o644)
-				assert.Nil(t, err, fmt.Sprintf("%s: unexpected write error %v", t.Name(), err))
-				_, err = agent.ReadConfig(file)
-				assert.Error(t, err, fmt.Sprintf("%s: expected malformed config error", t.Name()))
-			},
-		},
-		{
-			desc: "save config write failure",
-			run: func(t *testing.T) {
-				bad := cfg
-				bad.File = tmp
-				err := agent.SaveConfig(bad)
-				assert.Error(t, err, fmt.Sprintf("%s: expected write failure", t.Name()))
-			},
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.desc, tc.run)
-	}
 }
 
 func TestChannelConfig(t *testing.T) {
@@ -145,15 +85,9 @@ func TestChannelConfig(t *testing.T) {
 	}{
 		{
 			desc: "use split channels",
-			cfg:  agent.ChanConfig{ID: "shared-channel", CtrlID: "ctrl-channel", DataID: "data-channel"},
+			cfg:  agent.ChanConfig{CtrlID: "ctrl-channel", DataID: "data-channel"},
 			ctrl: "ctrl-channel",
 			data: "data-channel",
-		},
-		{
-			desc: "fall back to shared channel",
-			cfg:  agent.ChanConfig{ID: "shared-channel"},
-			ctrl: "shared-channel",
-			data: "shared-channel",
 		},
 	}
 
@@ -275,7 +209,7 @@ func TestNew(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			cfg := testConfig("")
+			cfg := testConfig()
 			cfg.Heartbeat.Interval = tc.interval
 			svc, _, _, _, subConfig, err := newService(t, cfg, tc.subscribeErr)
 			if tc.err {
@@ -342,7 +276,7 @@ func TestExecute(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, _, _, _, err := newService(t, testConfig(""), nil)
+			svc, mqttClient, _, _, _, err := newService(t, testConfig(), nil)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			var payload any
 			if tc.topic != "" {
@@ -404,7 +338,7 @@ func TestControl(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, _, nodeRed, _, err := newService(t, testConfig(""), nil)
+			svc, mqttClient, _, nodeRed, _, err := newService(t, testConfig(), nil)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			if strings.HasPrefix(tc.cmd, "nodered-") {
 				clientErr := error(nil)
@@ -495,7 +429,7 @@ func TestServiceConfig(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, pubsub, _, subConfig, err := newService(t, testConfig(""), nil)
+			svc, mqttClient, pubsub, _, subConfig, err := newService(t, testConfig(), nil)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			if tc.registerSvc {
 				err = subConfig.Handler.Handle(&messaging.Message{Channel: "channels.nodered.service"})
@@ -554,7 +488,7 @@ func TestTerminal(t *testing.T) {
 			if tc.emptyPath {
 				t.Setenv("PATH", "")
 			}
-			svc, _, _, _, _, err := newService(t, testConfig(""), nil)
+			svc, _, _, _, _, err := newService(t, testConfig(), nil)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			err = svc.Terminal("uuid", tc.cmd)
 			if tc.err {
@@ -642,7 +576,7 @@ func TestNodeRed(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, _, _, nodeRed, _, err := newService(t, testConfig(""), nil)
+			svc, _, _, nodeRed, _, err := newService(t, testConfig(), nil)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			clientErr := error(nil)
 			if tc.fail {
@@ -677,22 +611,20 @@ func TestNodeRed(t *testing.T) {
 }
 
 func TestAddConfigAndConfig(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "config.toml")
 	// nolint:dogsled
-	svc, _, _, _, _, err := newService(t, testConfig(file), nil)
+	svc, _, _, _, _, err := newService(t, testConfig(), nil)
 	assert.Nil(t, err, fmt.Sprintf("unexpected setup error %v", err))
 
-	cfg := testConfig(file)
+	cfg := testConfig()
 	cfg.DomainID = domainID
 	err = svc.AddConfig(cfg)
 	assert.Nil(t, err, fmt.Sprintf("unexpected add config error %v", err))
-	assert.FileExists(t, file, "expected config file")
 	assert.Equal(t, cfg.DomainID, svc.Config().DomainID, "unexpected returned config")
 }
 
 func TestServices(t *testing.T) {
 	// nolint:dogsled
-	svc, _, _, _, subConfig, err := newService(t, testConfig(""), nil)
+	svc, _, _, _, subConfig, err := newService(t, testConfig(), nil)
 	assert.Nil(t, err, fmt.Sprintf("unexpected setup error %v", err))
 
 	err = subConfig.Handler.Handle(&messaging.Message{Channel: "channels"})
@@ -739,7 +671,7 @@ func TestPublish(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, _, _, _, err := newService(t, testConfig(""), nil)
+			svc, mqttClient, _, _, _, err := newService(t, testConfig(), nil)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			var payload any
 			expectMQTTPublish(t, mqttClient, tc.output, tc.err).Run(func(args mock.Arguments) {
@@ -1059,6 +991,170 @@ func TestGetTopic(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			got := agent.GetTopicForTest(cfg, tc.topic)
 			assert.Equal(t, tc.want, got, fmt.Sprintf("%s: expected topic %s got %s", tc.desc, tc.want, got))
+		})
+	}
+}
+
+// newServiceWithDevices creates a service wired to a real devicemgr.Manager
+// backed by a temp BoltDB file. The provision URL is taken from srv.URL when
+// srv is non-nil; pass nil to disable provisioning.
+func newServiceWithDevices(t *testing.T, srv *httptest.Server) (agent.Service, *agentmocks.MQTTClient) {
+	t.Helper()
+	cfg := testConfig()
+	cfg.DomainID = domainID
+
+	provisionURL := ""
+	if srv != nil {
+		provisionURL = srv.URL
+	}
+
+	mgr, err := devicemgr.New(
+		filepath.Join(t.TempDir(), "devices.db"),
+		devicemgr.ProvisionConfig{URL: provisionURL, DomainID: domainID},
+		iface.Config{},
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { mgr.Close() })
+
+	mqttClient := agentmocks.NewMQTTClient(t)
+	pubsub := agentmocks.NewPubSub(t)
+	nodeRed := nrmocks.NewClient(t)
+
+	pubsub.On("Subscribe", context.Background(), mock.Anything).Return(error(nil)).Once()
+
+	svc, err := agent.New(context.Background(), mqttClient, &cfg, nodeRed, pubsub, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr)
+	require.NoError(t, err)
+	return svc, mqttClient
+}
+
+// provisionHandlerOK returns a handler that always responds with one client and one channel.
+func provisionHandlerOK(t *testing.T, deviceID, deviceKey, channelID string) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		resp := map[string]any{
+			"clients":  []map[string]any{{"id": deviceID, "secret": deviceKey, "name": "test-device"}},
+			"channels": []map[string]any{{"id": channelID}},
+		}
+		b, err := json.Marshal(resp)
+		assert.NoError(t, err)
+		_, err = w.Write(b)
+		assert.NoError(t, err)
+	}
+}
+
+func TestDeviceManager_NilManager(t *testing.T) {
+	// nolint:dogsled
+	svc, _, _, _, _, err := newService(t, testConfig(), nil)
+	require.NoError(t, err)
+
+	err = svc.DeviceManager("uuid-1", "list")
+	assert.Error(t, err, "expected error when device manager is not configured")
+}
+
+func TestDeviceManager(t *testing.T) {
+	const (
+		deviceID  = "device-uuid-123"
+		deviceKey = "device-key-abc"
+		channelID = "channel-uuid-456"
+	)
+
+	provSrv := httptest.NewServer(provisionHandlerOK(t, deviceID, deviceKey, channelID))
+	t.Cleanup(provSrv.Close)
+
+	svc, mqttClient := newServiceWithDevices(t, provSrv)
+
+	expectPublish := func(t *testing.T) {
+		t.Helper()
+		token := agentmocks.NewMQTTToken(t)
+		token.On("Wait").Return(true)
+		token.On("Error").Return(error(nil))
+		mqttClient.On("Publish", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(token).Once()
+	}
+
+	t.Run("list empty store", func(t *testing.T) {
+		expectPublish(t)
+		err := svc.DeviceManager("uuid-1", "list")
+		assert.NoError(t, err)
+	})
+
+	t.Run("add device via provision API", func(t *testing.T) {
+		expectPublish(t)
+		err := svc.DeviceManager("uuid-2", "add,test-device,ext-id,ext-key,ble,AA:BB:CC:DD:EE:FF")
+		assert.NoError(t, err)
+	})
+
+	t.Run("list after add returns one device", func(t *testing.T) {
+		expectPublish(t)
+		err := svc.DeviceManager("uuid-3", "list")
+		assert.NoError(t, err)
+	})
+
+	t.Run("get existing device", func(t *testing.T) {
+		expectPublish(t)
+		err := svc.DeviceManager("uuid-4", "get,"+deviceID)
+		assert.NoError(t, err)
+	})
+
+	t.Run("mark device seen", func(t *testing.T) {
+		expectPublish(t)
+		err := svc.DeviceManager("uuid-5", "seen,"+deviceID)
+		assert.NoError(t, err)
+	})
+
+	t.Run("remove device", func(t *testing.T) {
+		expectPublish(t)
+		err := svc.DeviceManager("uuid-6", "remove,"+deviceID)
+		assert.NoError(t, err)
+	})
+
+	t.Run("get removed device returns error", func(t *testing.T) {
+		err := svc.DeviceManager("uuid-7", "get,"+deviceID)
+		assert.Error(t, err)
+	})
+
+	t.Run("open interface for unknown device returns error", func(t *testing.T) {
+		err := svc.DeviceManager("uuid-8", "open,no-such-device")
+		assert.Error(t, err)
+	})
+
+	t.Run("close interface not open returns error", func(t *testing.T) {
+		err := svc.DeviceManager("uuid-9", "close,no-such-device")
+		assert.Error(t, err)
+	})
+
+	t.Run("read interface not open returns error", func(t *testing.T) {
+		err := svc.DeviceManager("uuid-10", "read,no-such-device,4")
+		assert.Error(t, err)
+	})
+
+	t.Run("write interface not open returns error", func(t *testing.T) {
+		err := svc.DeviceManager("uuid-11", "write,no-such-device,deadbeef")
+		assert.Error(t, err)
+	})
+
+	cases := []struct {
+		desc   string
+		cmdStr string
+	}{
+		{desc: "empty command", cmdStr: ""},
+		{desc: "unknown subcommand", cmdStr: "bogus"},
+		{desc: "add missing args", cmdStr: "add,name,ext-id"},
+		{desc: "remove missing id", cmdStr: "remove"},
+		{desc: "get missing id", cmdStr: "get"},
+		{desc: "seen missing id", cmdStr: "seen"},
+		{desc: "open missing id", cmdStr: "open"},
+		{desc: "close missing id", cmdStr: "close"},
+		{desc: "read missing args", cmdStr: "read,dev-id"},
+		{desc: "read invalid n", cmdStr: "read,dev-id,notanumber"},
+		{desc: "write missing hex", cmdStr: "write,dev-id"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			err := svc.DeviceManager("uuid-e", tc.cmdStr)
+			assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
 		})
 	}
 }
