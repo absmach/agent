@@ -17,8 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// --- State ---
-
 func TestState_String(t *testing.T) {
 	cases := []struct {
 		state    State
@@ -36,8 +34,6 @@ func TestState_String(t *testing.T) {
 		assert.Equal(t, tc.expected, tc.state.String(), tc.state)
 	}
 }
-
-// --- ParseTrigger ---
 
 func TestParseTrigger(t *testing.T) {
 	cases := []struct {
@@ -117,14 +113,13 @@ func TestParseTrigger(t *testing.T) {
 	}
 }
 
-// --- download ---
-
 func TestDownload_Success(t *testing.T) {
 	content := []byte("fake agent binary content")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
 		w.WriteHeader(http.StatusOK)
-		w.Write(content)
+		_, err := w.Write(content)
+		assert.NoError(t, err)
 	}))
 	defer srv.Close()
 
@@ -182,7 +177,8 @@ func TestDownload_ProgressReportedEvery5Percent(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
 		w.WriteHeader(http.StatusOK)
-		w.Write(content)
+		_, err := w.Write(content)
+		assert.NoError(t, err)
 	}))
 	defer srv.Close()
 
@@ -199,8 +195,6 @@ func TestDownload_ProgressReportedEvery5Percent(t *testing.T) {
 			"progress jumps should be >=5%% (got %.1f -> %.1f)", calls[i-1], calls[i])
 	}
 }
-
-// --- verify ---
 
 func sha256hex(data []byte) string {
 	h := sha256.Sum256(data)
@@ -290,8 +284,6 @@ func TestVerify_InlineTakesPrecedenceOverSidecar(t *testing.T) {
 	assert.NoError(t, err, "inline hash should take precedence over sidecar")
 }
 
-// --- replace ---
-
 func TestReplace_SameFilesystem(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "new-agent")
@@ -319,8 +311,6 @@ func TestReplace_MissingSource(t *testing.T) {
 	err := replace(filepath.Join(dir, "nonexistent"), filepath.Join(dir, "dst"))
 	assert.Error(t, err)
 }
-
-// --- Run error paths ---
 
 func TestRun_DownloadFails_BadURL(t *testing.T) {
 	// immediately-closed server gives connection refused without a timeout
@@ -354,7 +344,8 @@ func TestRun_VerifyFails_HashMismatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
 		w.WriteHeader(http.StatusOK)
-		w.Write(content)
+		_, err := w.Write(content)
+		assert.NoError(t, err)
 	}))
 	defer srv.Close()
 
@@ -386,9 +377,10 @@ func TestRun_StateProgression_OnDownloadFailure(t *testing.T) {
 
 	cfg := Config{Enabled: true, BinaryPath: "/tmp/agent", DownloadDir: t.TempDir()}
 	var states []State
-	Run(context.Background(), cfg, srv.URL, "", func(s State, _ float64) {
+	err := Run(context.Background(), cfg, srv.URL, "", func(s State, _ float64) {
 		states = append(states, s)
 	})
+	require.Error(t, err)
 
 	assert.Equal(t, StateTriggered, states[0], "first state must be TRIGGERED")
 	assert.Equal(t, StateDownloading, states[1], "second state must be DOWNLOADING")
