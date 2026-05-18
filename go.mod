@@ -16,6 +16,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	go.bug.st/serial v1.6.4
 	go.etcd.io/bbolt v1.4.3
+	go.etcd.io/bbolt v1.4.3
 	golang.org/x/sync v0.20.0
 	golang.org/x/sys v0.43.0
 	robpike.io/filter v0.0.0-20150108201509-2984852a2183

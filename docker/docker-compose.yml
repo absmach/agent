@@ -75,4 +75,4 @@ services:
       MG_AGENT_CONFIG_PATH: ${MG_AGENT_CONFIG_PATH}
     volumes:
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
-      - agent-data:/var/lib/agent  # agent process must have write access to persist device DB
+      - agent-data:/var/lib/agent

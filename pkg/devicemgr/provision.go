@@ -5,7 +5,6 @@ package devicemgr
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,8 +12,6 @@ import (
 	"strings"
 	"time"
 )
-
-const maxResponseBytes = 1 << 20 // 1 MiB
 
 // ProvisionConfig holds the Magistrala Provision service endpoint and credentials.
 type ProvisionConfig struct {
@@ -42,7 +39,7 @@ type provisionRequest struct {
 }
 
 type provisionResponse struct {
-	Clients []struct {
+	Clients  []struct {
 		ID     string `json:"id"`
 		Secret string `json:"secret"`
 		Name   string `json:"name"`
@@ -54,14 +51,7 @@ type provisionResponse struct {
 
 // Provision calls the Magistrala Provision API and returns the created Device
 // (with ID, Key, ChannelID populated). The caller fills in interface fields.
-func (p *provisionClient) Provision(ctx context.Context, name, externalID, externalKey string) (Device, error) {
-	if p.cfg.URL == "" {
-		return Device{}, fmt.Errorf("provision URL not configured")
-	}
-	if p.cfg.Token == "" {
-		return Device{}, fmt.Errorf("provision token not configured")
-	}
-
+func (p *provisionClient) Provision(name, externalID, externalKey string) (Device, error) {
 	baseURL := strings.TrimSuffix(p.cfg.URL, "/")
 	domainID := p.cfg.DomainID
 	var endpoint string
@@ -80,31 +70,34 @@ func (p *provisionClient) Provision(ctx context.Context, name, externalID, exter
 		return Device{}, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return Device{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.cfg.Token)
+	if p.cfg.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+p.cfg.Token)
+	} else {
+		req.Header.Set("Authorization", "Client "+externalKey)
+	}
 
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return Device{}, fmt.Errorf("provision request: %w", err)
 	}
 	defer resp.Body.Close()
-	limited := io.LimitReader(resp.Body, maxResponseBytes)
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(limited, 512))
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return Device{}, fmt.Errorf("provision API returned %d: %s", resp.StatusCode, b)
 	}
 
 	var pr provisionResponse
-	if err := json.NewDecoder(limited).Decode(&pr); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
 		return Device{}, fmt.Errorf("decode provision response: %w", err)
 	}
-	if len(pr.Clients) != 1 {
-		return Device{}, fmt.Errorf("provision response: expected 1 client, got %d", len(pr.Clients))
+	if len(pr.Clients) == 0 {
+		return Device{}, fmt.Errorf("provision response has no clients")
 	}
 
 	d := Device{
