@@ -97,14 +97,6 @@ func (b *broker) handleBrokerMsg(msg mqtt.Message) {
 		if err := b.svc.UpdateLiveness(svcname, svctype); err != nil {
 			b.logger.Warn("Error updating service liveness", slog.Any("error", err))
 		}
-		return
-	}
-
-	if topic := extractBrokerTopic(msg.Topic()); topic != "" {
-		message := messaging.Message{Payload: msg.Payload()}
-		if err := b.messageBroker.Publish(b.ctx, topic, &message); err != nil {
-			b.logger.Warn("Error publishing message", slog.Any("error", err))
-		}
 	}
 }
 
