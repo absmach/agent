@@ -76,13 +76,13 @@ func (b *broker) Subscribe(ctx context.Context) error {
 
 func (b *broker) subscribe() error {
 	topic := fmt.Sprintf("m/%s/c/%s/%s", b.domainID, b.channel, reqTopic)
-	s := b.client.Subscribe(topic, 0, b.handleMsg)
+	s := b.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) { b.handleMsg(msg) })
 	if err := s.Error(); s.Wait() && err != nil {
 		return err
 	}
 	topic = fmt.Sprintf("m/%s/c/%s/%s/#", b.domainID, b.channel, servTopic)
 	if b.messageBroker != nil {
-		n := b.client.Subscribe(topic, 0, b.handleBrokerMsg)
+		n := b.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) { b.handleBrokerMsg(msg) })
 		if err := n.Error(); n.Wait() && err != nil {
 			return err
 		}
@@ -98,7 +98,7 @@ func (b *broker) Resubscribe() {
 }
 
 // handleBrokerMsg triggered when new message is received on MQTT broker.
-func (b *broker) handleBrokerMsg(_ mqtt.Client, msg mqtt.Message) {
+func (b *broker) handleBrokerMsg(msg mqtt.Message) {
 	ctx := context.Background()
 	message := messaging.Message{
 		Payload: msg.Payload(),
@@ -126,7 +126,7 @@ func extractBrokerTopic(topic string) string {
 }
 
 // handleMsg triggered when new message is received on MQTT broker.
-func (b *broker) handleMsg(_ mqtt.Client, msg mqtt.Message) {
+func (b *broker) handleMsg(msg mqtt.Message) {
 	sm, err := senml.Decode(msg.Payload(), senml.JSON)
 	if err != nil {
 		b.logger.Warn("SenML decode failed", slog.Any("error", err))
