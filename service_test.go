@@ -19,7 +19,6 @@ import (
 	"github.com/absmach/agent"
 	agentmocks "github.com/absmach/agent/mocks"
 	nrmocks "github.com/absmach/agent/pkg/nodered/mocks"
-	"github.com/absmach/magistrala/pkg/messaging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -32,7 +31,7 @@ func mqttTopic(channel, suffix string) string {
 
 func testConfig() agent.Config {
 	return agent.NewConfig(
-		agent.ServerConfig{Port: "9000", BrokerURL: "amqp://broker:5682"},
+		agent.ServerConfig{Port: "9000"},
 		agent.ChanConfig{CtrlID: "ctrl-channel", DataID: "data-channel"},
 		agent.NodeRedConfig{URL: "http://nodered:1880/"},
 		agent.LogConfig{Level: "debug"},
@@ -49,19 +48,16 @@ func testConfig() agent.Config {
 	)
 }
 
-func newService(t *testing.T, cfg agent.Config, subscribeErr error) (agent.Service, *agentmocks.MQTTClient, *agentmocks.PubSub, *nrmocks.Client, messaging.SubscriberConfig, error) {
+func newService(t *testing.T, cfg agent.Config) (agent.Service, *agentmocks.MQTTClient, *nrmocks.Client, error) {
 	cfg.DomainID = domainID
 	mqttClient := agentmocks.NewMQTTClient(t)
-	pubsub := agentmocks.NewPubSub(t)
 	nodeRed := nrmocks.NewClient(t)
 
-	var subConfig messaging.SubscriberConfig
-	pubsub.On("Subscribe", context.Background(), mock.Anything).Run(func(args mock.Arguments) {
-		subConfig = args.Get(1).(messaging.SubscriberConfig)
-	}).Return(subscribeErr).Once()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 
-	svc, err := agent.New(context.Background(), mqttClient, &cfg, nodeRed, pubsub, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	return svc, mqttClient, pubsub, nodeRed, subConfig, err
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return svc, mqttClient, nodeRed, err
 }
 
 func expectMQTTPublish(t *testing.T, mqttClient *agentmocks.MQTTClient, topic string, err error) *mock.Call {
@@ -178,46 +174,9 @@ func TestHeartbeat(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	errBoom := fmt.Errorf("boom")
-
-	cases := []struct {
-		desc         string
-		interval     time.Duration
-		subscribeErr error
-		err          bool
-	}{
-		{
-			desc:     "create service successfully",
-			interval: time.Hour,
-		},
-		{
-			desc:         "return subscribe error",
-			interval:     time.Hour,
-			subscribeErr: errBoom,
-			err:          true,
-		},
-		{
-			desc:     "create service with invalid heartbeat interval",
-			interval: 0,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.desc, func(t *testing.T) {
-			cfg := testConfig()
-			cfg.Heartbeat.Interval = tc.interval
-			svc, _, _, _, subConfig, err := newService(t, cfg, tc.subscribeErr)
-			if tc.err {
-				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
-				return
-			}
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
-			assert.NotNil(t, svc, fmt.Sprintf("%s: expected service", tc.desc))
-			assert.Equal(t, "agent", subConfig.ID, fmt.Sprintf("%s: unexpected subscriber id", tc.desc))
-			assert.Equal(t, "channels.heartbeat.>", subConfig.Topic, fmt.Sprintf("%s: unexpected heartbeat topic", tc.desc))
-			assert.NotNil(t, subConfig.Handler, fmt.Sprintf("%s: expected heartbeat handler", tc.desc))
-		})
-	}
+	svc, _, _, err := newService(t, testConfig())
+	assert.Nil(t, err, "unexpected error creating service")
+	assert.NotNil(t, svc, "expected service to be non-nil")
 }
 
 func TestExecute(t *testing.T) {
@@ -271,7 +230,7 @@ func TestExecute(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, _, _, _, err := newService(t, testConfig(), nil)
+			svc, mqttClient, _, err := newService(t, testConfig())
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			var payload any
 			if tc.topic != "" {
@@ -333,7 +292,7 @@ func TestControl(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, _, nodeRed, _, err := newService(t, testConfig(), nil)
+			svc, mqttClient, nodeRed, err := newService(t, testConfig())
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			if strings.HasPrefix(tc.cmd, "nodered-") {
 				clientErr := error(nil)
@@ -365,13 +324,12 @@ func TestServiceConfig(t *testing.T) {
 	errBoom := fmt.Errorf("boom")
 
 	cases := []struct {
-		desc         string
-		cmd          string
-		err          bool
-		registerSvc  bool
-		publishTopic string
-		file         string
-		pubErr       error
+		desc        string
+		cmd         string
+		err         bool
+		registerSvc bool
+		file        string
+		pubErr      error
 	}{
 		{
 			desc:        "view services successfully",
@@ -395,10 +353,9 @@ func TestServiceConfig(t *testing.T) {
 			err:  true,
 		},
 		{
-			desc:         "save export config successfully",
-			cmd:          "save,export," + exportFile + "," + exportContent,
-			publishTopic: "commands.export.config",
-			file:         exportFile,
+			desc: "save export config successfully",
+			cmd:  "save,export," + exportFile + "," + exportContent,
+			file: exportFile,
 		},
 		{
 			desc: "return save config error",
@@ -424,17 +381,14 @@ func TestServiceConfig(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, pubsub, _, subConfig, err := newService(t, testConfig(), nil)
+			svc, mqttClient, _, err := newService(t, testConfig())
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			if tc.registerSvc {
-				err = subConfig.Handler.Handle(&messaging.Message{Channel: "channels.nodered.service"})
-				assert.Nil(t, err, fmt.Sprintf("%s: unexpected heartbeat error %v", tc.desc, err))
+				err = svc.UpdateLiveness("nodered", "service")
+				assert.Nil(t, err, fmt.Sprintf("%s: unexpected liveness error %v", tc.desc, err))
 			}
 			if !tc.err || tc.pubErr != nil {
 				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), tc.pubErr)
-			}
-			if tc.publishTopic != "" {
-				pubsub.On("Publish", context.Background(), tc.publishTopic, mock.Anything).Return(nil).Once()
 			}
 			err = svc.ServiceConfig(context.Background(), "uuid", tc.cmd)
 			if tc.err {
@@ -483,7 +437,7 @@ func TestTerminal(t *testing.T) {
 			if tc.emptyPath {
 				t.Setenv("PATH", "")
 			}
-			svc, _, _, _, _, err := newService(t, testConfig(), nil)
+			svc, _, _, err := newService(t, testConfig())
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			err = svc.Terminal("uuid", tc.cmd)
 			if tc.err {
@@ -571,7 +525,7 @@ func TestNodeRed(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, _, _, nodeRed, _, err := newService(t, testConfig(), nil)
+			svc, _, nodeRed, err := newService(t, testConfig())
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			clientErr := error(nil)
 			if tc.fail {
@@ -607,7 +561,7 @@ func TestNodeRed(t *testing.T) {
 
 func TestAddConfigAndConfig(t *testing.T) {
 	// nolint:dogsled
-	svc, _, _, _, _, err := newService(t, testConfig(), nil)
+	svc, _, _, err := newService(t, testConfig())
 	assert.Nil(t, err, fmt.Sprintf("unexpected setup error %v", err))
 
 	cfg := testConfig()
@@ -619,17 +573,13 @@ func TestAddConfigAndConfig(t *testing.T) {
 
 func TestServices(t *testing.T) {
 	// nolint:dogsled
-	svc, _, _, _, subConfig, err := newService(t, testConfig(), nil)
+	svc, _, _, err := newService(t, testConfig())
 	assert.Nil(t, err, fmt.Sprintf("unexpected setup error %v", err))
 
-	err = subConfig.Handler.Handle(&messaging.Message{Channel: "channels"})
-	assert.Error(t, err, "expected malformed heartbeat subject error")
-	err = subConfig.Handler.Handle(&messaging.Message{Channel: "channels.z-service.service"})
-	assert.Nil(t, err, fmt.Sprintf("unexpected heartbeat error %v", err))
-	err = subConfig.Handler.Handle(&messaging.Message{Channel: "channels.a-service.service"})
-	assert.Nil(t, err, fmt.Sprintf("unexpected heartbeat error %v", err))
-	err = subConfig.Handler.Cancel()
-	assert.Nil(t, err, fmt.Sprintf("unexpected handler cancel error %v", err))
+	err = svc.UpdateLiveness("z-service", "service")
+	assert.Nil(t, err, fmt.Sprintf("unexpected liveness error %v", err))
+	err = svc.UpdateLiveness("a-service", "service")
+	assert.Nil(t, err, fmt.Sprintf("unexpected liveness error %v", err))
 
 	got := svc.Services()
 	assert.Len(t, got, 2, "unexpected services count")
@@ -666,7 +616,7 @@ func TestPublish(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, _, _, _, err := newService(t, testConfig(), nil)
+			svc, mqttClient, _, err := newService(t, testConfig())
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 			var payload any
 			expectMQTTPublish(t, mqttClient, tc.output, tc.err).Run(func(args mock.Arguments) {
