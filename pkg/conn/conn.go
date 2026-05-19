@@ -7,8 +7,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/absmach/agent"
 	"github.com/absmach/magistrala/pkg/messaging"
@@ -28,6 +30,8 @@ const (
 	service = "service"
 	term    = "term"
 	nred    = "nodered"
+	ping    = "ping"
+	reset   = "reset"
 )
 
 var channelPartRegExp = regexp.MustCompile(`^m/([\w\-]+)/c/([\w\-]+)/services(/[^?]*)?(\?.*)?$`)
@@ -72,13 +76,13 @@ func (b *broker) Subscribe(ctx context.Context) error {
 
 func (b *broker) subscribe() error {
 	topic := fmt.Sprintf("m/%s/c/%s/%s", b.domainID, b.channel, reqTopic)
-	s := b.client.Subscribe(topic, 0, b.handleMsg)
+	s := b.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) { b.handleMsg(msg) })
 	if err := s.Error(); s.Wait() && err != nil {
 		return err
 	}
 	topic = fmt.Sprintf("m/%s/c/%s/%s/#", b.domainID, b.channel, servTopic)
 	if b.messageBroker != nil {
-		n := b.client.Subscribe(topic, 0, b.handleBrokerMsg)
+		n := b.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) { b.handleBrokerMsg(msg) })
 		if err := n.Error(); n.Wait() && err != nil {
 			return err
 		}
@@ -94,13 +98,12 @@ func (b *broker) Resubscribe() {
 }
 
 // handleBrokerMsg triggered when new message is received on MQTT broker.
-func (b *broker) handleBrokerMsg(mc mqtt.Client, msg mqtt.Message) {
-	ctx := context.Background()
+func (b *broker) handleBrokerMsg(msg mqtt.Message) {
 	message := messaging.Message{
 		Payload: msg.Payload(),
 	}
 	if topic := extractBrokerTopic(msg.Topic()); topic != "" {
-		if err := b.messageBroker.Publish(ctx, topic, &message); err != nil {
+		if err := b.messageBroker.Publish(b.ctx, topic, &message); err != nil {
 			b.logger.Warn("Error publishing message", slog.Any("error", err))
 		}
 	}
@@ -122,7 +125,7 @@ func extractBrokerTopic(topic string) string {
 }
 
 // handleMsg triggered when new message is received on MQTT broker.
-func (b *broker) handleMsg(mc mqtt.Client, msg mqtt.Message) {
+func (b *broker) handleMsg(msg mqtt.Message) {
 	sm, err := senml.Decode(msg.Payload(), senml.JSON)
 	if err != nil {
 		b.logger.Warn("SenML decode failed", slog.Any("error", err))
@@ -167,6 +170,16 @@ func (b *broker) handleMsg(mc mqtt.Client, msg mqtt.Message) {
 		b.logger.Info("NodeRed command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if _, err := b.svc.NodeRed(cmdStr); err != nil {
 			b.logger.Warn("NodeRed operation failed", slog.Any("error", err))
+		}
+	case ping:
+		b.logger.Info("Ping command")
+		if err := b.svc.Ping(); err != nil {
+			b.logger.Warn("Ping failed", slog.Any("error", err))
+		}
+	case reset:
+		b.logger.Info("Reset command received, restarting process", slog.String("uuid", uuid))
+		if err := syscall.Exec(os.Args[0], os.Args, os.Environ()); err != nil {
+			b.logger.Error("Reset failed", slog.Any("error", err))
 		}
 	}
 }

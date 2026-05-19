@@ -94,13 +94,22 @@ func (ms *metricsMiddleware) Publish(topic, payload string) error {
 	return ms.svc.Publish(topic, payload)
 }
 
-func (ms *metricsMiddleware) Terminal(topic, payload string) error {
+func (ms *metricsMiddleware) Terminal(uuid, cmdStr string) error {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "terminal").Add(1)
 		ms.latency.With("method", "terminal").Observe(time.Since(begin).Seconds())
 	}(time.Now())
 
-	return ms.svc.Terminal(topic, payload)
+	return ms.svc.Terminal(uuid, cmdStr)
+}
+
+func (ms *metricsMiddleware) Ping() error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "ping").Add(1)
+		ms.latency.With("method", "ping").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.Ping()
 }
 
 func (ms *metricsMiddleware) NodeRed(cmdStr string) (string, error) {
