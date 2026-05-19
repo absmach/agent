@@ -99,12 +99,11 @@ func (b *broker) Resubscribe() {
 
 // handleBrokerMsg triggered when new message is received on MQTT broker.
 func (b *broker) handleBrokerMsg(msg mqtt.Message) {
-	ctx := context.Background()
 	message := messaging.Message{
 		Payload: msg.Payload(),
 	}
 	if topic := extractBrokerTopic(msg.Topic()); topic != "" {
-		if err := b.messageBroker.Publish(ctx, topic, &message); err != nil {
+		if err := b.messageBroker.Publish(b.ctx, topic, &message); err != nil {
 			b.logger.Warn("Error publishing message", slog.Any("error", err))
 		}
 	}
