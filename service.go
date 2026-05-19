@@ -124,7 +124,7 @@ type Service interface {
 	Publish(topic, payload string) error
 
 	// Ping publishes an immediate heartbeat SenML record to the control channel.
-	Ping(uuid string) error
+	Ping() error
 
 	// NodeRed manages Node-RED flow operations.
 	NodeRed(cmdStr string) (string, error)
@@ -694,7 +694,7 @@ func (a *agent) Publish(t, payload string) error {
 	return nil
 }
 
-func (a *agent) Ping(uuid string) error {
+func (a *agent) Ping() error {
 	now := float64(time.Now().Unix())
 	vb := true
 	uptime := time.Since(startTime).Seconds()

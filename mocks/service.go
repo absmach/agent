@@ -320,16 +320,16 @@ func (_c *Service_NodeRed_Call) RunAndReturn(run func(cmdStr string) (string, er
 }
 
 // Ping provides a mock function for the type Service
-func (_mock *Service) Ping(uuid string) error {
-	ret := _mock.Called(uuid)
+func (_mock *Service) Ping() error {
+	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for Ping")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string) error); ok {
-		r0 = returnFunc(uuid)
+	if returnFunc, ok := ret.Get(0).(func() error); ok {
+		r0 = returnFunc()
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -342,20 +342,13 @@ type Service_Ping_Call struct {
 }
 
 // Ping is a helper method to define mock.On call
-//   - uuid string
-func (_e *Service_Expecter) Ping(uuid interface{}) *Service_Ping_Call {
-	return &Service_Ping_Call{Call: _e.mock.On("Ping", uuid)}
+func (_e *Service_Expecter) Ping() *Service_Ping_Call {
+	return &Service_Ping_Call{Call: _e.mock.On("Ping")}
 }
 
-func (_c *Service_Ping_Call) Run(run func(uuid string)) *Service_Ping_Call {
+func (_c *Service_Ping_Call) Run(run func()) *Service_Ping_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
-		if args[0] != nil {
-			arg0 = args[0].(string)
-		}
-		run(
-			arg0,
-		)
+		run()
 	})
 	return _c
 }
@@ -365,7 +358,7 @@ func (_c *Service_Ping_Call) Return(err error) *Service_Ping_Call {
 	return _c
 }
 
-func (_c *Service_Ping_Call) RunAndReturn(run func(uuid string) error) *Service_Ping_Call {
+func (_c *Service_Ping_Call) RunAndReturn(run func() error) *Service_Ping_Call {
 	_c.Call.Return(run)
 	return _c
 }

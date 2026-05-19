@@ -98,7 +98,7 @@ func (b *broker) Resubscribe() {
 }
 
 // handleBrokerMsg triggered when new message is received on MQTT broker.
-func (b *broker) handleBrokerMsg(mc mqtt.Client, msg mqtt.Message) {
+func (b *broker) handleBrokerMsg(_ mqtt.Client, msg mqtt.Message) {
 	ctx := context.Background()
 	message := messaging.Message{
 		Payload: msg.Payload(),
@@ -126,7 +126,7 @@ func extractBrokerTopic(topic string) string {
 }
 
 // handleMsg triggered when new message is received on MQTT broker.
-func (b *broker) handleMsg(mc mqtt.Client, msg mqtt.Message) {
+func (b *broker) handleMsg(_ mqtt.Client, msg mqtt.Message) {
 	sm, err := senml.Decode(msg.Payload(), senml.JSON)
 	if err != nil {
 		b.logger.Warn("SenML decode failed", slog.Any("error", err))
@@ -173,8 +173,8 @@ func (b *broker) handleMsg(mc mqtt.Client, msg mqtt.Message) {
 			b.logger.Warn("NodeRed operation failed", slog.Any("error", err))
 		}
 	case ping:
-		b.logger.Info("Ping command", slog.String("uuid", uuid))
-		if err := b.svc.Ping(uuid); err != nil {
+		b.logger.Info("Ping command")
+		if err := b.svc.Ping(); err != nil {
 			b.logger.Warn("Ping failed", slog.Any("error", err))
 		}
 	case reset:
