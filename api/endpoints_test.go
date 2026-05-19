@@ -82,7 +82,7 @@ func newAgentServer(t *testing.T) (*httptest.Server, *agentmocks.Service) {
 	svc := agentmocks.NewService(t)
 	logger := mglog.NewMock()
 
-	return httptest.NewServer(api.MakeHandler(svc, logger, "instance-id")), svc
+	return httptest.NewServer(api.MakeHandler(svc, logger, nil, "instance-id")), svc
 }
 
 func TestPublish(t *testing.T) {

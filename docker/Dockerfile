@@ -9,7 +9,7 @@ ARG TIME
 WORKDIR /go/src/github.com/absmach/agent
 COPY . .
 RUN apk update \
-    && apk add make\
+    && apk add make nodejs npm \
     && make $SVC \
     && mv build/magistrala-$SVC /exe
 

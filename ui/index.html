@@ -1,22 +1,12 @@
-<!DOCTYPE HTML>
-<html>
+<!doctype html>
+<html lang="en">
   <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Magistrala Agent</title>
-    <script src="main.js"></script>
   </head>
-
   <body>
-    <div id="elm"></div>
-    <script>
-      var app = Elm.Main.init({
-        node: document.getElementById('elm')
-      });
-      var MG = {};
-      app.ports.fileToBase64.subscribe(function(content) {
-        var encoded = btoa(unescape(encodeURIComponent(content)));
-        app.ports.base64Result.send(encoded);
-      });
-    </script>
+    <div id="app"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -1,2 +1,18 @@
-elm-stuff
+# Next.js
+.next/
+out/
+
+# Dependencies
+node_modules/
+
+# Build artifacts
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Env files (keep .env.local out of git)
+.env.local
+.env*.local
+
+# Elm (legacy)
+elm-stuff/
 main.js

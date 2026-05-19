@@ -54,35 +54,33 @@ define make_docker_dev
 		-f docker/Dockerfile.dev ./build
 endef
 
-all: $(SERVICES) 
+all: ui_prod $(SERVICES)
 
 arm: GOARCH=arm64
 arm: all
 
-.PHONY: all arm $(SERVICES) dockers dockers_dev ui ui_prod ui_run latest release mocks
+.PHONY: all arm $(SERVICES) dockers dockers_dev ui ui_prod ui_run ui_clean latest release mocks
 
 clean:
 	rm -rf ${BUILD_DIR}
-	rm -f ui/main.js
-
+	rm -rf ui/dist
 
 ui:
-	elm make ui/src/Main.elm --output=ui/main.js
+	cd ui && npm install && npm run dev
 
 ui_prod:
-	elm make --optimize ui/src/Main.elm --output=ui/main.js
+	cd ui && npm ci && npm run build
 
 ui_run:
-	cd ui && elm reactor
+	cd ui && npm run dev
 
 ui_clean:
-	rm -f ui/main.js
-	rm -rf ui/elm-stuff
+	rm -rf ui/dist ui/node_modules
 
 install:
 	cp ${BUILD_DIR}/* $(GOBIN)
 
-test:
+test: ui_prod
 	go test -v -race -count 1 -tags test $(shell go list ./... | grep -v 'vendor\|cmd')
 
 $(MOCKERY):
@@ -97,7 +95,7 @@ mocks: $(MOCKERY)
 	@$(MOCKERY) --config ./tools/config/.mockery.yaml
 
 
-$(SERVICES):
+$(SERVICES): ui_prod
 	$(call compile_service,$(@))
 
 $(DOCKERS):
@@ -109,11 +107,6 @@ $(DOCKERS_DEV):
 dockers: $(DOCKERS)
 
 dockers_dev: $(DOCKERS_DEV)
-ifeq ($(GOARCH), arm)
-	docker build --tag=magistrala/ui-arm -f ui/docker/Dockerfile.arm ui
-else
-	docker build --tag=magistrala/ui -f ui/docker/Dockerfile ui
-endif
 
 
 define docker_push
