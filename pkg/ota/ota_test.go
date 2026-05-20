@@ -99,7 +99,7 @@ func TestTriggerFromRecords(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			desc:  "unknown records ignored",
+			desc: "unknown records ignored",
 			records: []senml.Record{
 				{Name: "url", StringValue: &urlVal},
 				{Name: "extra", StringValue: &hashVal},
