@@ -313,8 +313,23 @@ if (!host || !domainID || !ctrlChannel) {
 }
 
 // Publish at 80% of the agent heartbeat interval to stay safely within the window.
-const rawInterval = (process.env.MG_AGENT_HEARTBEAT_INTERVAL || "10s").replace(/[^0-9]/g, "");
-const intervalSec = parseInt(rawInterval, 10) || 10;
+// Parse Go duration strings: e.g. "1m30s", "2h", "30s", "10s".
+function parseDurationSec(s) {
+  let total = 0;
+  const re = /(\d+(?:\.\d+)?)(h|m|s|ms)/g;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const v = parseFloat(m[1]);
+    switch (m[2]) {
+      case "h":  total += v * 3600; break;
+      case "m":  total += v * 60;   break;
+      case "s":  total += v;        break;
+      case "ms": total += v / 1000; break;
+    }
+  }
+  return total > 0 ? total : 10;
+}
+const intervalSec = parseDurationSec(process.env.MG_AGENT_HEARTBEAT_INTERVAL || "10s");
 const publishMs   = Math.max(Math.floor(intervalSec * 0.8) * 1000, 1000);
 
 const brokerURL = (useTLS ? "mqtts" : "mqtt") + "://" + host + ":" + port;

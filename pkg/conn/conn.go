@@ -112,7 +112,7 @@ func extractHeartbeat(mqttTopic string, payload []byte) (svcname, svctype string
 	if len(parts) < 2 || parts[len(parts)-1] != "heartbeat" {
 		return "", "", false
 	}
-	return parts[0], parseSvcType(payload), true
+	return parts[len(parts)-2], parseSvcType(payload), true
 }
 
 // parseSvcType extracts the service_type field from a SenML heartbeat payload,

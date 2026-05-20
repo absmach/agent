@@ -657,6 +657,7 @@ func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.D
 			a.logger.Warn("self-heartbeat publish failed", slog.Any("error", err))
 		}
 	}
+	publish()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
