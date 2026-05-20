@@ -585,3 +585,60 @@ func (_c *Service_Terminal_Call) RunAndReturn(run func(uuid string, cmdStr strin
 	_c.Call.Return(run)
 	return _c
 }
+
+// UpdateLiveness provides a mock function for the type Service
+func (_mock *Service) UpdateLiveness(svcname string, svctype string) error {
+	ret := _mock.Called(svcname, svctype)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateLiveness")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string, string) error); ok {
+		r0 = returnFunc(svcname, svctype)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Service_UpdateLiveness_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateLiveness'
+type Service_UpdateLiveness_Call struct {
+	*mock.Call
+}
+
+// UpdateLiveness is a helper method to define mock.On call
+//   - svcname string
+//   - svctype string
+func (_e *Service_Expecter) UpdateLiveness(svcname interface{}, svctype interface{}) *Service_UpdateLiveness_Call {
+	return &Service_UpdateLiveness_Call{Call: _e.mock.On("UpdateLiveness", svcname, svctype)}
+}
+
+func (_c *Service_UpdateLiveness_Call) Run(run func(svcname string, svctype string)) *Service_UpdateLiveness_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *Service_UpdateLiveness_Call) Return(err error) *Service_UpdateLiveness_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_UpdateLiveness_Call) RunAndReturn(run func(svcname string, svctype string) error) *Service_UpdateLiveness_Call {
+	_c.Call.Return(run)
+	return _c
+}

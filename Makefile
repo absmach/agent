@@ -14,15 +14,9 @@ TIME ?= $(shell date +%F_%T)
 MOCKERY = $(GOBIN)/mockery
 MOCKERY_VERSION = 3.7.0
 
-ifneq ($(MG_BROKER_TYPE),)
-    MG_BROKER_TYPE := $(MG_BROKER_TYPE)
-else
-    MG_BROKER_TYPE=msg_fluxmq
-endif
-
 define compile_service
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) GOARM=$(GOARM) \
-	go build -tags $(MG_BROKER_TYPE) -ldflags "-s -w \
+	go build -ldflags "-s -w \
 	-X 'github.com/absmach/agent.BuildTime=$(TIME)' \
 	-X 'github.com/absmach/agent.Version=$(VERSION)' \
 	-X 'github.com/absmach/agent.Commit=$(COMMIT)'" \

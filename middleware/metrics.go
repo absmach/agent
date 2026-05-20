@@ -112,6 +112,15 @@ func (ms *metricsMiddleware) Ping() error {
 	return ms.svc.Ping()
 }
 
+func (ms *metricsMiddleware) UpdateLiveness(svcname, svctype string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "update_liveness").Add(1)
+		ms.latency.With("method", "update_liveness").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.UpdateLiveness(svcname, svctype)
+}
+
 func (ms *metricsMiddleware) NodeRed(cmdStr string) (string, error) {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "nodered").Add(1)

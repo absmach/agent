@@ -13,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/absmach/agent"
-	"github.com/absmach/magistrala/pkg/messaging"
 	"github.com/absmach/senml"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"robpike.io/filter"
@@ -22,7 +21,6 @@ import (
 const (
 	reqTopic  = "req"
 	servTopic = "services"
-	commands  = "commands"
 
 	control = "control"
 	exec    = "exec"
@@ -47,24 +45,22 @@ type MqttBroker interface {
 }
 
 type broker struct {
-	svc           agent.Service
-	client        mqtt.Client
-	logger        *slog.Logger
-	messageBroker messaging.PubSub
-	channel       string
-	domainID      string
-	ctx           context.Context
+	svc      agent.Service
+	client   mqtt.Client
+	logger   *slog.Logger
+	channel  string
+	domainID string
+	ctx      context.Context
 }
 
 // NewBroker returns new MQTT broker instance.
-func NewBroker(svc agent.Service, client mqtt.Client, chann, domainID string, messBroker messaging.PubSub, log *slog.Logger) MqttBroker {
+func NewBroker(svc agent.Service, client mqtt.Client, chann, domainID string, log *slog.Logger) MqttBroker {
 	return &broker{
-		svc:           svc,
-		client:        client,
-		logger:        log,
-		messageBroker: messBroker,
-		channel:       chann,
-		domainID:      domainID,
+		svc:      svc,
+		client:   client,
+		logger:   log,
+		channel:  chann,
+		domainID: domainID,
 	}
 }
 
@@ -81,11 +77,9 @@ func (b *broker) subscribe() error {
 		return err
 	}
 	topic = fmt.Sprintf("m/%s/c/%s/%s/#", b.domainID, b.channel, servTopic)
-	if b.messageBroker != nil {
-		n := b.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) { b.handleBrokerMsg(msg) })
-		if err := n.Error(); n.Wait() && err != nil {
-			return err
-		}
+	n := b.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) { b.handleBrokerMsg(msg) })
+	if err := n.Error(); n.Wait() && err != nil {
+		return err
 	}
 	return nil
 }
@@ -99,29 +93,41 @@ func (b *broker) Resubscribe() {
 
 // handleBrokerMsg triggered when new message is received on MQTT broker.
 func (b *broker) handleBrokerMsg(msg mqtt.Message) {
-	message := messaging.Message{
-		Payload: msg.Payload(),
-	}
-	if topic := extractBrokerTopic(msg.Topic()); topic != "" {
-		if err := b.messageBroker.Publish(b.ctx, topic, &message); err != nil {
-			b.logger.Warn("Error publishing message", slog.Any("error", err))
+	if svcname, svctype, ok := extractHeartbeat(msg.Topic(), msg.Payload()); ok {
+		if err := b.svc.UpdateLiveness(svcname, svctype); err != nil {
+			b.logger.Warn("Error updating service liveness", slog.Any("error", err))
 		}
 	}
 }
 
-func extractBrokerTopic(topic string) string {
-	isEmpty := func(s string) bool {
-		return (len(s) == 0)
+// extractHeartbeat checks whether the MQTT topic is a service heartbeat and,
+// if so, returns the service name and type parsed from the topic and SenML payload.
+func extractHeartbeat(mqttTopic string, payload []byte) (svcname, svctype string, ok bool) {
+	isEmpty := func(s string) bool { return len(s) == 0 }
+	channelParts := channelPartRegExp.FindStringSubmatch(mqttTopic)
+	if len(channelParts) < 4 || channelParts[3] == "" {
+		return "", "", false
 	}
-	channelParts := channelPartRegExp.FindStringSubmatch(topic)
-	if len(channelParts) < 4 {
-		return ""
+	parts := filter.Drop(strings.Split(channelParts[3], "/"), isEmpty).([]string)
+	if len(parts) < 2 || parts[len(parts)-1] != "heartbeat" {
+		return "", "", false
 	}
-	// channelParts[3] is the subtopic after /services
-	filtered := filter.Drop(strings.Split(channelParts[3], "/"), isEmpty).([]string)
-	brokerTopic := strings.Join(filtered, ".")
+	return parts[len(parts)-2], parseSvcType(payload), true
+}
 
-	return fmt.Sprintf("%s.%s", commands, brokerTopic)
+// parseSvcType extracts the service_type field from a SenML heartbeat payload,
+// defaulting to "service" if the payload cannot be parsed.
+func parseSvcType(payload []byte) string {
+	sm, err := senml.Decode(payload, senml.JSON)
+	if err != nil {
+		return "service"
+	}
+	for _, r := range sm.Records {
+		if r.Name == "service_type" && r.StringValue != nil {
+			return *r.StringValue
+		}
+	}
+	return "service"
 }
 
 // handleMsg triggered when new message is received on MQTT broker.

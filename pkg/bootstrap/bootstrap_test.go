@@ -14,7 +14,7 @@ import (
 
 func TestApplyBootstrapResponse(t *testing.T) {
 	defaults := agent.NewConfig(
-		agent.ServerConfig{Port: "9999", BrokerURL: "amqp://fluxmq:5682"},
+		agent.ServerConfig{Port: "9999"},
 		agent.ChanConfig{},
 		agent.NodeRedConfig{URL: "http://nodered:1880"},
 		agent.LogConfig{Level: "info"},
@@ -36,7 +36,6 @@ func TestApplyBootstrapResponse(t *testing.T) {
 		clientCert string
 		clientKey  string
 		caCert     string
-		brokerURL  string
 		nodeRedURL string
 		err        bool
 	}{
@@ -74,7 +73,6 @@ func TestApplyBootstrapResponse(t *testing.T) {
 			clientCert: "client-cert-pem",
 			clientKey:  "client-key-pem",
 			caCert:     "ca-cert-pem",
-			brokerURL:  defaults.Server.BrokerURL,
 			nodeRedURL: defaults.NodeRed.URL,
 		},
 		{
@@ -132,7 +130,6 @@ func TestApplyBootstrapResponse(t *testing.T) {
 			assert.Equal(t, tc.clientCert, got.MQTT.ClientCert, fmt.Sprintf("%s: unexpected client cert", tc.desc))
 			assert.Equal(t, tc.clientKey, got.MQTT.ClientKey, fmt.Sprintf("%s: unexpected client key", tc.desc))
 			assert.Equal(t, tc.caCert, got.MQTT.CaCert, fmt.Sprintf("%s: unexpected ca cert", tc.desc))
-			assert.Equal(t, tc.brokerURL, got.Server.BrokerURL, fmt.Sprintf("%s: unexpected broker url", tc.desc))
 			assert.Equal(t, tc.nodeRedURL, got.NodeRed.URL, fmt.Sprintf("%s: unexpected node-red url", tc.desc))
 		})
 	}
