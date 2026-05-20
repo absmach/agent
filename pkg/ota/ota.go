@@ -61,8 +61,6 @@ type Config struct {
 }
 
 // Trigger holds the parsed fields from an OTA SenML trigger payload.
-// The vs field format is: url[,sha256:<hex>][,<size>]
-// Example: "https://example.com/agent-v2.bin,sha256:abcdef...,153600"
 type Trigger struct {
 	URL       string
 	SHA256Hex string // hex-encoded expected SHA-256, empty if not provided
@@ -70,11 +68,14 @@ type Trigger struct {
 }
 
 // TriggerFromRecords parses OTA trigger fields from the SenML records that
-// follow the dispatch record (n:"ota"). It expects:
+// follow the dispatch record. The full wire format (all records in the pack) is:
 //
-//	{"n":"url",  "vs":"https://..."}          — required
-//	{"n":"hash", "vs":"<sha256-hex>"}         — optional
-//	{"n":"size", "v":<byte-count>}            — optional
+//	{"bn":"<uuid>:", "n":"ota",  "vs":""}              — dispatch record (index 0, not passed here)
+//	{"n":"url",  "vs":"https://..."}                   — required
+//	{"n":"hash", "vs":"<sha256-hex>"}                  — optional
+//	{"n":"size", "v":<byte-count>}                     — optional
+//
+// Pass sm.Records[1:] to skip the dispatch record.
 func TriggerFromRecords(records []senml.Record) (Trigger, error) {
 	var t Trigger
 	for _, r := range records {

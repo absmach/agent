@@ -10,13 +10,13 @@ import (
 )
 
 func EncodeSenML(bn, n, sv string) ([]byte, error) {
-	ts := float64(time.Now().UnixNano()) / float64(time.Second)
+	now := float64(time.Now().UnixNano())
 	s := senml.Pack{
 		Records: []senml.Record{
 			{
 				BaseName:    bn,
+				BaseTime:    now,
 				Name:        n,
-				Time:        ts,
 				StringValue: &sv,
 			},
 		},

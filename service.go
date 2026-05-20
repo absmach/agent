@@ -684,7 +684,7 @@ func (a *agent) UpdateLiveness(svcname, svctype string) error {
 }
 
 func (a *agent) Ping() error {
-	now := float64(time.Now().Unix())
+	now := float64(time.Now().UnixNano())
 	vb := true
 	uptime := time.Since(startTime).Seconds()
 	pack := senml.Pack{Records: []senml.Record{
@@ -715,7 +715,7 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string) error {
 	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
 
 	progressFn := func(state ota.State, progress float64) {
-		now := float64(time.Now().Unix())
+		now := float64(time.Now().UnixNano())
 		stateStr := strings.ToLower(state.String())
 		statusPack := senml.Pack{Records: []senml.Record{
 			{BaseName: "gw:", BaseTime: now, Name: "ota_state", StringValue: &stateStr},
