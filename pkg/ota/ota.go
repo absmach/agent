@@ -108,34 +108,14 @@ func TriggerFromRecords(records []senml.Record) (Trigger, error) {
 // On success it never returns (the process is replaced via syscall.Exec).
 // On any failure it returns a descriptive error; the running binary is untouched.
 func Run(ctx context.Context, cfg Config, url, sha256hex string, size uint64, progressFn ProgressFn) error {
-	u, err := neturl.Parse(url)
-	if err != nil {
-		return fmt.Errorf("ota: invalid URL: %w", err)
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("ota: unsupported URL scheme %q, must be http or https", u.Scheme)
-	}
-
 	progressFn(StateTriggered, 0)
 
 	progressFn(StateDownloading, 0)
-	tmpPath, err := download(ctx, url, cfg.DownloadDir, func(pct float64) {
+	tmpPath, err := download(ctx, url, cfg.DownloadDir, size, func(pct float64) {
 		progressFn(StateDownloading, pct)
 	})
 	if err != nil {
 		return fmt.Errorf("ota download: %w", err)
-	}
-
-	if size > 0 {
-		info, statErr := os.Stat(tmpPath)
-		if statErr != nil {
-			_ = os.Remove(tmpPath)
-			return fmt.Errorf("ota size check: %w", statErr)
-		}
-		if uint64(info.Size()) != size {
-			_ = os.Remove(tmpPath)
-			return fmt.Errorf("ota size mismatch: got %d bytes, want %d", info.Size(), size)
-		}
 	}
 
 	progressFn(StateVerifying, 100)
@@ -159,8 +139,17 @@ func Run(ctx context.Context, cfg Config, url, sha256hex string, size uint64, pr
 }
 
 // download fetches url into a temporary file under dir and returns its path.
+// If size is non-zero the stream is aborted as soon as written bytes exceed it.
 // pctFn is called each time download progress crosses a 5% threshold.
-func download(ctx context.Context, url, dir string, pctFn func(float64)) (string, error) {
+func download(ctx context.Context, url, dir string, size uint64, pctFn func(float64)) (string, error) {
+	u, err := neturl.Parse(url)
+	if err != nil {
+		return "", fmt.Errorf("invalid URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("unsupported URL scheme %q, must be http or https", u.Scheme)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
@@ -203,6 +192,11 @@ func download(ctx context.Context, url, dir string, pctFn func(float64)) (string
 				return "", werr
 			}
 			written += int64(n)
+			if size > 0 && uint64(written) > size {
+				f.Close()
+				os.Remove(tmpName)
+				return "", fmt.Errorf("download exceeded expected size %d bytes", size)
+			}
 			if total > 0 {
 				pct := float64(written) / float64(total) * 100
 				if pct-lastPct >= 5 {

@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/absmach/agent/pkg/encoder"
@@ -140,6 +141,7 @@ type agent struct {
 	svcs          map[string]Heartbeat
 	terminals     map[string]terminal.Session
 	workDir       string
+	otaBusy       atomic.Bool
 }
 
 // New returns agent service implementation.
@@ -702,6 +704,10 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	if !a.config.OTA.Enabled {
 		return errors.New("OTA is disabled")
 	}
+	if !a.otaBusy.CompareAndSwap(false, true) {
+		return errors.New("OTA already in progress")
+	}
+	defer a.otaBusy.Store(false)
 
 	otaCfg := ota.Config{
 		BinaryPath:  a.config.OTA.BinaryPath,

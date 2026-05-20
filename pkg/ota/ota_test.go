@@ -99,6 +99,11 @@ func TestTriggerFromRecords(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			desc:    "url record with whitespace-only value",
+			records: []senml.Record{{Name: "url", StringValue: func() *string { s := "   "; return &s }()}},
+			wantErr: true,
+		},
+		{
 			desc: "unknown records ignored",
 			records: []senml.Record{
 				{Name: "url", StringValue: &urlVal},
@@ -134,7 +139,7 @@ func TestDownload_Success(t *testing.T) {
 
 	dir := t.TempDir()
 	var progressCalls []float64
-	path, err := download(context.Background(), srv.URL, dir, func(pct float64) {
+	path, err := download(context.Background(), srv.URL, dir, 0, func(pct float64) {
 		progressCalls = append(progressCalls, pct)
 	})
 	require.NoError(t, err)
@@ -147,13 +152,35 @@ func TestDownload_Success(t *testing.T) {
 	assert.Contains(t, progressCalls, float64(100), "100%% should always be reported")
 }
 
+func TestDownload_SizeExceeded(t *testing.T) {
+	content := []byte("this binary is larger than expected")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write(content)
+		assert.NoError(t, err)
+	}))
+	defer srv.Close()
+
+	_, err := download(context.Background(), srv.URL, t.TempDir(), 4, func(float64) {})
+	assert.ErrorContains(t, err, "exceeded expected size")
+}
+
+func TestDownload_BadScheme(t *testing.T) {
+	_, err := download(context.Background(), "file:///etc/passwd", t.TempDir(), 0, func(float64) {})
+	assert.ErrorContains(t, err, "unsupported URL scheme")
+
+	_, err = download(context.Background(), "ftp://example.com/agent.bin", t.TempDir(), 0, func(float64) {})
+	assert.ErrorContains(t, err, "unsupported URL scheme")
+}
+
 func TestDownload_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
-	_, err := download(context.Background(), srv.URL, t.TempDir(), func(float64) {})
+	_, err := download(context.Background(), srv.URL, t.TempDir(), 0, func(float64) {})
 	assert.ErrorContains(t, err, "500")
 }
 
@@ -163,7 +190,7 @@ func TestDownload_NotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := download(context.Background(), srv.URL, t.TempDir(), func(float64) {})
+	_, err := download(context.Background(), srv.URL, t.TempDir(), 0, func(float64) {})
 	assert.Error(t, err)
 }
 
@@ -176,7 +203,7 @@ func TestDownload_ContextCancelled(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := download(ctx, srv.URL, t.TempDir(), func(float64) {})
+	_, err := download(ctx, srv.URL, t.TempDir(), 0, func(float64) {})
 	assert.Error(t, err)
 }
 
@@ -192,7 +219,7 @@ func TestDownload_ProgressReportedEvery5Percent(t *testing.T) {
 	defer srv.Close()
 
 	var calls []float64
-	path, err := download(context.Background(), srv.URL, t.TempDir(), func(pct float64) {
+	path, err := download(context.Background(), srv.URL, t.TempDir(), 0, func(pct float64) {
 		calls = append(calls, pct)
 	})
 	require.NoError(t, err)
