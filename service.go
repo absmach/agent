@@ -127,7 +127,7 @@ type Service interface {
 	UpdateLiveness(svcname, svctype string) error
 
 	// OTA triggers an over-the-air binary update by downloading from url.
-	OTA(ctx context.Context, url, sha256hex string) error
+	OTA(ctx context.Context, url, sha256hex string, size uint64) error
 }
 
 var _ Service = (*agent)(nil)
@@ -698,13 +698,12 @@ func (a *agent) Ping() error {
 	return a.Publish(control, string(b))
 }
 
-func (a *agent) OTA(ctx context.Context, url, sha256hex string) error {
+func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) error {
 	if !a.config.OTA.Enabled {
 		return errors.New("OTA is disabled")
 	}
 
 	otaCfg := ota.Config{
-		Enabled:     a.config.OTA.Enabled,
 		BinaryPath:  a.config.OTA.BinaryPath,
 		DownloadDir: a.config.OTA.DownloadDir,
 	}
@@ -730,7 +729,7 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string) error {
 		token.Wait()
 	}
 
-	return ota.Run(ctx, otaCfg, url, sha256hex, progressFn)
+	return ota.Run(ctx, otaCfg, url, sha256hex, size, progressFn)
 }
 
 func (a *agent) getTopic(topic string) (t string) {

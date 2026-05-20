@@ -223,13 +223,13 @@ func writeTempFile(t *testing.T, content []byte) string {
 func TestVerify_InlineHash_Match(t *testing.T) {
 	content := []byte("agent binary")
 	path := writeTempFile(t, content)
-	err := verify(context.Background(), "http://unused", path, sha256hex(content))
+	_, err := verify(context.Background(),"http://unused", path, sha256hex(content))
 	assert.NoError(t, err)
 }
 
 func TestVerify_InlineHash_Mismatch(t *testing.T) {
 	path := writeTempFile(t, []byte("agent binary"))
-	err := verify(context.Background(), "http://unused", path, "deadbeef")
+	_, err := verify(context.Background(),"http://unused", path, "deadbeef")
 	assert.ErrorContains(t, err, "sha256 mismatch")
 }
 
@@ -242,7 +242,7 @@ func TestVerify_Sidecar_Match(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := verify(context.Background(), srv.URL+"/agent.bin", path, "")
+	_, err := verify(context.Background(),srv.URL+"/agent.bin", path, "")
 	assert.NoError(t, err)
 }
 
@@ -254,7 +254,7 @@ func TestVerify_Sidecar_Mismatch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := verify(context.Background(), srv.URL+"/agent.bin", path, "")
+	_, err := verify(context.Background(),srv.URL+"/agent.bin", path, "")
 	assert.ErrorContains(t, err, "sha256 mismatch")
 }
 
@@ -266,7 +266,7 @@ func TestVerify_Sidecar_NotFound_Skipped(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := verify(context.Background(), srv.URL+"/agent.bin", path, "")
+	_, err := verify(context.Background(),srv.URL+"/agent.bin", path, "")
 	assert.NoError(t, err, "missing sidecar should be silently skipped")
 }
 
@@ -275,7 +275,7 @@ func TestVerify_NoHashNoSidecar_Skipped(t *testing.T) {
 	// immediately-closed server simulates connection refused — network error should be skipped
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	srv.Close()
-	err := verify(context.Background(), srv.URL+"/agent.bin", path, "")
+	_, err := verify(context.Background(),srv.URL+"/agent.bin", path, "")
 	assert.NoError(t, err, "unreachable sidecar host should be silently skipped")
 }
 
@@ -289,7 +289,7 @@ func TestVerify_InlineTakesPrecedenceOverSidecar(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := verify(context.Background(), srv.URL+"/agent.bin", path, sha256hex(content))
+	_, err := verify(context.Background(),srv.URL+"/agent.bin", path, sha256hex(content))
 	assert.NoError(t, err, "inline hash should take precedence over sidecar")
 }
 
@@ -326,9 +326,9 @@ func TestRun_DownloadFails_BadURL(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	srv.Close()
 
-	cfg := Config{Enabled: true, BinaryPath: "/tmp/agent", DownloadDir: t.TempDir()}
+	cfg := Config{BinaryPath: "/tmp/agent", DownloadDir: t.TempDir()}
 	var states []State
-	err := Run(context.Background(), cfg, srv.URL, "", func(s State, _ float64) {
+	err := Run(context.Background(), cfg, srv.URL, "", 0, func(s State, _ float64) {
 		states = append(states, s)
 	})
 	require.Error(t, err)
@@ -343,8 +343,8 @@ func TestRun_DownloadFails_ServerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	cfg := Config{Enabled: true, BinaryPath: "/tmp/agent", DownloadDir: t.TempDir()}
-	err := Run(context.Background(), cfg, srv.URL, "", func(State, float64) {})
+	cfg := Config{BinaryPath: "/tmp/agent", DownloadDir: t.TempDir()}
+	err := Run(context.Background(), cfg, srv.URL, "", 0, func(State, float64) {})
 	assert.ErrorContains(t, err, "ota download")
 }
 
@@ -359,10 +359,10 @@ func TestRun_VerifyFails_HashMismatch(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	cfg := Config{Enabled: true, BinaryPath: filepath.Join(dir, "agent"), DownloadDir: dir}
+	cfg := Config{BinaryPath: filepath.Join(dir, "agent"), DownloadDir: dir}
 
 	var states []State
-	err := Run(context.Background(), cfg, srv.URL, "deadbeef", func(s State, _ float64) {
+	err := Run(context.Background(), cfg, srv.URL, "deadbeef", 0, func(s State, _ float64) {
 		states = append(states, s)
 	})
 	require.Error(t, err)
@@ -384,9 +384,9 @@ func TestRun_StateProgression_OnDownloadFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	cfg := Config{Enabled: true, BinaryPath: "/tmp/agent", DownloadDir: t.TempDir()}
+	cfg := Config{BinaryPath: "/tmp/agent", DownloadDir: t.TempDir()}
 	var states []State
-	err := Run(context.Background(), cfg, srv.URL, "", func(s State, _ float64) {
+	err := Run(context.Background(), cfg, srv.URL, "", 0, func(s State, _ float64) {
 		states = append(states, s)
 	})
 	require.Error(t, err)

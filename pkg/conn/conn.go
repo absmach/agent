@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/absmach/agent"
@@ -53,6 +54,7 @@ type broker struct {
 	channel  string
 	domainID string
 	ctx      context.Context
+	otaBusy  atomic.Bool
 }
 
 // NewBroker returns new MQTT broker instance.
@@ -198,9 +200,16 @@ func (b *broker) handleMsg(msg mqtt.Message) {
 			b.logger.Warn("OTA trigger parse failed", slog.Any("error", err))
 			return
 		}
-		b.logger.Info("OTA command", slog.String("uuid", uuid), slog.String("url", trigger.URL))
-		if err := b.svc.OTA(b.ctx, trigger.URL, trigger.SHA256Hex); err != nil {
-			b.logger.Warn("OTA operation failed", slog.Any("error", err))
+		if !b.otaBusy.CompareAndSwap(false, true) {
+			b.logger.Warn("OTA already in progress, ignoring trigger", slog.String("url", trigger.URL))
+			return
 		}
+		b.logger.Info("OTA command", slog.String("uuid", uuid), slog.String("url", trigger.URL))
+		go func() {
+			defer b.otaBusy.Store(false)
+			if err := b.svc.OTA(b.ctx, trigger.URL, trigger.SHA256Hex, trigger.Size); err != nil {
+				b.logger.Warn("OTA operation failed", slog.Any("error", err))
+			}
+		}()
 	}
 }

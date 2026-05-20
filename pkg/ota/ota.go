@@ -8,7 +8,9 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,7 +57,6 @@ type ProgressFn func(state State, progress float64)
 
 // Config holds the OTA updater parameters.
 type Config struct {
-	Enabled     bool
 	BinaryPath  string // absolute path to the running binary, e.g. /usr/local/bin/agent
 	DownloadDir string // directory for the temporary download file, e.g. /tmp
 }
@@ -64,7 +65,7 @@ type Config struct {
 type Trigger struct {
 	URL       string
 	SHA256Hex string // hex-encoded expected SHA-256, empty if not provided
-	Size      uint64 // expected byte count, 0 if not provided
+	Size      uint64 // expected byte count, 0 means no size check
 }
 
 // TriggerFromRecords parses OTA trigger fields from the SenML records that
@@ -81,10 +82,10 @@ func TriggerFromRecords(records []senml.Record) (Trigger, error) {
 	for _, r := range records {
 		switch r.Name {
 		case "url":
-			if r.StringValue == nil || *r.StringValue == "" {
+			if r.StringValue == nil || strings.TrimSpace(*r.StringValue) == "" {
 				return Trigger{}, fmt.Errorf("ota trigger: url record has no value")
 			}
-			t.URL = *r.StringValue
+			t.URL = strings.TrimSpace(*r.StringValue)
 		case "hash":
 			if r.StringValue != nil {
 				t.SHA256Hex = *r.StringValue
@@ -103,9 +104,18 @@ func TriggerFromRecords(records []senml.Record) (Trigger, error) {
 
 // Run executes the full OTA cycle: download → verify → replace → restart.
 // sha256hex is the expected SHA-256 hex digest; if empty the sidecar at url+".sha256" is tried.
+// size is the expected byte count; if non-zero the downloaded file is checked against it.
 // On success it never returns (the process is replaced via syscall.Exec).
 // On any failure it returns a descriptive error; the running binary is untouched.
-func Run(ctx context.Context, cfg Config, url, sha256hex string, progressFn ProgressFn) error {
+func Run(ctx context.Context, cfg Config, url, sha256hex string, size uint64, progressFn ProgressFn) error {
+	u, err := neturl.Parse(url)
+	if err != nil {
+		return fmt.Errorf("ota: invalid URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("ota: unsupported URL scheme %q, must be http or https", u.Scheme)
+	}
+
 	progressFn(StateTriggered, 0)
 
 	progressFn(StateDownloading, 0)
@@ -116,10 +126,26 @@ func Run(ctx context.Context, cfg Config, url, sha256hex string, progressFn Prog
 		return fmt.Errorf("ota download: %w", err)
 	}
 
+	if size > 0 {
+		info, statErr := os.Stat(tmpPath)
+		if statErr != nil {
+			_ = os.Remove(tmpPath)
+			return fmt.Errorf("ota size check: %w", statErr)
+		}
+		if uint64(info.Size()) != size {
+			_ = os.Remove(tmpPath)
+			return fmt.Errorf("ota size mismatch: got %d bytes, want %d", info.Size(), size)
+		}
+	}
+
 	progressFn(StateVerifying, 100)
-	if err := verify(ctx, url, tmpPath, sha256hex); err != nil {
+	verified, err := verify(ctx, url, tmpPath, sha256hex)
+	if err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("ota verify: %w", err)
+	}
+	if !verified {
+		slog.Default().Warn("OTA binary installed without integrity verification; no hash provided and no sidecar found")
 	}
 
 	progressFn(StateReady, 100)
@@ -204,45 +230,47 @@ func download(ctx context.Context, url, dir string, pctFn func(float64)) (string
 
 // verify checks the SHA-256 of tmpPath.
 // If sha256hex is non-empty it is used directly.
-// Otherwise a sidecar file at url+".sha256" is fetched; if absent, verification is skipped.
-func verify(ctx context.Context, url, tmpPath, sha256hex string) error {
+// Otherwise a sidecar file at url+".sha256" is fetched.
+// Returns (true, nil) if verified, (false, nil) if no hash was available (verification skipped),
+// or (false, err) on a hash mismatch or I/O error.
+func verify(ctx context.Context, url, tmpPath, sha256hex string) (bool, error) {
 	expected := sha256hex
 	if expected == "" {
 		// fall back to sidecar
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url+".sha256", nil)
 		if err != nil {
-			return nil
+			return false, nil
 		}
 		client := &http.Client{Timeout: 30 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
-			return nil // network error — skip
+			return false, nil // network error — skip
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			return nil // no sidecar — skip
+			return false, nil // no sidecar — skip
 		}
 		raw, err := io.ReadAll(io.LimitReader(resp.Body, 128))
 		if err != nil || len(raw) == 0 {
-			return nil
+			return false, nil
 		}
 		expected = strings.TrimSpace(strings.Fields(string(raw))[0])
 	}
 
 	f, err := os.Open(tmpPath)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer f.Close()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
-		return err
+		return false, err
 	}
 	got := fmt.Sprintf("%x", h.Sum(nil))
 	if got != expected {
-		return fmt.Errorf("sha256 mismatch: got %s, want %s", got, expected)
+		return false, fmt.Errorf("sha256 mismatch: got %s, want %s", got, expected)
 	}
-	return nil
+	return true, nil
 }
 
 // replace atomically installs src as dst.
