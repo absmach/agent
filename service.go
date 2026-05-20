@@ -25,7 +25,6 @@ import (
 	"github.com/absmach/agent/pkg/ota"
 	"github.com/absmach/agent/pkg/terminal"
 	"github.com/absmach/magistrala/pkg/errors"
-	"github.com/absmach/magistrala/pkg/messaging"
 	senml "github.com/absmach/senml"
 	paho "github.com/eclipse/paho.mqtt.golang"
 	toml "github.com/pelletier/go-toml"

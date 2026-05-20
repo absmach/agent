@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/ota"
 	"github.com/absmach/senml"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"robpike.io/filter"
