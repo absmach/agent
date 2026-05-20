@@ -53,6 +53,15 @@ func newService(t *testing.T, cfg agent.Config) (agent.Service, *agentmocks.MQTT
 	mqttClient := agentmocks.NewMQTTClient(t)
 	nodeRed := nrmocks.NewClient(t)
 
+	// selfHeartbeat publishes immediately on startup and then on each ticker
+	// interval. Register an optional expectation so any test that doesn't
+	// explicitly expect the heartbeat publish won't panic.
+	hbToken := agentmocks.NewMQTTToken(t)
+	hbToken.On("Wait").Maybe().Return(true)
+	hbToken.On("Error").Maybe().Return(error(nil))
+	mqttClient.On("Publish", mqttTopic("ctrl-channel", "services/agent/heartbeat"),
+		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(hbToken)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
