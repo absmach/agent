@@ -320,16 +320,16 @@ func (_c *Service_NodeRed_Call) RunAndReturn(run func(cmdStr string) (string, er
 }
 
 // OTA provides a mock function for the type Service
-func (_mock *Service) OTA(ctx context.Context, url string) error {
-	ret := _mock.Called(ctx, url)
+func (_mock *Service) OTA(ctx context.Context, url string, sha256hex string) error {
+	ret := _mock.Called(ctx, url, sha256hex)
 
 	if len(ret) == 0 {
 		panic("no return value specified for OTA")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(ctx, url)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = returnFunc(ctx, url, sha256hex)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -344,11 +344,12 @@ type Service_OTA_Call struct {
 // OTA is a helper method to define mock.On call
 //   - ctx context.Context
 //   - url string
-func (_e *Service_Expecter) OTA(ctx interface{}, url interface{}) *Service_OTA_Call {
-	return &Service_OTA_Call{Call: _e.mock.On("OTA", ctx, url)}
+//   - sha256hex string
+func (_e *Service_Expecter) OTA(ctx interface{}, url interface{}, sha256hex interface{}) *Service_OTA_Call {
+	return &Service_OTA_Call{Call: _e.mock.On("OTA", ctx, url, sha256hex)}
 }
 
-func (_c *Service_OTA_Call) Run(run func(ctx context.Context, url string)) *Service_OTA_Call {
+func (_c *Service_OTA_Call) Run(run func(ctx context.Context, url string, sha256hex string)) *Service_OTA_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -358,9 +359,14 @@ func (_c *Service_OTA_Call) Run(run func(ctx context.Context, url string)) *Serv
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -371,7 +377,7 @@ func (_c *Service_OTA_Call) Return(err error) *Service_OTA_Call {
 	return _c
 }
 
-func (_c *Service_OTA_Call) RunAndReturn(run func(ctx context.Context, url string) error) *Service_OTA_Call {
+func (_c *Service_OTA_Call) RunAndReturn(run func(ctx context.Context, url string, sha256hex string) error) *Service_OTA_Call {
 	_c.Call.Return(run)
 	return _c
 }

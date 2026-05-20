@@ -127,7 +127,7 @@ type Service interface {
 	UpdateLiveness(svcname, svctype string) error
 
 	// OTA triggers an over-the-air binary update by downloading from url.
-	OTA(ctx context.Context, url string) error
+	OTA(ctx context.Context, url, sha256hex string) error
 }
 
 var _ Service = (*agent)(nil)
@@ -698,14 +698,9 @@ func (a *agent) Ping() error {
 	return a.Publish(control, string(b))
 }
 
-func (a *agent) OTA(ctx context.Context, cmdStr string) error {
+func (a *agent) OTA(ctx context.Context, url, sha256hex string) error {
 	if !a.config.OTA.Enabled {
 		return errors.New("OTA is disabled")
-	}
-
-	trigger, err := ota.ParseTrigger(cmdStr)
-	if err != nil {
-		return err
 	}
 
 	otaCfg := ota.Config{
@@ -721,11 +716,12 @@ func (a *agent) OTA(ctx context.Context, cmdStr string) error {
 
 	progressFn := func(state ota.State, progress float64) {
 		now := float64(time.Now().Unix())
-		vs := fmt.Sprintf("%s: %.0f%%", strings.ToLower(state.String()), progress)
-		pack := senml.Pack{Records: []senml.Record{
-			{BaseName: "gw:", BaseTime: now, Name: "ota", StringValue: &vs},
+		stateStr := strings.ToLower(state.String())
+		statusPack := senml.Pack{Records: []senml.Record{
+			{BaseName: "gw:", BaseTime: now, Name: "ota_state", StringValue: &stateStr},
+			{Name: "ota_progress", Unit: "%", Value: &progress},
 		}}
-		b, err := senml.Encode(pack, senml.JSON)
+		b, err := senml.Encode(statusPack, senml.JSON)
 		if err != nil {
 			a.logger.Warn("Failed to encode OTA status", slog.Any("error", err))
 			return
@@ -734,7 +730,7 @@ func (a *agent) OTA(ctx context.Context, cmdStr string) error {
 		token.Wait()
 	}
 
-	return ota.Run(ctx, otaCfg, trigger.URL, trigger.SHA256Hex, progressFn)
+	return ota.Run(ctx, otaCfg, url, sha256hex, progressFn)
 }
 
 func (a *agent) getTopic(topic string) (t string) {

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/absmach/senml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,72 +36,80 @@ func TestState_String(t *testing.T) {
 	}
 }
 
-func TestParseTrigger(t *testing.T) {
+func TestTriggerFromRecords(t *testing.T) {
+	urlVal := "https://example.com/agent.bin"
+	hashVal := "abcdef1234567890"
+	sizeVal := 153600.0
+
 	cases := []struct {
 		desc      string
-		input     string
+		records   []senml.Record
 		url       string
 		sha256hex string
 		size      uint64
 		wantErr   bool
 	}{
 		{
-			desc:  "url only",
-			input: "https://example.com/agent.bin",
-			url:   "https://example.com/agent.bin",
+			desc:    "url only",
+			records: []senml.Record{{Name: "url", StringValue: &urlVal}},
+			url:     urlVal,
 		},
 		{
-			desc:      "url with sha256",
-			input:     "https://example.com/agent.bin,sha256:abcdef1234567890",
-			url:       "https://example.com/agent.bin",
-			sha256hex: "abcdef1234567890",
+			desc: "url with hash",
+			records: []senml.Record{
+				{Name: "url", StringValue: &urlVal},
+				{Name: "hash", StringValue: &hashVal},
+			},
+			url:       urlVal,
+			sha256hex: hashVal,
 		},
 		{
-			desc:      "url with sha256 and size",
-			input:     "https://example.com/agent.bin,sha256:abcdef1234567890,153600",
-			url:       "https://example.com/agent.bin",
-			sha256hex: "abcdef1234567890",
+			desc: "url with hash and size",
+			records: []senml.Record{
+				{Name: "url", StringValue: &urlVal},
+				{Name: "hash", StringValue: &hashVal},
+				{Name: "size", Value: &sizeVal},
+			},
+			url:       urlVal,
+			sha256hex: hashVal,
 			size:      153600,
 		},
 		{
-			desc:  "url with size only",
-			input: "https://example.com/agent.bin,153600",
-			url:   "https://example.com/agent.bin",
-			size:  153600,
+			desc: "url with size only",
+			records: []senml.Record{
+				{Name: "url", StringValue: &urlVal},
+				{Name: "size", Value: &sizeVal},
+			},
+			url:  urlVal,
+			size: 153600,
 		},
 		{
-			desc:      "size before sha256",
-			input:     "https://example.com/agent.bin,153600,sha256:abcdef1234567890",
-			url:       "https://example.com/agent.bin",
-			sha256hex: "abcdef1234567890",
-			size:      153600,
-		},
-		{
-			desc:      "whitespace around fields",
-			input:     "https://example.com/agent.bin, sha256:abcdef1234567890, 153600",
-			url:       "https://example.com/agent.bin",
-			sha256hex: "abcdef1234567890",
-			size:      153600,
-		},
-		{
-			desc:    "empty string",
-			input:   "",
+			desc:    "empty records",
+			records: []senml.Record{},
 			wantErr: true,
 		},
 		{
-			desc:    "only comma",
-			input:   ",",
+			desc:    "missing url record",
+			records: []senml.Record{{Name: "hash", StringValue: &hashVal}},
 			wantErr: true,
 		},
 		{
-			desc:  "unknown extra field ignored",
-			input: "https://example.com/agent.bin,someunknownfield",
-			url:   "https://example.com/agent.bin",
+			desc:    "url record with nil value",
+			records: []senml.Record{{Name: "url", StringValue: nil}},
+			wantErr: true,
+		},
+		{
+			desc:  "unknown records ignored",
+			records: []senml.Record{
+				{Name: "url", StringValue: &urlVal},
+				{Name: "extra", StringValue: &hashVal},
+			},
+			url: urlVal,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			tr, err := ParseTrigger(tc.input)
+			tr, err := TriggerFromRecords(tc.records)
 			if tc.wantErr {
 				assert.Error(t, err)
 				return

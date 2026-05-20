@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/ota"
 	"github.com/absmach/senml"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"robpike.io/filter"
@@ -144,7 +145,10 @@ func (b *broker) handleMsg(msg mqtt.Message) {
 		return
 	}
 	cmdType := sm.Records[0].Name
-	cmdStr := *sm.Records[0].StringValue
+	var cmdStr string
+	if sv := sm.Records[0].StringValue; sv != nil {
+		cmdStr = *sv
+	}
 	uuid := strings.TrimSuffix(sm.Records[0].BaseName, ":")
 
 	switch cmdType {
@@ -189,8 +193,13 @@ func (b *broker) handleMsg(msg mqtt.Message) {
 			b.logger.Error("Reset failed", slog.Any("error", err))
 		}
 	case otaCmd:
-		b.logger.Info("OTA command", slog.String("uuid", uuid), slog.String("url", cmdStr))
-		if err := b.svc.OTA(b.ctx, cmdStr); err != nil {
+		trigger, err := ota.TriggerFromRecords(sm.Records[1:])
+		if err != nil {
+			b.logger.Warn("OTA trigger parse failed", slog.Any("error", err))
+			return
+		}
+		b.logger.Info("OTA command", slog.String("uuid", uuid), slog.String("url", trigger.URL))
+		if err := b.svc.OTA(b.ctx, trigger.URL, trigger.SHA256Hex); err != nil {
 			b.logger.Warn("OTA operation failed", slog.Any("error", err))
 		}
 	}

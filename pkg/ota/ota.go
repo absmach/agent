@@ -11,10 +11,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/absmach/senml"
 )
 
 // State represents the OTA update state machine.
@@ -68,21 +69,33 @@ type Trigger struct {
 	Size      uint64 // expected byte count, 0 if not provided
 }
 
-// ParseTrigger parses the vs string from an OTA SenML command record.
-// It is tolerant of missing optional fields.
-func ParseTrigger(vs string) (Trigger, error) {
-	fields := strings.Split(vs, ",")
-	if len(fields) == 0 || fields[0] == "" {
-		return Trigger{}, fmt.Errorf("ota trigger: empty url")
-	}
-	t := Trigger{URL: fields[0]}
-	for _, f := range fields[1:] {
-		f = strings.TrimSpace(f)
-		if strings.HasPrefix(f, "sha256:") {
-			t.SHA256Hex = strings.TrimPrefix(f, "sha256:")
-		} else if n, err := strconv.ParseUint(f, 10, 64); err == nil {
-			t.Size = n
+// TriggerFromRecords parses OTA trigger fields from the SenML records that
+// follow the dispatch record (n:"ota"). It expects:
+//
+//	{"n":"url",  "vs":"https://..."}          — required
+//	{"n":"hash", "vs":"<sha256-hex>"}         — optional
+//	{"n":"size", "v":<byte-count>}            — optional
+func TriggerFromRecords(records []senml.Record) (Trigger, error) {
+	var t Trigger
+	for _, r := range records {
+		switch r.Name {
+		case "url":
+			if r.StringValue == nil || *r.StringValue == "" {
+				return Trigger{}, fmt.Errorf("ota trigger: url record has no value")
+			}
+			t.URL = *r.StringValue
+		case "hash":
+			if r.StringValue != nil {
+				t.SHA256Hex = *r.StringValue
+			}
+		case "size":
+			if r.Value != nil {
+				t.Size = uint64(*r.Value)
+			}
 		}
+	}
+	if t.URL == "" {
+		return Trigger{}, fmt.Errorf("ota trigger: url is required")
 	}
 	return t, nil
 }

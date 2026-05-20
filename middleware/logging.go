@@ -180,7 +180,7 @@ func (lm *loggingMiddleware) UpdateLiveness(svcname, svctype string) (err error)
 	return lm.svc.UpdateLiveness(svcname, svctype)
 }
 
-func (lm *loggingMiddleware) OTA(ctx context.Context, url string) (err error) {
+func (lm *loggingMiddleware) OTA(ctx context.Context, url, sha256hex string) (err error) {
 	defer func(begin time.Time) {
 		args := []any{
 			slog.String("duration", time.Since(begin).String()),
@@ -194,7 +194,7 @@ func (lm *loggingMiddleware) OTA(ctx context.Context, url string) (err error) {
 		lm.logger.Info("OTA update completed successfully.", args...)
 	}(time.Now())
 
-	return lm.svc.OTA(ctx, url)
+	return lm.svc.OTA(ctx, url, sha256hex)
 }
 
 func (lm *loggingMiddleware) NodeRed(cmdStr string) (resp string, err error) {
