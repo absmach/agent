@@ -223,13 +223,13 @@ func writeTempFile(t *testing.T, content []byte) string {
 func TestVerify_InlineHash_Match(t *testing.T) {
 	content := []byte("agent binary")
 	path := writeTempFile(t, content)
-	_, err := verify(context.Background(),"http://unused", path, sha256hex(content))
+	_, err := verify(context.Background(), "http://unused", path, sha256hex(content))
 	assert.NoError(t, err)
 }
 
 func TestVerify_InlineHash_Mismatch(t *testing.T) {
 	path := writeTempFile(t, []byte("agent binary"))
-	_, err := verify(context.Background(),"http://unused", path, "deadbeef")
+	_, err := verify(context.Background(), "http://unused", path, "deadbeef")
 	assert.ErrorContains(t, err, "sha256 mismatch")
 }
 
@@ -242,7 +242,7 @@ func TestVerify_Sidecar_Match(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := verify(context.Background(),srv.URL+"/agent.bin", path, "")
+	_, err := verify(context.Background(), srv.URL+"/agent.bin", path, "")
 	assert.NoError(t, err)
 }
 
@@ -254,7 +254,7 @@ func TestVerify_Sidecar_Mismatch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := verify(context.Background(),srv.URL+"/agent.bin", path, "")
+	_, err := verify(context.Background(), srv.URL+"/agent.bin", path, "")
 	assert.ErrorContains(t, err, "sha256 mismatch")
 }
 
@@ -266,7 +266,7 @@ func TestVerify_Sidecar_NotFound_Skipped(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := verify(context.Background(),srv.URL+"/agent.bin", path, "")
+	_, err := verify(context.Background(), srv.URL+"/agent.bin", path, "")
 	assert.NoError(t, err, "missing sidecar should be silently skipped")
 }
 
@@ -275,7 +275,7 @@ func TestVerify_NoHashNoSidecar_Skipped(t *testing.T) {
 	// immediately-closed server simulates connection refused — network error should be skipped
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	srv.Close()
-	_, err := verify(context.Background(),srv.URL+"/agent.bin", path, "")
+	_, err := verify(context.Background(), srv.URL+"/agent.bin", path, "")
 	assert.NoError(t, err, "unreachable sidecar host should be silently skipped")
 }
 
@@ -289,7 +289,7 @@ func TestVerify_InlineTakesPrecedenceOverSidecar(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := verify(context.Background(),srv.URL+"/agent.bin", path, sha256hex(content))
+	_, err := verify(context.Background(), srv.URL+"/agent.bin", path, sha256hex(content))
 	assert.NoError(t, err, "inline hash should take precedence over sidecar")
 }
 
