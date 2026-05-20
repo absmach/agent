@@ -15,10 +15,12 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/nodered"
+	"github.com/absmach/agent/pkg/ota"
 	"github.com/absmach/agent/pkg/terminal"
 	"github.com/absmach/magistrala/pkg/errors"
 	senml "github.com/absmach/senml"
@@ -124,6 +126,9 @@ type Service interface {
 	// UpdateLiveness registers or refreshes the liveness of a local service from
 	// an authenticated MQTT heartbeat message.
 	UpdateLiveness(svcname, svctype string) error
+
+	// OTA triggers an over-the-air binary update by downloading from url.
+	OTA(ctx context.Context, url, sha256hex string, size uint64) error
 }
 
 var _ Service = (*agent)(nil)
@@ -136,6 +141,7 @@ type agent struct {
 	svcs          map[string]Heartbeat
 	terminals     map[string]terminal.Session
 	workDir       string
+	otaBusy       atomic.Bool
 }
 
 // New returns agent service implementation.
@@ -680,7 +686,7 @@ func (a *agent) UpdateLiveness(svcname, svctype string) error {
 }
 
 func (a *agent) Ping() error {
-	now := float64(time.Now().Unix())
+	now := float64(time.Now().UnixNano())
 	vb := true
 	uptime := time.Since(startTime).Seconds()
 	pack := senml.Pack{Records: []senml.Record{
@@ -692,6 +698,44 @@ func (a *agent) Ping() error {
 		return err
 	}
 	return a.Publish(control, string(b))
+}
+
+func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) error {
+	if !a.config.OTA.Enabled {
+		return errors.New("OTA is disabled")
+	}
+	if !a.otaBusy.CompareAndSwap(false, true) {
+		return errors.New("OTA already in progress")
+	}
+	defer a.otaBusy.Store(false)
+
+	otaCfg := ota.Config{
+		BinaryPath:  a.config.OTA.BinaryPath,
+		DownloadDir: a.config.OTA.DownloadDir,
+	}
+
+	domainID := a.config.DomainID
+	ctrlChan := a.config.Channels.CtrlChan()
+	qos := a.config.MQTT.QoS
+	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
+
+	progressFn := func(state ota.State, progress float64) {
+		now := float64(time.Now().UnixNano())
+		stateStr := strings.ToLower(state.String())
+		statusPack := senml.Pack{Records: []senml.Record{
+			{BaseName: "gw:", BaseTime: now, Name: "ota_state", StringValue: &stateStr},
+			{Name: "ota_progress", Unit: "%", Value: &progress},
+		}}
+		b, err := senml.Encode(statusPack, senml.JSON)
+		if err != nil {
+			a.logger.Warn("Failed to encode OTA status", slog.Any("error", err))
+			return
+		}
+		token := a.mqttClient.Publish(statusTopic, qos, false, b)
+		token.Wait()
+	}
+
+	return ota.Run(ctx, otaCfg, url, sha256hex, size, progressFn)
 }
 
 func (a *agent) getTopic(topic string) (t string) {
