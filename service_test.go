@@ -1118,6 +1118,39 @@ func TestShutdown(t *testing.T) {
 	}
 }
 
+func TestPing(t *testing.T) {
+	errBoom := fmt.Errorf("boom")
+
+	cases := []struct {
+		desc   string
+		err    bool
+		pubErr error
+	}{
+		{
+			desc: "ping successfully",
+		},
+		{
+			desc:   "return publish error",
+			err:    true,
+			pubErr: errBoom,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			svc, mqttClient, _, err := newService(t, testConfig())
+			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
+			expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), tc.pubErr)
+			err = svc.Ping()
+			if tc.err {
+				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+			} else {
+				assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
+			}
+		})
+	}
+}
+
 func TestChangeDir(t *testing.T) {
 	tmp := t.TempDir()
 	child := filepath.Join(tmp, "child")
