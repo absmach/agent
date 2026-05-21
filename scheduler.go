@@ -56,7 +56,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	}
 	for _, d := range devs {
 		if d.Active && d.ChannelID != "" {
-			s.startDevice(d)
+			s.startDevice(ctx, d)
 		}
 	}
 	return nil
@@ -68,7 +68,7 @@ func (s *Scheduler) StartDevice(d devicemgr.Device) {
 	if d.ChannelID == "" {
 		return
 	}
-	s.startDevice(d)
+	s.startDevice(s.ctx, d)
 }
 
 // StopDevice cancels the telemetry goroutine for the given device ID and
@@ -85,13 +85,13 @@ func (s *Scheduler) StopDevice(id string) {
 	}
 }
 
-func (s *Scheduler) startDevice(d devicemgr.Device) {
+func (s *Scheduler) startDevice(ctx context.Context, d devicemgr.Device) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.cancels[d.ID]; ok {
 		return
 	}
-	dctx, cancel := context.WithCancel(s.ctx)
+	dctx, cancel := context.WithCancel(ctx)
 	s.cancels[d.ID] = cancel
 	go s.runDevice(dctx, d)
 }
