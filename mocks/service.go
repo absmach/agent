@@ -11,6 +11,7 @@ import (
 	"context"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/devicemgr"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -761,35 +762,172 @@ func (_c *Service_UpdateLiveness_Call) RunAndReturn(run func(svcname string, svc
 	return _c
 }
 
-// Shutdown provides a mock function for the type Service
-func (_mock *Service) Shutdown() {
-	_mock.Called()
-	return
+// OTAStatus provides a mock function for the type Service
+func (_mock *Service) OTAStatus() agent.OTAStatusInfo {
+	ret := _mock.Called()
+	return ret.Get(0).(agent.OTAStatusInfo)
 }
 
-// Service_Shutdown_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Shutdown'
-type Service_Shutdown_Call struct {
-	*mock.Call
+type Service_OTAStatus_Call struct{ *mock.Call }
+
+func (_e *Service_Expecter) OTAStatus() *Service_OTAStatus_Call {
+	return &Service_OTAStatus_Call{Call: _e.mock.On("OTAStatus")}
 }
 
-// Shutdown is a helper method to define mock.On call
-func (_e *Service_Expecter) Shutdown() *Service_Shutdown_Call {
-	return &Service_Shutdown_Call{Call: _e.mock.On("Shutdown")}
+func (_c *Service_OTAStatus_Call) Run(run func()) *Service_OTAStatus_Call {
+	_c.Call.Run(func(_ mock.Arguments) { run() })
+	return _c
 }
 
-func (_c *Service_Shutdown_Call) Run(run func()) *Service_Shutdown_Call {
+func (_c *Service_OTAStatus_Call) Return(info agent.OTAStatusInfo) *Service_OTAStatus_Call {
+	_c.Call.Return(info)
+	return _c
+}
+
+func (_c *Service_OTAStatus_Call) RunAndReturn(run func() agent.OTAStatusInfo) *Service_OTAStatus_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListDevices provides a mock function for the type Service
+func (_mock *Service) ListDevices() ([]devicemgr.Device, error) {
+	ret := _mock.Called()
+	var r0 []devicemgr.Device
+	if rf, ok := ret.Get(0).(func() []devicemgr.Device); ok {
+		r0 = rf()
+	} else if ret.Get(0) != nil {
+		r0 = ret.Get(0).([]devicemgr.Device)
+	}
+	return r0, ret.Error(1)
+}
+
+type Service_ListDevices_Call struct{ *mock.Call }
+
+func (_e *Service_Expecter) ListDevices() *Service_ListDevices_Call {
+	return &Service_ListDevices_Call{Call: _e.mock.On("ListDevices")}
+}
+
+func (_c *Service_ListDevices_Call) Run(run func()) *Service_ListDevices_Call {
+	_c.Call.Run(func(_ mock.Arguments) { run() })
+	return _c
+}
+
+func (_c *Service_ListDevices_Call) Return(devs []devicemgr.Device, err error) *Service_ListDevices_Call {
+	_c.Call.Return(devs, err)
+	return _c
+}
+
+func (_c *Service_ListDevices_Call) RunAndReturn(run func() ([]devicemgr.Device, error)) *Service_ListDevices_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetDevice provides a mock function for the type Service
+func (_mock *Service) GetDevice(id string) (devicemgr.Device, error) {
+	ret := _mock.Called(id)
+	return ret.Get(0).(devicemgr.Device), ret.Error(1)
+}
+
+type Service_GetDevice_Call struct{ *mock.Call }
+
+func (_e *Service_Expecter) GetDevice(id interface{}) *Service_GetDevice_Call {
+	return &Service_GetDevice_Call{Call: _e.mock.On("GetDevice", id)}
+}
+
+func (_c *Service_GetDevice_Call) Run(run func(id string)) *Service_GetDevice_Call {
+	_c.Call.Run(func(args mock.Arguments) { run(args.Get(0).(string)) })
+	return _c
+}
+
+func (_c *Service_GetDevice_Call) Return(d devicemgr.Device, err error) *Service_GetDevice_Call {
+	_c.Call.Return(d, err)
+	return _c
+}
+
+func (_c *Service_GetDevice_Call) RunAndReturn(run func(string) (devicemgr.Device, error)) *Service_GetDevice_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// AddDevice provides a mock function for the type Service
+func (_mock *Service) AddDevice(name, extID, extKey, ifaceType, ifaceAddr string) (devicemgr.Device, error) {
+	ret := _mock.Called(name, extID, extKey, ifaceType, ifaceAddr)
+	return ret.Get(0).(devicemgr.Device), ret.Error(1)
+}
+
+type Service_AddDevice_Call struct{ *mock.Call }
+
+func (_e *Service_Expecter) AddDevice(name, extID, extKey, ifaceType, ifaceAddr interface{}) *Service_AddDevice_Call {
+	return &Service_AddDevice_Call{Call: _e.mock.On("AddDevice", name, extID, extKey, ifaceType, ifaceAddr)}
+}
+
+func (_c *Service_AddDevice_Call) Run(run func(name, extID, extKey, ifaceType, ifaceAddr string)) *Service_AddDevice_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		run(args.Get(0).(string), args.Get(1).(string), args.Get(2).(string), args.Get(3).(string), args.Get(4).(string))
 	})
 	return _c
 }
 
-func (_c *Service_Shutdown_Call) Return() *Service_Shutdown_Call {
-	_c.Call.Return()
+func (_c *Service_AddDevice_Call) Return(d devicemgr.Device, err error) *Service_AddDevice_Call {
+	_c.Call.Return(d, err)
 	return _c
 }
 
-func (_c *Service_Shutdown_Call) RunAndReturn(run func()) *Service_Shutdown_Call {
-	_c.Run(run)
+func (_c *Service_AddDevice_Call) RunAndReturn(run func(string, string, string, string, string) (devicemgr.Device, error)) *Service_AddDevice_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RemoveDevice provides a mock function for the type Service
+func (_mock *Service) RemoveDevice(id string) error {
+	ret := _mock.Called(id)
+	return ret.Error(0)
+}
+
+type Service_RemoveDevice_Call struct{ *mock.Call }
+
+func (_e *Service_Expecter) RemoveDevice(id interface{}) *Service_RemoveDevice_Call {
+	return &Service_RemoveDevice_Call{Call: _e.mock.On("RemoveDevice", id)}
+}
+
+func (_c *Service_RemoveDevice_Call) Run(run func(id string)) *Service_RemoveDevice_Call {
+	_c.Call.Run(func(args mock.Arguments) { run(args.Get(0).(string)) })
+	return _c
+}
+
+func (_c *Service_RemoveDevice_Call) Return(err error) *Service_RemoveDevice_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_RemoveDevice_Call) RunAndReturn(run func(string) error) *Service_RemoveDevice_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// MarkDeviceSeen provides a mock function for the type Service
+func (_mock *Service) MarkDeviceSeen(id string) error {
+	ret := _mock.Called(id)
+	return ret.Error(0)
+}
+
+type Service_MarkDeviceSeen_Call struct{ *mock.Call }
+
+func (_e *Service_Expecter) MarkDeviceSeen(id interface{}) *Service_MarkDeviceSeen_Call {
+	return &Service_MarkDeviceSeen_Call{Call: _e.mock.On("MarkDeviceSeen", id)}
+}
+
+func (_c *Service_MarkDeviceSeen_Call) Run(run func(id string)) *Service_MarkDeviceSeen_Call {
+	_c.Call.Run(func(args mock.Arguments) { run(args.Get(0).(string)) })
+	return _c
+}
+
+func (_c *Service_MarkDeviceSeen_Call) Return(err error) *Service_MarkDeviceSeen_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_MarkDeviceSeen_Call) RunAndReturn(run func(string) error) *Service_MarkDeviceSeen_Call {
+	_c.Call.Return(run)
 	return _c
 }

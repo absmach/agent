@@ -96,3 +96,31 @@ func (req nodeRedReq) validate() error {
 
 	return nil
 }
+
+type addDeviceReq struct {
+	Name      string `json:"name"`
+	ExtID     string `json:"ext_id"`
+	ExtKey    string `json:"ext_key"`
+	IfaceType string `json:"interface_type"`
+	IfaceAddr string `json:"interface_addr"`
+}
+
+func (req addDeviceReq) validate() error {
+	if req.Name == "" || req.ExtID == "" || req.ExtKey == "" || req.IfaceType == "" {
+		return agent.ErrMalformedEntity
+	}
+	return nil
+}
+
+type otaTriggerReq struct {
+	URL       string `json:"url"`
+	SHA256Hex string `json:"sha256,omitempty"`
+	Size      uint64 `json:"size,omitempty"`
+}
+
+func (req otaTriggerReq) validate() error {
+	if req.URL == "" {
+		return agent.ErrMalformedEntity
+	}
+	return nil
+}

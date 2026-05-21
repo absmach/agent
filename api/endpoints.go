@@ -11,6 +11,7 @@ import (
 	"github.com/absmach/agent"
 	"github.com/absmach/agent/pkg/nodered"
 	mgerrors "github.com/absmach/magistrala/pkg/errors"
+	"github.com/go-chi/chi/v5"
 	"github.com/go-kit/kit/endpoint"
 )
 
@@ -126,5 +127,83 @@ func nodeRedEndpoint(svc agent.Service) endpoint.Endpoint {
 			Service:  "agent",
 			Response: resp,
 		}, nil
+	}
+}
+
+func listDevicesEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, _ any) (any, error) {
+		devs, err := svc.ListDevices()
+		if err != nil {
+			return nil, err
+		}
+		return listDevicesRes{Devices: devs}, nil
+	}
+}
+
+func getDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		id := request.(string)
+		d, err := svc.GetDevice(id)
+		if err != nil {
+			return nil, err
+		}
+		return getDeviceRes{Device: d}, nil
+	}
+}
+
+func addDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		req := request.(addDeviceReq)
+		if err := req.validate(); err != nil {
+			return nil, err
+		}
+		d, err := svc.AddDevice(req.Name, req.ExtID, req.ExtKey, req.IfaceType, req.IfaceAddr)
+		if err != nil {
+			return nil, err
+		}
+		return addDeviceRes{Device: d}, nil
+	}
+}
+
+func removeDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		id := request.(string)
+		if err := svc.RemoveDevice(id); err != nil {
+			return nil, err
+		}
+		return removeDeviceRes{}, nil
+	}
+}
+
+func markDeviceSeenEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		id := request.(string)
+		if err := svc.MarkDeviceSeen(id); err != nil {
+			return nil, err
+		}
+		return markDeviceSeenRes{}, nil
+	}
+}
+
+func decodeIDFromPath(_ context.Context, r *http.Request) (any, error) {
+	return chi.URLParam(r, "id"), nil
+}
+
+func otaTriggerEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(ctx context.Context, request any) (any, error) {
+		req := request.(otaTriggerReq)
+		if err := req.validate(); err != nil {
+			return nil, err
+		}
+		go func() {
+			_ = svc.OTA(ctx, req.URL, req.SHA256Hex, req.Size)
+		}()
+		return otaTriggerRes{Status: "triggered"}, nil
+	}
+}
+
+func otaStatusEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, _ any) (any, error) {
+		return otaStatusRes{OTAStatusInfo: svc.OTAStatus()}, nil
 	}
 }

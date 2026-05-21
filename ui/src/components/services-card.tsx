@@ -10,7 +10,7 @@ import {
   Phone,
   RefreshCw,
 } from "lucide-react";
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -23,28 +23,6 @@ interface ServiceInfo {
   endpoint?: string;
 }
 
-const demoServices: ServiceInfo[] = [
-  {
-    name: "FluxMQ Broker",
-    status: "online",
-    type: "amqp://localhost:5672",
-  },
-  {
-    name: "Node-RED",
-    status: "offline",
-    type: "http://localhost:1880",
-  },
-  {
-    name: "MQTT Bridge",
-    status: "offline",
-    type: "mqtt://localhost:1883",
-  },
-  {
-    name: "HTTP API",
-    status: "online",
-    type: "http://localhost:5173",
-  },
-];
 
 export function ServicesCard() {
   const [services, setServices] = useState<ServiceInfo[]>([]);
@@ -66,6 +44,8 @@ export function ServicesCard() {
     }
   }
 
+  useEffect(() => { refresh(); }, []);
+
   return (
     <Card>
       <CardHeader>
@@ -73,31 +53,14 @@ export function ServicesCard() {
           <Activity className="h-4 w-4" />
           Registered Services
         </CardTitle>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={refresh}
-            disabled={loading}
-          >
-            {loading ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3 w-3" />
-            )}
-            Refresh
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setError("");
-              setServices(demoServices);
-            }}
-          >
-            Load Demo
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm" onClick={refresh} disabled={loading}>
+          {loading ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3 w-3" />
+          )}
+          Refresh
+        </Button>
       </CardHeader>
 
       {error && (

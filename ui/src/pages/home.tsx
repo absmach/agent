@@ -4,6 +4,8 @@
 import {
   Activity,
   ArrowRight,
+  Cpu,
+  Download,
   MessageSquare,
   Network,
   Settings,
@@ -114,6 +116,13 @@ const features = [
     foot: "Runtime settings",
   },
   {
+    title: "Devices",
+    description: "Register, monitor, and manage downstream BLE, serial, and I2C devices.",
+    href: `${UI_BASE}/devices`,
+    icon: Cpu,
+    foot: "Device registry",
+  },
+  {
     title: "Node-RED",
     description: "Ping Node-RED, read state, fetch flows, and deploy updates.",
     href: `${UI_BASE}/nodered`,
@@ -133,6 +142,13 @@ const features = [
     href: `${UI_BASE}/exec`,
     icon: Terminal,
     foot: "Remote operations",
+  },
+  {
+    title: "OTA Update",
+    description: "Trigger an over-the-air binary update and track its progress.",
+    href: `${UI_BASE}/ota`,
+    icon: Download,
+    foot: "Remote update",
   },
 ];
 

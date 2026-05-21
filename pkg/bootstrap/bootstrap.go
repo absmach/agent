@@ -54,6 +54,12 @@ type renderedContent struct {
 		CtrlID string `json:"ctrl_id"`
 		DataID string `json:"data_id"`
 	} `json:"channels"`
+	Provision struct {
+		ClientsURL     string `json:"clients_url"`
+		ChannelsURL    string `json:"channels_url"`
+		RulesEngineURL string `json:"rules_engine_url"`
+		Token          string `json:"token"`
+	} `json:"provision"`
 }
 
 // bootstrapResponse holds the fields returned by the bootstrap endpoint.
@@ -153,6 +159,18 @@ func applyBootstrapResponse(agentCfg agent.Config, br bootstrapResponse) (agent.
 	agentCfg.MQTT.ClientCert = br.ClientCert
 	agentCfg.MQTT.ClientKey = br.ClientKey
 	agentCfg.MQTT.CaCert = br.CaCert
+	if rc.Provision.ClientsURL != "" {
+		agentCfg.Provision.ClientsURL = rc.Provision.ClientsURL
+	}
+	if rc.Provision.ChannelsURL != "" {
+		agentCfg.Provision.ChannelsURL = rc.Provision.ChannelsURL
+	}
+	if rc.Provision.RulesEngineURL != "" {
+		agentCfg.Provision.RulesEngineURL = rc.Provision.RulesEngineURL
+	}
+	if rc.Provision.Token != "" {
+		agentCfg.Provision.Token = rc.Provision.Token
+	}
 
 	return agentCfg, nil
 }

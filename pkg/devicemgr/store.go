@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/absmach/agent/pkg/iface"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -84,6 +85,33 @@ func (s *Store) List() ([]Device, error) {
 		})
 	})
 	return devices, err
+}
+
+// FindByAddr returns the first active device matching the given interface type
+// and address. Returns an error if no match is found.
+func (s *Store) FindByAddr(ifaceType iface.InterfaceType, addr string) (Device, error) {
+	var found Device
+	var ok bool
+	err := s.db.View(func(tx *bolt.Tx) error {
+		return tx.Bucket(devicesBucket).ForEach(func(_, v []byte) error {
+			var d Device
+			if err := json.Unmarshal(v, &d); err != nil {
+				return err
+			}
+			if d.Active && d.InterfaceType == ifaceType && d.InterfaceAddr == addr {
+				found = d
+				ok = true
+			}
+			return nil
+		})
+	})
+	if err != nil {
+		return Device{}, err
+	}
+	if !ok {
+		return Device{}, fmt.Errorf("no device with interface type %v addr %s", ifaceType, addr)
+	}
+	return found, nil
 }
 
 // MarkSeen sets LastSeen = now and Active = true for the given device ID.

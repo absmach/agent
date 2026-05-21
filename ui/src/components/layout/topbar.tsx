@@ -3,6 +3,8 @@
 
 import {
   Activity,
+  Cpu,
+  Download,
   Home,
   Moon,
   Network,
@@ -20,9 +22,11 @@ import { UI_BASE } from "@/routes";
 const navItems = [
   { href: `${UI_BASE}/`, label: "Home", icon: Home },
   { href: `${UI_BASE}/config`, label: "Configuration", icon: Settings },
+  { href: `${UI_BASE}/devices`, label: "Devices", icon: Cpu },
   { href: `${UI_BASE}/nodered`, label: "Node-RED", icon: Network },
   { href: `${UI_BASE}/services`, label: "Services", icon: Activity },
   { href: `${UI_BASE}/exec`, label: "Execute", icon: Terminal },
+  { href: `${UI_BASE}/ota`, label: "OTA", icon: Download },
   { href: `${UI_BASE}/logs`, label: "Logs", icon: ScrollText },
 ];
 

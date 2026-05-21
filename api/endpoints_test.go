@@ -16,6 +16,8 @@ import (
 	"github.com/absmach/agent"
 	api "github.com/absmach/agent/api"
 	agentmocks "github.com/absmach/agent/mocks"
+	"github.com/absmach/agent/pkg/devicemgr"
+	"github.com/absmach/agent/pkg/iface"
 	"github.com/absmach/agent/pkg/nodered"
 	mglog "github.com/absmach/magistrala/logger"
 	mgerrors "github.com/absmach/magistrala/pkg/errors"
@@ -557,6 +559,389 @@ func TestMiscRoutes(t *testing.T) {
 				assert.Nil(t, err)
 				tc.check(t, string(data))
 			}
+		})
+	}
+}
+
+func TestListDevices(t *testing.T) {
+	svcErr := mgerrors.New("list failed")
+	dev := devicemgr.Device{
+		ID:            "dev-id-1",
+		Name:          "sensor-a",
+		InterfaceType: iface.InterfaceBLE,
+		InterfaceAddr: "AA:BB:CC:DD:EE:FF",
+		Active:        true,
+	}
+
+	cases := []struct {
+		desc      string
+		status    int
+		mockSetup func(*agentmocks.Service)
+	}{
+		{
+			desc:   "list returns devices",
+			status: http.StatusOK,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("ListDevices").Return([]devicemgr.Device{dev}, nil)
+			},
+		},
+		{
+			desc:   "list returns empty slice",
+			status: http.StatusOK,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("ListDevices").Return([]devicemgr.Device{}, nil)
+			},
+		},
+		{
+			desc:   "service error",
+			status: http.StatusInternalServerError,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("ListDevices").Return([]devicemgr.Device(nil), svcErr)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			ts, svc := newAgentServer(t)
+			defer ts.Close()
+			tc.mockSetup(svc)
+
+			req := testRequest{
+				client: ts.Client(),
+				method: http.MethodGet,
+				url:    ts.URL + "/api/devices",
+			}
+
+			res, err := req.make()
+			assert.Nil(t, err)
+			assert.Equal(t, tc.status, res.StatusCode, tc.desc)
+		})
+	}
+}
+
+func TestGetDevice(t *testing.T) {
+	svcErr := mgerrors.New("not found")
+	dev := devicemgr.Device{ID: "dev-id-1", Name: "sensor-a"}
+
+	cases := []struct {
+		desc      string
+		id        string
+		status    int
+		mockSetup func(*agentmocks.Service)
+	}{
+		{
+			desc:   "get existing device",
+			id:     "dev-id-1",
+			status: http.StatusOK,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("GetDevice", "dev-id-1").Return(dev, nil)
+			},
+		},
+		{
+			desc:   "get non-existent device",
+			id:     "missing",
+			status: http.StatusInternalServerError,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("GetDevice", "missing").Return(devicemgr.Device{}, svcErr)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			ts, svc := newAgentServer(t)
+			defer ts.Close()
+			tc.mockSetup(svc)
+
+			req := testRequest{
+				client: ts.Client(),
+				method: http.MethodGet,
+				url:    ts.URL + "/api/devices/" + tc.id,
+			}
+
+			res, err := req.make()
+			assert.Nil(t, err)
+			assert.Equal(t, tc.status, res.StatusCode, tc.desc)
+		})
+	}
+}
+
+func TestAddDevice(t *testing.T) {
+	svcErr := mgerrors.New("add failed")
+	dev := devicemgr.Device{
+		ID:            "dev-id-new",
+		Name:          "sensor-b",
+		InterfaceType: iface.InterfaceSerial,
+		InterfaceAddr: "/dev/ttyUSB0",
+	}
+
+	validBody := toJSON(map[string]string{
+		"name":           "sensor-b",
+		"ext_id":         "ext-id",
+		"ext_key":        "ext-key",
+		"interface_type": "serial",
+		"interface_addr": "/dev/ttyUSB0",
+	})
+
+	cases := []struct {
+		desc      string
+		body      string
+		status    int
+		mockSetup func(*agentmocks.Service)
+	}{
+		{
+			desc:   "add device successfully",
+			body:   validBody,
+			status: http.StatusCreated,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("AddDevice", "sensor-b", "ext-id", "ext-key", "serial", "/dev/ttyUSB0").
+					Return(dev, nil)
+			},
+		},
+		{
+			desc:      "missing name returns bad request",
+			body:      toJSON(map[string]string{"ext_id": "x", "ext_key": "y", "interface_type": "ble"}),
+			status:    http.StatusBadRequest,
+			mockSetup: func(_ *agentmocks.Service) {},
+		},
+		{
+			desc:      "invalid JSON returns bad request",
+			body:      "}",
+			status:    http.StatusBadRequest,
+			mockSetup: func(_ *agentmocks.Service) {},
+		},
+		{
+			desc:   "service error",
+			body:   validBody,
+			status: http.StatusInternalServerError,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("AddDevice", "sensor-b", "ext-id", "ext-key", "serial", "/dev/ttyUSB0").
+					Return(devicemgr.Device{}, svcErr)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			ts, svc := newAgentServer(t)
+			defer ts.Close()
+			tc.mockSetup(svc)
+
+			req := testRequest{
+				client:      ts.Client(),
+				method:      http.MethodPost,
+				url:         ts.URL + "/api/devices",
+				contentType: contentType,
+				body:        strings.NewReader(tc.body),
+			}
+
+			res, err := req.make()
+			assert.Nil(t, err)
+			assert.Equal(t, tc.status, res.StatusCode, tc.desc)
+		})
+	}
+}
+
+func TestRemoveDevice(t *testing.T) {
+	svcErr := mgerrors.New("remove failed")
+
+	cases := []struct {
+		desc      string
+		id        string
+		status    int
+		mockSetup func(*agentmocks.Service)
+	}{
+		{
+			desc:   "remove existing device",
+			id:     "dev-id-1",
+			status: http.StatusNoContent,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("RemoveDevice", "dev-id-1").Return(nil)
+			},
+		},
+		{
+			desc:   "service error",
+			id:     "bad-id",
+			status: http.StatusInternalServerError,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("RemoveDevice", "bad-id").Return(svcErr)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			ts, svc := newAgentServer(t)
+			defer ts.Close()
+			tc.mockSetup(svc)
+
+			req := testRequest{
+				client: ts.Client(),
+				method: http.MethodDelete,
+				url:    ts.URL + "/api/devices/" + tc.id,
+			}
+
+			res, err := req.make()
+			assert.Nil(t, err)
+			assert.Equal(t, tc.status, res.StatusCode, tc.desc)
+		})
+	}
+}
+
+func TestMarkDeviceSeen(t *testing.T) {
+	svcErr := mgerrors.New("mark seen failed")
+
+	cases := []struct {
+		desc      string
+		id        string
+		status    int
+		mockSetup func(*agentmocks.Service)
+	}{
+		{
+			desc:   "mark existing device seen",
+			id:     "dev-id-1",
+			status: http.StatusNoContent,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("MarkDeviceSeen", "dev-id-1").Return(nil)
+			},
+		},
+		{
+			desc:   "service error",
+			id:     "bad-id",
+			status: http.StatusInternalServerError,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("MarkDeviceSeen", "bad-id").Return(svcErr)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			ts, svc := newAgentServer(t)
+			defer ts.Close()
+			tc.mockSetup(svc)
+
+			req := testRequest{
+				client: ts.Client(),
+				method: http.MethodPost,
+				url:    ts.URL + "/api/devices/" + tc.id + "/seen",
+			}
+
+			res, err := req.make()
+			assert.Nil(t, err)
+			assert.Equal(t, tc.status, res.StatusCode, tc.desc)
+		})
+	}
+}
+
+func TestOTATrigger(t *testing.T) {
+	validBody := toJSON(map[string]any{
+		"url":    "https://example.com/agent.bin",
+		"sha256": "abc123",
+		"size":   uint64(1024),
+	})
+
+	cases := []struct {
+		desc      string
+		body      string
+		status    int
+		mockSetup func(*agentmocks.Service)
+	}{
+		{
+			desc:   "trigger OTA successfully",
+			body:   validBody,
+			status: http.StatusAccepted,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("OTA", mock.Anything, "https://example.com/agent.bin", "abc123", uint64(1024)).
+					Return(nil).Maybe()
+			},
+		},
+		{
+			desc:      "missing URL returns bad request",
+			body:      toJSON(map[string]any{"sha256": "abc123"}),
+			status:    http.StatusBadRequest,
+			mockSetup: func(_ *agentmocks.Service) {},
+		},
+		{
+			desc:      "invalid JSON returns bad request",
+			body:      "}",
+			status:    http.StatusBadRequest,
+			mockSetup: func(_ *agentmocks.Service) {},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			ts, svc := newAgentServer(t)
+			defer ts.Close()
+			tc.mockSetup(svc)
+
+			req := testRequest{
+				client:      ts.Client(),
+				method:      http.MethodPost,
+				url:         ts.URL + "/api/ota",
+				contentType: contentType,
+				body:        strings.NewReader(tc.body),
+			}
+
+			res, err := req.make()
+			assert.Nil(t, err)
+			assert.Equal(t, tc.status, res.StatusCode, tc.desc)
+		})
+	}
+}
+
+func TestOTAStatus(t *testing.T) {
+	cases := []struct {
+		desc      string
+		info      agent.OTAStatusInfo
+		mockSetup func(*agentmocks.Service)
+	}{
+		{
+			desc: "idle state",
+			info: agent.OTAStatusInfo{Busy: false},
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("OTAStatus").Return(agent.OTAStatusInfo{Busy: false})
+			},
+		},
+		{
+			desc: "busy state",
+			info: agent.OTAStatusInfo{Busy: true},
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("OTAStatus").Return(agent.OTAStatusInfo{Busy: true})
+			},
+		},
+		{
+			desc: "idle with last error",
+			info: agent.OTAStatusInfo{Busy: false, LastError: "checksum mismatch"},
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("OTAStatus").Return(agent.OTAStatusInfo{Busy: false, LastError: "checksum mismatch"})
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			ts, svc := newAgentServer(t)
+			defer ts.Close()
+			tc.mockSetup(svc)
+
+			req := testRequest{
+				client: ts.Client(),
+				method: http.MethodGet,
+				url:    ts.URL + "/api/ota/status",
+			}
+
+			res, err := req.make()
+			assert.Nil(t, err)
+			assert.Equal(t, http.StatusOK, res.StatusCode, tc.desc)
+
+			var body agent.OTAStatusInfo
+			err = json.NewDecoder(res.Body).Decode(&body)
+			assert.Nil(t, err)
+			assert.Equal(t, tc.info.Busy, body.Busy, tc.desc)
+			assert.Equal(t, tc.info.LastError, body.LastError, tc.desc)
 		})
 	}
 }

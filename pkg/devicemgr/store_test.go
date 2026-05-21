@@ -182,6 +182,80 @@ func TestStore_List(t *testing.T) {
 	})
 }
 
+func TestStore_FindByAddr(t *testing.T) {
+	s := newTestStore(t)
+
+	ble := devicemgr.Device{
+		ID: "ble-1", Key: "k1", ChannelID: "ch-1",
+		InterfaceType: iface.InterfaceBLE, InterfaceAddr: "AA:BB:CC:DD:EE:01",
+		Active: true,
+	}
+	serial := devicemgr.Device{
+		ID: "ser-1", Key: "k2", ChannelID: "ch-2",
+		InterfaceType: iface.InterfaceSerial, InterfaceAddr: "/dev/ttyUSB0",
+		Active: true,
+	}
+	inactive := devicemgr.Device{
+		ID: "ble-2", Key: "k3", ChannelID: "ch-3",
+		InterfaceType: iface.InterfaceBLE, InterfaceAddr: "AA:BB:CC:DD:EE:02",
+		Active: false,
+	}
+	require.NoError(t, s.Save(ble))
+	require.NoError(t, s.Save(serial))
+	require.NoError(t, s.Save(inactive))
+
+	cases := []struct {
+		desc      string
+		ifaceType iface.InterfaceType
+		addr      string
+		wantID    string
+		wantErr   bool
+	}{
+		{
+			desc:      "find active BLE device by address",
+			ifaceType: iface.InterfaceBLE,
+			addr:      "AA:BB:CC:DD:EE:01",
+			wantID:    "ble-1",
+		},
+		{
+			desc:      "find active serial device by address",
+			ifaceType: iface.InterfaceSerial,
+			addr:      "/dev/ttyUSB0",
+			wantID:    "ser-1",
+		},
+		{
+			desc:      "inactive device is not returned",
+			ifaceType: iface.InterfaceBLE,
+			addr:      "AA:BB:CC:DD:EE:02",
+			wantErr:   true,
+		},
+		{
+			desc:      "wrong interface type returns no match",
+			ifaceType: iface.InterfaceSerial,
+			addr:      "AA:BB:CC:DD:EE:01",
+			wantErr:   true,
+		},
+		{
+			desc:      "unknown address returns error",
+			ifaceType: iface.InterfaceBLE,
+			addr:      "FF:FF:FF:FF:FF:FF",
+			wantErr:   true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := s.FindByAddr(tc.ifaceType, tc.addr)
+			if tc.wantErr {
+				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				return
+			}
+			require.NoError(t, err, fmt.Sprintf("%s: unexpected error", tc.desc))
+			assert.Equal(t, tc.wantID, got.ID, fmt.Sprintf("%s: unexpected ID", tc.desc))
+		})
+	}
+}
+
 func TestStore_MarkSeen(t *testing.T) {
 	s := newTestStore(t)
 	d := makeDevice("device-1")

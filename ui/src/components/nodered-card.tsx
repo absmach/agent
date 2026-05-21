@@ -14,7 +14,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -46,6 +46,36 @@ export function NodeRedCard() {
   const [flows, setFlows] = useState("");
   const [fileName, setFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    async function init() {
+      setLoading(true);
+      try {
+        const [pingRes, flowsRes] = await Promise.all([
+          fetch("/nodered", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command: "nodered-ping", flows: "" }),
+          }),
+          fetch("/nodered", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command: "nodered-flows", flows: "" }),
+          }),
+        ]);
+        setNodeRedStatus(pingRes.ok ? "online" : "offline");
+        if (flowsRes.ok) {
+          const data = await flowsRes.json();
+          updateFlowList(data.response ?? "");
+        }
+      } catch {
+        setNodeRedStatus("offline");
+      } finally {
+        setLoading(false);
+      }
+    }
+    init();
+  }, []);
 
   async function send(cmd: NodeRedCmd, label: string) {
     if ((cmd === "nodered-deploy" || cmd === "nodered-add-flow") && !flows) {

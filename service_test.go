@@ -246,13 +246,13 @@ func TestExecute(t *testing.T) {
 		{
 			desc:   "execute command with no output successfully",
 			cmd:    "true",
-			output: "(no output)",
+			output: "",
 			topic:  mqttTopic("ctrl-channel", "res"),
 		},
 		{
 			desc:   "execute cd command successfully",
 			cmd:    "cd," + tmp,
-			output: "(no output)",
+			output: "",
 		},
 		{
 			desc: "return execution error",
@@ -953,14 +953,14 @@ func TestChangeDir(t *testing.T) {
 			workDir: "/",
 			cmd:     []string{"cd", child},
 			dir:     child,
-			output:  "(no output)",
+			output:  "",
 		},
 		{
 			desc:    "change to relative directory",
 			workDir: tmp,
 			cmd:     []string{"cd", "child"},
 			dir:     child,
-			output:  "(no output)",
+			output:  "",
 		},
 		{
 			desc:    "return shell error for missing directory",
@@ -982,7 +982,7 @@ func TestChangeDir(t *testing.T) {
 			workDir: tmp,
 			cmd:     []string{"cd"},
 			dir:     "/root",
-			output:  "(no output)",
+			output:  "",
 		})
 	}
 
@@ -1247,21 +1247,51 @@ func TestGetTopic(t *testing.T) {
 	}
 }
 
-// provisionHandlerOK returns a handler that always responds with one client and one channel.
-func provisionHandlerOK(t *testing.T, deviceID, deviceKey, channelID string) http.HandlerFunc {
+// sdkProvisionServer returns an httptest.Server that handles the three SDK
+// endpoints used during device provisioning: create client, create channel,
+// and connect. It returns the given fixed IDs so tests can assert on them.
+func sdkProvisionServer(t *testing.T, deviceID, deviceKey, channelID string) *httptest.Server {
 	t.Helper()
-	return func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		resp := map[string]any{
-			"clients":  []map[string]any{{"id": deviceID, "secret": deviceKey, "name": "test-device"}},
-			"channels": []map[string]any{{"id": channelID}},
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/clients") && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			resp := map[string]any{
+				"id":   deviceID,
+				"name": "test-device",
+				"credentials": map[string]any{
+					"secret": deviceKey,
+				},
+			}
+			b, err := json.Marshal(resp)
+			assert.NoError(t, err)
+			_, err = w.Write(b)
+			assert.NoError(t, err)
+
+		case strings.HasSuffix(r.URL.Path, "/channels") && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			resp := map[string]any{"id": channelID, "name": "test-channel"}
+			b, err := json.Marshal(resp)
+			assert.NoError(t, err)
+			_, err = w.Write(b)
+			assert.NoError(t, err)
+
+		case strings.HasSuffix(r.URL.Path, "/connect") && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+
+		case strings.Contains(r.URL.Path, "/clients/") && r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+
+		case strings.Contains(r.URL.Path, "/channels/") && r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+
+		default:
+			http.Error(w, "unexpected: "+r.Method+" "+r.URL.Path, http.StatusNotFound)
 		}
-		b, err := json.Marshal(resp)
-		assert.NoError(t, err)
-		_, err = w.Write(b)
-		assert.NoError(t, err)
-	}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 func TestDeviceManager(t *testing.T) {
@@ -1272,14 +1302,18 @@ func TestDeviceManager(t *testing.T) {
 		addCmd    = `add,{"name":"test-device","external_id":"ext-id","external_key":"ext-key","iface_type":"ble","iface_addr":"AA:BB:CC:DD:EE:FF"}`
 	)
 
-	provSrv := httptest.NewServer(provisionHandlerOK(t, deviceID, deviceKey, channelID))
-	t.Cleanup(provSrv.Close)
+	provSrv := sdkProvisionServer(t, deviceID, deviceKey, channelID)
 
 	newMgr := func(t *testing.T) *devicemgr.Manager {
 		t.Helper()
 		mgr, err := devicemgr.New(
 			filepath.Join(t.TempDir(), "devices.db"),
-			devicemgr.ProvisionConfig{URL: provSrv.URL, Token: "test-token", DomainID: domainID},
+			devicemgr.ProvisionConfig{
+				ClientsURL:  provSrv.URL,
+				ChannelsURL: provSrv.URL,
+				Token:       "test-pat",
+				DomainID:    domainID,
+			},
 			iface.Config{},
 		)
 		require.NoError(t, err)
