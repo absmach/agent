@@ -718,7 +718,7 @@ func TestConfigGetSet(t *testing.T) {
 			assert.Nil(t, setupErr, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, setupErr))
 
 			if !tc.err {
-				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), nil).Run(func(args mock.Arguments) {
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil).Run(func(args mock.Arguments) {
 					payload, _ := args.Get(3).(string)
 					assert.Contains(t, payload, tc.wantResp, fmt.Sprintf("%s: unexpected response payload", tc.desc))
 				})

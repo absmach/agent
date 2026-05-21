@@ -821,21 +821,17 @@ func (a *agent) Services() []Info {
 }
 
 func (a *agent) Publish(t, payload string) error {
-	topic := a.getTopic(t)
-	mqtt := a.Config().MQTT
-	token := a.mqttClient.Publish(topic, mqtt.QoS, mqtt.Retain, payload)
-	token.Wait()
-	err := token.Error()
-	if err != nil {
-		return errors.New(err.Error())
-	}
-	return nil
+	return a.publish(t, payload, a.Config().MQTT.QoS)
 }
 
 func (a *agent) publishCmd(t, payload string) error {
+	return a.publish(t, payload, a.Config().MQTT.CmdQoS)
+}
+
+func (a *agent) publish(t, payload string, qos byte) error {
 	topic := a.getTopic(t)
-	mqtt := a.config.MQTT
-	token := a.mqttClient.Publish(topic, mqtt.CmdQoS, mqtt.Retain, payload)
+	mqtt := a.Config().MQTT
+	token := a.mqttClient.Publish(topic, qos, mqtt.Retain, payload)
 	token.Wait()
 	if err := token.Error(); err != nil {
 		return errors.New(err.Error())
