@@ -54,6 +54,7 @@ type MQTTConfig struct {
 	SkipTLSVer  bool            `json:"skip_tls_ver"`
 	Retain      bool            `json:"retain"`
 	QoS         byte            `json:"qos"`
+	CmdQoS      byte            `json:"cmd_qos"`
 	CAPath      string          `json:"ca_path"`
 	CertPath    string          `json:"cert_path"`
 	PrivKeyPath string          `json:"priv_key_path"`
