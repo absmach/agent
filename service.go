@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	cfgstore "github.com/absmach/agent/pkg/config"
 	"github.com/absmach/agent/pkg/devicemgr"
 	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/iface"
@@ -158,10 +159,11 @@ type agent struct {
 	devices       *devicemgr.Manager
 	workDir       string
 	otaBusy       atomic.Bool
+	store         *cfgstore.Store
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store *cfgstore.Store) (Service, error) {
 	ag := &agent{
 		mqttClient:    mc,
 		noderedClient: nc,
@@ -171,6 +173,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		terminals:     make(map[string]terminal.Session),
 		devices:       devices,
 		workDir:       "/",
+		store:         store,
 	}
 
 	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat",
@@ -289,6 +292,37 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 		fileCont := cmdArgs[3]
 		if err := a.saveConfig(ctx, service, fileName, fileCont); err != nil {
 			return err
+		}
+	case "get":
+		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
+			return errInvalidCommand
+		}
+		if !SettableKeys[cmdArgs[1]] {
+			return errInvalidCommand
+		}
+		if a.store == nil {
+			resp = "not_configured"
+		} else if val, ok := a.store.Get(cmdArgs[1]); ok {
+			resp = val
+		} else {
+			resp = "not_found"
+		}
+	case "set":
+		if len(cmdArgs) < 3 || cmdArgs[1] == "" || cmdArgs[2] == "" {
+			return errInvalidCommand
+		}
+		key, val := cmdArgs[1], cmdArgs[2]
+		if !SettableKeys[key] {
+			return errInvalidCommand
+		}
+		if a.store == nil {
+			resp = "not_configured"
+		} else {
+			if err := a.store.Set(key, val); err != nil {
+				return err
+			}
+			ApplyConfigEntry(a.config, key, val)
+			resp = "ok"
 		}
 	}
 	return a.processResponse(uuid, cmd, resp)
@@ -765,6 +799,37 @@ func (a *agent) Shutdown() {
 	a.logger.Debug("disconnecting MQTT client")
 	a.mqttClient.Disconnect(1000)
 	a.logger.Info("graceful shutdown complete")
+}
+
+// SettableKeys is the allowlist of config keys that can be read and written
+// via MQTT get/set commands. Only keys in this set are accepted; unknown keys
+// are rejected to prevent arbitrary storage growth and SSRF via nodered_url.
+var SettableKeys = map[string]bool{
+	"log_level":                true,
+	"heartbeat_interval":       true,
+	"terminal_session_timeout": true,
+	"nodered_url":              true,
+	"server_port":              true,
+}
+
+// ApplyConfigEntry updates cfg in place for the known settable keys.
+func ApplyConfigEntry(cfg *Config, key, val string) {
+	switch key {
+	case "log_level":
+		cfg.Log.Level = val
+	case "heartbeat_interval":
+		if d, err := time.ParseDuration(val); err == nil {
+			cfg.Heartbeat.Interval = d
+		}
+	case "terminal_session_timeout":
+		if d, err := time.ParseDuration(val); err == nil {
+			cfg.Terminal.SessionTimeout = d
+		}
+	case "nodered_url":
+		cfg.NodeRed.URL = val
+	case "server_port":
+		cfg.Server.Port = val
+	}
 }
 
 func (a *agent) getTopic(topic string) (t string) {

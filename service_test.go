@@ -20,6 +20,7 @@ import (
 
 	"github.com/absmach/agent"
 	agentmocks "github.com/absmach/agent/mocks"
+	cfgstore "github.com/absmach/agent/pkg/config"
 	"github.com/absmach/agent/pkg/devicemgr"
 	"github.com/absmach/agent/pkg/iface"
 	nrmocks "github.com/absmach/agent/pkg/nodered/mocks"
@@ -54,6 +55,24 @@ func testConfig() agent.Config {
 	)
 }
 
+func newServiceWithStore(t *testing.T, cfg agent.Config, store *cfgstore.Store) (agent.Service, *agentmocks.MQTTClient, *nrmocks.Client, error) {
+	cfg.DomainID = domainID
+	mqttClient := agentmocks.NewMQTTClient(t)
+	nodeRed := nrmocks.NewClient(t)
+
+	hbToken := agentmocks.NewMQTTToken(t)
+	hbToken.On("Wait").Maybe().Return(true)
+	hbToken.On("Error").Maybe().Return(error(nil))
+	mqttClient.On("Publish", mqttTopic("ctrl-channel", "services/agent/heartbeat"),
+		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(hbToken)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, store)
+	return svc, mqttClient, nodeRed, err
+}
+
 func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (agent.Service, *agentmocks.MQTTClient, *nrmocks.Client, error) {
 	t.Helper()
 	cfg.DomainID = domainID
@@ -77,7 +96,7 @@ func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (
 		mgr = devices[0]
 	}
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr)
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr, nil)
 	return svc, mqttClient, nodeRed, err
 }
 
@@ -417,6 +436,121 @@ func TestServiceConfig(t *testing.T) {
 			assert.NoError(t, err)
 			if tc.file != "" {
 				assert.FileExists(t, tc.file)
+			}
+		})
+	}
+}
+
+func TestConfigGetSet(t *testing.T) {
+	cases := []struct {
+		desc     string
+		cmd      string
+		useStore bool
+		seed     map[string]string
+		wantResp string
+		err      bool
+	}{
+		{
+			desc:     "get key without store returns not_configured",
+			cmd:      "get,log_level",
+			useStore: false,
+			wantResp: "not_configured",
+		},
+		{
+			desc:     "get missing key returns not_found",
+			cmd:      "get,log_level",
+			useStore: true,
+			wantResp: "not_found",
+		},
+		{
+			desc:     "set key without store returns not_configured",
+			cmd:      "set,log_level,debug",
+			useStore: false,
+			wantResp: "not_configured",
+		},
+		{
+			desc:     "set key persists and returns ok",
+			cmd:      "set,log_level,debug",
+			useStore: true,
+			wantResp: "ok",
+		},
+		{
+			desc:     "get key after set returns previously set value",
+			cmd:      "get,log_level",
+			useStore: true,
+			seed:     map[string]string{"log_level": "debug"},
+			wantResp: "debug",
+		},
+		{
+			desc:     "set heartbeat_interval stores valid duration",
+			cmd:      "set,heartbeat_interval,30s",
+			useStore: true,
+			wantResp: "ok",
+		},
+		{
+			desc:     "set heartbeat_interval with invalid duration stores but returns ok",
+			cmd:      "set,heartbeat_interval,not-a-duration",
+			useStore: true,
+			wantResp: "ok",
+		},
+		{
+			desc:     "reject get without key",
+			cmd:      "get",
+			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "reject get with empty key",
+			cmd:      "get,",
+			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "reject get with unknown key",
+			cmd:      "get,mqtt_password",
+			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "reject set without value",
+			cmd:      "set,log_level",
+			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "reject set with unknown key",
+			cmd:      "set,mqtt_password,secret",
+			useStore: true,
+			err:      true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			var s *cfgstore.Store
+			if tc.useStore {
+				var storeErr error
+				s, storeErr = cfgstore.NewStore(filepath.Join(t.TempDir(), "config.json"))
+				assert.Nil(t, storeErr, fmt.Sprintf("%s: unexpected store error %v", tc.desc, storeErr))
+				for k, v := range tc.seed {
+					assert.Nil(t, s.Set(k, v))
+				}
+			}
+			svc, mqttClient, _, setupErr := newServiceWithStore(t, testConfig(), s)
+			assert.Nil(t, setupErr, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, setupErr))
+
+			if !tc.err {
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), nil).Run(func(args mock.Arguments) {
+					payload, _ := args.Get(3).(string)
+					assert.Contains(t, payload, tc.wantResp, fmt.Sprintf("%s: unexpected response payload", tc.desc))
+				})
+			}
+
+			err := svc.ServiceConfig(context.Background(), "uuid", tc.cmd)
+			if tc.err {
+				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+			} else {
+				assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
 			}
 		})
 	}
