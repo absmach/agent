@@ -138,3 +138,7 @@ func (ms *metricsMiddleware) NodeRed(cmdStr string) (string, error) {
 
 	return ms.svc.NodeRed(cmdStr)
 }
+
+func (ms *metricsMiddleware) Shutdown() {
+	ms.svc.Shutdown()
+}

@@ -188,7 +188,8 @@ func (b *broker) handleMsg(msg mqtt.Message) {
 			b.logger.Warn("Ping failed", slog.Any("error", err))
 		}
 	case reset:
-		b.logger.Info("Reset command received, restarting process", slog.String("uuid", uuid))
+		b.logger.Info("Reset command received, performing graceful shutdown", slog.String("uuid", uuid))
+		b.svc.Shutdown()
 		if err := syscall.Exec(os.Args[0], os.Args, os.Environ()); err != nil {
 			b.logger.Error("Reset failed", slog.Any("error", err))
 		}
