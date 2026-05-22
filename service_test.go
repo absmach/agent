@@ -1118,6 +1118,12 @@ func TestShutdown(t *testing.T) {
 	}
 }
 
+func TestHeartbeatStop(t *testing.T) {
+	h := agent.NewHeartbeat("nodered", "service", time.Hour)
+	assert.Equal(t, "online", h.Info().Status, "unexpected initial heartbeat status")
+	h.Stop()
+}
+
 func TestPing(t *testing.T) {
 	errBoom := fmt.Errorf("boom")
 
