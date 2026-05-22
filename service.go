@@ -173,8 +173,8 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		workDir:       "/",
 	}
 
-	topic := fmt.Sprintf("m/%s/c/%s/services/agent/heartbeat",
-		cfg.DomainID, cfg.Channels.CtrlChan())
+	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat",
+		cfg.DomainID, cfg.Channels.DataChan())
 	go ag.selfHeartbeat(ctx, topic, cfg.Heartbeat.Interval, cfg.MQTT.QoS)
 
 	return ag, nil

@@ -66,7 +66,7 @@ func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (
 	hbToken := agentmocks.NewMQTTToken(t)
 	hbToken.On("Wait").Maybe().Return(true)
 	hbToken.On("Error").Maybe().Return(error(nil))
-	mqttClient.On("Publish", mqttTopic("ctrl-channel", "services/agent/heartbeat"),
+	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"),
 		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(hbToken)
 
 	ctx, cancel := context.WithCancel(context.Background())
