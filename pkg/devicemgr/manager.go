@@ -4,8 +4,11 @@
 package devicemgr
 
 import (
+	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/absmach/agent/pkg/iface"
@@ -15,12 +18,12 @@ import (
 type Manager struct {
 	store      *Store
 	provision  *provisionClient
+	mu         sync.Mutex
 	interfaces map[string]iface.Interface
 	ifaceCfg   iface.Config
 }
 
 // New creates a Manager backed by a BoltDB store at dbPath.
-// If cfg.URL is empty, provisioning is disabled and Add will fail.
 func New(dbPath string, cfg ProvisionConfig, ifaceCfg iface.Config) (*Manager, error) {
 	store, err := NewStore(dbPath)
 	if err != nil {
@@ -35,21 +38,24 @@ func New(dbPath string, cfg ProvisionConfig, ifaceCfg iface.Config) (*Manager, e
 }
 
 // Close releases all open interfaces and the store.
+// All interface close errors are collected and joined before returning.
 func (m *Manager) Close() error {
+	m.mu.Lock()
+	var errs []error
 	for id, ifc := range m.interfaces {
-		_ = ifc.Close()
+		if err := ifc.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("close interface %s: %w", id, err))
+		}
 		delete(m.interfaces, id)
 	}
-	return m.store.Close()
+	m.mu.Unlock()
+	return errors.Join(append(errs, m.store.Close())...)
 }
 
 // Add provisions a new downstream device via the Magistrala Provision API,
 // saves it to the local registry, and returns it.
-func (m *Manager) Add(name, externalID, externalKey string, ifaceType iface.InterfaceType, ifaceAddr string) (Device, error) {
-	if m.provision.cfg.URL == "" {
-		return Device{}, fmt.Errorf("provision URL not configured")
-	}
-	d, err := m.provision.Provision(name, externalID, externalKey)
+func (m *Manager) Add(ctx context.Context, name, externalID, externalKey string, ifaceType iface.InterfaceType, ifaceAddr string) (Device, error) {
+	d, err := m.provision.Provision(ctx, name, externalID, externalKey)
 	if err != nil {
 		return Device{}, fmt.Errorf("provision %s: %w", name, err)
 	}
@@ -65,9 +71,16 @@ func (m *Manager) Add(name, externalID, externalKey string, ifaceType iface.Inte
 
 // Remove deletes a device from the registry and closes any open interface.
 func (m *Manager) Remove(id string) error {
-	if ifc, ok := m.interfaces[id]; ok {
-		_ = ifc.Close()
+	m.mu.Lock()
+	ifc, ok := m.interfaces[id]
+	if ok {
 		delete(m.interfaces, id)
+	}
+	m.mu.Unlock()
+	if ok {
+		if err := ifc.Close(); err != nil {
+			return fmt.Errorf("close interface %s: %w", id, err)
+		}
 	}
 	return m.store.Remove(id)
 }
@@ -89,8 +102,11 @@ func (m *Manager) MarkSeen(id string) error {
 
 // OpenIface opens the physical interface for a registered device.
 func (m *Manager) OpenIface(id string) error {
-	if _, ok := m.interfaces[id]; ok {
-		return nil // already open
+	m.mu.Lock()
+	_, alreadyOpen := m.interfaces[id]
+	m.mu.Unlock()
+	if alreadyOpen {
+		return nil
 	}
 	d, err := m.store.Get(id)
 	if err != nil {
@@ -103,19 +119,24 @@ func (m *Manager) OpenIface(id string) error {
 	if err := ifc.Open(); err != nil {
 		return fmt.Errorf("open interface for device %s: %w", id, err)
 	}
+	m.mu.Lock()
 	m.interfaces[id] = ifc
+	m.mu.Unlock()
 	return nil
 }
 
 // CloseIface closes the physical interface for a registered device.
 func (m *Manager) CloseIface(id string) error {
+	m.mu.Lock()
 	ifc, ok := m.interfaces[id]
+	if ok {
+		delete(m.interfaces, id)
+	}
+	m.mu.Unlock()
 	if !ok {
 		return fmt.Errorf("device %s: interface not open", id)
 	}
-	err := ifc.Close()
-	delete(m.interfaces, id)
-	if err != nil {
+	if err := ifc.Close(); err != nil {
 		return fmt.Errorf("close interface for device %s: %w", id, err)
 	}
 	return nil
@@ -123,7 +144,9 @@ func (m *Manager) CloseIface(id string) error {
 
 // ReadIface reads n bytes from the open interface of the given device.
 func (m *Manager) ReadIface(id string, n int) ([]byte, error) {
+	m.mu.Lock()
 	ifc, ok := m.interfaces[id]
+	m.mu.Unlock()
 	if !ok {
 		return nil, fmt.Errorf("device %s: interface not open", id)
 	}
@@ -137,7 +160,9 @@ func (m *Manager) ReadIface(id string, n int) ([]byte, error) {
 
 // WriteIface sends hex-encoded data to the open interface of the given device.
 func (m *Manager) WriteIface(id, hexData string) (int, error) {
+	m.mu.Lock()
 	ifc, ok := m.interfaces[id]
+	m.mu.Unlock()
 	if !ok {
 		return 0, fmt.Errorf("device %s: interface not open", id)
 	}

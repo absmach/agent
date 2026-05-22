@@ -130,20 +130,17 @@ func main() {
 	}
 	noderedClient := nodered.NewClient(cfg.NodeRed.URL, logger)
 
-	var devices *devicemgr.Manager
-	if c.ProvisionURL != "" {
-		devices, err = devicemgr.New(c.DeviceDBPath, devicemgr.ProvisionConfig{
-			URL:      c.ProvisionURL,
-			Token:    c.ProvisionToken,
-			DomainID: cfg.DomainID,
-		}, iface.Config{})
-		if err != nil {
-			logger.Error("Failed to open device store", slog.Any("error", err))
-			exitCode = 1
-			return
-		}
-		defer devices.Close()
+	devices, err := devicemgr.New(c.DeviceDBPath, devicemgr.ProvisionConfig{
+		URL:      c.ProvisionURL,
+		Token:    c.ProvisionToken,
+		DomainID: cfg.DomainID,
+	}, iface.Config{})
+	if err != nil {
+		logger.Error("Failed to open device store", slog.Any("error", err))
+		exitCode = 1
+		return
 	}
+	defer devices.Close()
 
 	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger, devices)
 	if err != nil {

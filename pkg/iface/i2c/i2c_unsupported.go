@@ -23,7 +23,18 @@ func New(cfg Config) *I2C {
 	return &I2C{cfg: cfg}
 }
 
-func (d *I2C) Open() error                { return fmt.Errorf("i2c: not supported on this platform") }
-func (d *I2C) Close() error               { return nil }
-func (d *I2C) Read(buf []byte) (int, error)  { return 0, fmt.Errorf("i2c: not supported on this platform") }
-func (d *I2C) Write(data []byte) (int, error) { return 0, fmt.Errorf("i2c: not supported on this platform") }
+func (d *I2C) Open() error {
+	return fmt.Errorf("i2c: not supported on this platform")
+}
+
+func (d *I2C) Close() error {
+	return nil
+}
+
+func (d *I2C) Read(buf []byte) (int, error) {
+	return 0, fmt.Errorf("i2c: not supported on this platform")
+}
+
+func (d *I2C) Write(data []byte) (int, error) {
+	return 0, fmt.Errorf("i2c: not supported on this platform")
+}

@@ -34,15 +34,22 @@ func TestParseInterfaceType(t *testing.T) {
 	}
 }
 
-func TestNew_UnsupportedType(t *testing.T) {
+func TestNew_BLENotImplemented(t *testing.T) {
 	_, err := iface.New(iface.InterfaceBLE, "addr", iface.Config{})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported interface type")
+	assert.Contains(t, err.Error(), "not implemented")
 }
 
-func TestNew_UnsupportedZigbee(t *testing.T) {
+func TestNew_ZigbeeNotImplemented(t *testing.T) {
 	_, err := iface.New(iface.InterfaceZigbee, "addr", iface.Config{})
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not implemented")
+}
+
+func TestNew_UnknownType(t *testing.T) {
+	_, err := iface.New(iface.InterfaceUnknown, "addr", iface.Config{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported interface type")
 }
 
 func TestNew_Serial(t *testing.T) {

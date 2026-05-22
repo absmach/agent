@@ -4,6 +4,7 @@
 package devicemgr_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -49,7 +50,7 @@ func newTestManager(t *testing.T, provisionURL string) *devicemgr.Manager {
 	t.Helper()
 	m, err := devicemgr.New(
 		filepath.Join(t.TempDir(), "devices.db"),
-		devicemgr.ProvisionConfig{URL: provisionURL, DomainID: "test-domain"},
+		devicemgr.ProvisionConfig{URL: provisionURL, Token: "test-token", DomainID: "test-domain"},
 		iface.Config{},
 	)
 	require.NoError(t, err)
@@ -148,7 +149,7 @@ func TestManager_Add(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			m := newTestManager(t, tc.provisionURL)
-			d, err := m.Add("my-device", "ext-id", "ext-key", tc.ifaceType, tc.ifaceAddr)
+			d, err := m.Add(context.Background(), "my-device", "ext-id", "ext-key", tc.ifaceType, tc.ifaceAddr)
 			if tc.wantErr {
 				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
 				return
@@ -188,12 +189,12 @@ func TestManager_Add_AuthHeader(t *testing.T) {
 		)
 		require.NoError(t, err)
 		defer m.Close()
-		_, err = m.Add("dev", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
+		_, err = m.Add(context.Background(), "dev", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
 		require.NoError(t, err)
 		assert.Equal(t, "Bearer my-pat-token", gotAuth)
 	})
 
-	t.Run("falls back to Client auth when no token", func(t *testing.T) {
+	t.Run("returns error when no token configured", func(t *testing.T) {
 		m, err := devicemgr.New(
 			filepath.Join(t.TempDir(), "devices.db"),
 			devicemgr.ProvisionConfig{URL: srv.URL, DomainID: "dom"},
@@ -201,16 +202,16 @@ func TestManager_Add_AuthHeader(t *testing.T) {
 		)
 		require.NoError(t, err)
 		defer m.Close()
-		_, err = m.Add("dev", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
-		require.NoError(t, err)
-		assert.Equal(t, "Client ext-key", gotAuth)
+		_, err = m.Add(context.Background(), "dev", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "token not configured")
 	})
 }
 
 func TestManager_Remove(t *testing.T) {
 	srv := provisionServer(t, nil)
 	m := newTestManager(t, srv.URL)
-	d, err := m.Add("my-device", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
+	d, err := m.Add(context.Background(), "my-device", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
 	require.NoError(t, err)
 
 	cases := []struct {
@@ -235,7 +236,7 @@ func TestManager_Remove(t *testing.T) {
 func TestManager_Get(t *testing.T) {
 	srv := provisionServer(t, nil)
 	m := newTestManager(t, srv.URL)
-	d, err := m.Add("my-device", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
+	d, err := m.Add(context.Background(), "my-device", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
 	require.NoError(t, err)
 
 	cases := []struct {
@@ -284,9 +285,9 @@ func TestManager_List(t *testing.T) {
 			assert.NoError(t, err)
 		})
 		m := newTestManager(t, srv.URL)
-		_, err := m.Add("d1", "e1", "k1", iface.InterfaceBLE, "addr1")
+		_, err := m.Add(context.Background(), "d1", "e1", "k1", iface.InterfaceBLE, "addr1")
 		require.NoError(t, err)
-		_, err = m.Add("d2", "e2", "k2", iface.InterfaceSerial, "addr2")
+		_, err = m.Add(context.Background(), "d2", "e2", "k2", iface.InterfaceSerial, "addr2")
 		require.NoError(t, err)
 		devs, err := m.List()
 		require.NoError(t, err)
@@ -297,7 +298,7 @@ func TestManager_List(t *testing.T) {
 func TestManager_MarkSeen(t *testing.T) {
 	srv := provisionServer(t, nil)
 	m := newTestManager(t, srv.URL)
-	d, err := m.Add("my-device", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
+	d, err := m.Add(context.Background(), "my-device", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
 	require.NoError(t, err)
 
 	cases := []struct {
@@ -331,7 +332,7 @@ func TestManager_OpenIface(t *testing.T) {
 	t.Run("error when interface type is unsupported (BLE)", func(t *testing.T) {
 		srv := provisionServer(t, nil)
 		m := newTestManager(t, srv.URL)
-		d, err := m.Add("dev", "eid", "ekey", iface.InterfaceBLE, "AA:BB:CC:DD:EE:FF")
+		d, err := m.Add(context.Background(), "dev", "eid", "ekey", iface.InterfaceBLE, "AA:BB:CC:DD:EE:FF")
 		require.NoError(t, err)
 		err = m.OpenIface(d.ID)
 		assert.Error(t, err)
@@ -381,28 +382,4 @@ func TestManager_WriteIface(t *testing.T) {
 		_, err := m.WriteIface("any-device-id", "zzzz")
 		assert.Error(t, err)
 	})
-}
-
-func TestParseInterfaceType(t *testing.T) {
-	cases := []struct {
-		input string
-		want  iface.InterfaceType
-	}{
-		{"ble", iface.InterfaceBLE},
-		{"serial", iface.InterfaceSerial},
-		{"i2c", iface.InterfaceI2C},
-		{"usb", iface.InterfaceUSB},
-		{"zigbee", iface.InterfaceZigbee},
-		{"modbus-rtu", iface.InterfaceModbusRTU},
-		{"modbus-tcp", iface.InterfaceModbusTCP},
-		{"unknown-type", iface.InterfaceUnknown},
-		{"", iface.InterfaceUnknown},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.input, func(t *testing.T) {
-			got := iface.ParseInterfaceType(tc.input)
-			assert.Equal(t, tc.want, got)
-		})
-	}
 }

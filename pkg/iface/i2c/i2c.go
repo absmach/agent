@@ -8,7 +8,6 @@ package i2c
 import (
 	"fmt"
 	"os"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -85,6 +84,3 @@ func (d *I2C) Write(data []byte) (int, error) {
 	}
 	return n, nil
 }
-
-// ensure unsafe is used (required by the ioctl call path via unix package).
-var _ = unsafe.Sizeof(0)

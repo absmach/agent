@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/ota"
 	"github.com/absmach/senml"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -210,6 +211,11 @@ func (b *broker) handleMsg(msg mqtt.Message) {
 		b.logger.Info("Devices command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if err := b.svc.DeviceManager(uuid, cmdStr); err != nil {
 			b.logger.Warn("DeviceManager operation failed", slog.Any("error", err))
+			if payload, encErr := encoder.EncodeSenML(uuid, devices, err.Error()); encErr == nil {
+				if pubErr := b.svc.Publish("control", string(payload)); pubErr != nil {
+					b.logger.Warn("Failed to publish DeviceManager error response", slog.Any("error", pubErr))
+				}
+			}
 		}
 	}
 }

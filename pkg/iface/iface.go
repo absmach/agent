@@ -82,6 +82,10 @@ func New(ifaceType InterfaceType, addr string, cfg Config) (Interface, error) {
 		c := cfg.I2C
 		c.Bus = addr
 		return i2c.New(c), nil
+	case InterfaceBLE:
+		return nil, fmt.Errorf("ble: not implemented")
+	case InterfaceZigbee:
+		return nil, fmt.Errorf("zigbee: not implemented")
 	default:
 		return nil, fmt.Errorf("unsupported interface type: %s", ifaceType)
 	}

@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -820,13 +821,25 @@ func (a *agent) DeviceManager(uuid, cmdStr string) error {
 		resp = string(b)
 
 	case "add":
-		if len(args) < 6 {
+		comma := strings.IndexByte(strings.TrimSpace(cmdStr), ',')
+		if comma < 0 {
 			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
 		}
-		name, extID, extKey := args[1], args[2], args[3]
-		ifaceType := iface.ParseInterfaceType(args[4])
-		ifaceAddr := args[5]
-		d, aerr := a.devices.Add(name, extID, extKey, ifaceType, ifaceAddr)
+		var addReq struct {
+			Name        string `json:"name"`
+			ExternalID  string `json:"external_id"`
+			ExternalKey string `json:"external_key"`
+			IfaceType   string `json:"iface_type"`
+			IfaceAddr   string `json:"iface_addr"`
+		}
+		if jerr := json.Unmarshal([]byte(strings.TrimSpace(cmdStr)[comma+1:]), &addReq); jerr != nil {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		if addReq.Name == "" || addReq.ExternalID == "" || addReq.ExternalKey == "" {
+			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
+		}
+		ifaceType := iface.ParseInterfaceType(addReq.IfaceType)
+		d, aerr := a.devices.Add(context.Background(), addReq.Name, addReq.ExternalID, addReq.ExternalKey, ifaceType, addReq.IfaceAddr)
 		if aerr != nil {
 			return errors.Wrap(errDeviceManagerFailed, aerr)
 		}
@@ -890,8 +903,8 @@ func (a *agent) DeviceManager(uuid, cmdStr string) error {
 		if len(args) < 3 {
 			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
 		}
-		var n int
-		if _, serr := fmt.Sscanf(args[2], "%d", &n); serr != nil || n <= 0 {
+		n, serr := strconv.Atoi(args[2])
+		if serr != nil || n <= 0 || n > 65536 {
 			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
 		}
 		data, rerr := a.devices.ReadIface(args[1], n)

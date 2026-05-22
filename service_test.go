@@ -1017,7 +1017,7 @@ func TestDeviceManager(t *testing.T) {
 		deviceID  = "device-uuid-123"
 		deviceKey = "device-key-abc"
 		channelID = "channel-uuid-456"
-		addCmd    = "add,test-device,ext-id,ext-key,ble,AA:BB:CC:DD:EE:FF"
+		addCmd    = `add,{"name":"test-device","external_id":"ext-id","external_key":"ext-key","iface_type":"ble","iface_addr":"AA:BB:CC:DD:EE:FF"}`
 	)
 
 	provSrv := httptest.NewServer(provisionHandlerOK(t, deviceID, deviceKey, channelID))
@@ -1027,7 +1027,7 @@ func TestDeviceManager(t *testing.T) {
 		t.Helper()
 		mgr, err := devicemgr.New(
 			filepath.Join(t.TempDir(), "devices.db"),
-			devicemgr.ProvisionConfig{URL: provSrv.URL, DomainID: domainID},
+			devicemgr.ProvisionConfig{URL: provSrv.URL, Token: "test-token", DomainID: domainID},
 			iface.Config{},
 		)
 		require.NoError(t, err)
