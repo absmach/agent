@@ -22,40 +22,42 @@ import (
 	"github.com/absmach/agent/api"
 	"github.com/absmach/agent/middleware"
 	"github.com/absmach/agent/pkg/bootstrap"
+	"github.com/absmach/agent/pkg/configstore"
 	"github.com/absmach/agent/pkg/conn"
 	"github.com/absmach/agent/pkg/logstream"
 	"github.com/absmach/agent/pkg/nodered"
 	mglog "github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/prometheus"
-	"github.com/caarlos0/env/v9"
+	"github.com/caarlos0/env/v11"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"golang.org/x/sync/errgroup"
 )
 
 type config struct {
-	LogLevel             string `env:"MG_AGENT_LOG_LEVEL" envDefault:"info"`
-	NodeRedURL           string `env:"MG_AGENT_NODERED_URL" envDefault:"http://localhost:1880/"`
-	MqttURL              string `env:"MG_AGENT_MQTT_URL" envDefault:"localhost:1883"`
-	HTTPPort             string `env:"MG_AGENT_HTTP_PORT" envDefault:"9999"`
-	MqttSkipTLSVer       string `env:"MG_AGENT_MQTT_SKIP_TLS" envDefault:"true"`
-	MqttMTLS             string `env:"MG_AGENT_MQTT_MTLS" envDefault:"false"`
-	MqttCA               string `env:"MG_AGENT_MQTT_CA" envDefault:"ca.crt"`
-	MqttQoS              string `env:"MG_AGENT_MQTT_QOS" envDefault:"0"`
-	MqttRetain           string `env:"MG_AGENT_MQTT_RETAIN" envDefault:"false"`
-	MqttCert             string `env:"MG_AGENT_MQTT_CLIENT_CERT" envDefault:"client.cert"`
-	MqttPrivateKey       string `env:"MG_AGENT_MQTT_CLIENT_KEY" envDefault:"client.key"`
-	HeartbeatInterval    string `env:"MG_AGENT_HEARTBEAT_INTERVAL" envDefault:"10s"`
-	TermSessionTimeout   string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT" envDefault:"60s"`
-	OTAEnabled           string `env:"MG_AGENT_OTA_ENABLED" envDefault:"false"`
-	OTABinaryPath        string `env:"MG_AGENT_OTA_BINARY_PATH" envDefault:"/usr/local/bin/agent"`
-	OTADownloadDir       string `env:"MG_AGENT_OTA_DOWNLOAD_DIR" envDefault:"/tmp"`
-	BootstrapURL         string `env:"MG_AGENT_BOOTSTRAP_URL" envDefault:""`
-	BootstrapExternalID  string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_ID" envDefault:""`
-	BootstrapExternalKey string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_KEY" envDefault:""`
-	BootstrapRetries     string `env:"MG_AGENT_BOOTSTRAP_RETRIES" envDefault:"5"`
+	LogLevel             string `env:"MG_AGENT_LOG_LEVEL"                     envDefault:"info"`
+	NodeRedURL           string `env:"MG_AGENT_NODERED_URL"                   envDefault:"http://localhost:1880/"`
+	MqttURL              string `env:"MG_AGENT_MQTT_URL"                      envDefault:"localhost:1883"`
+	HTTPPort             string `env:"MG_AGENT_HTTP_PORT"                     envDefault:"9999"`
+	MqttSkipTLSVer       string `env:"MG_AGENT_MQTT_SKIP_TLS"                 envDefault:"true"`
+	MqttMTLS             string `env:"MG_AGENT_MQTT_MTLS"                     envDefault:"false"`
+	MqttCA               string `env:"MG_AGENT_MQTT_CA"                       envDefault:"ca.crt"`
+	MqttQoS              string `env:"MG_AGENT_MQTT_QOS"                      envDefault:"0"`
+	MqttRetain           string `env:"MG_AGENT_MQTT_RETAIN"                   envDefault:"false"`
+	MqttCert             string `env:"MG_AGENT_MQTT_CLIENT_CERT"              envDefault:"client.cert"`
+	MqttPrivateKey       string `env:"MG_AGENT_MQTT_CLIENT_KEY"               envDefault:"client.key"`
+	HeartbeatInterval    string `env:"MG_AGENT_HEARTBEAT_INTERVAL"            envDefault:"10s"`
+	TermSessionTimeout   string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT"      envDefault:"60s"`
+	OTAEnabled           string `env:"MG_AGENT_OTA_ENABLED"                   envDefault:"false"`
+	OTABinaryPath        string `env:"MG_AGENT_OTA_BINARY_PATH"               envDefault:"/usr/local/bin/agent"`
+	OTADownloadDir       string `env:"MG_AGENT_OTA_DOWNLOAD_DIR"              envDefault:"/tmp"`
+	BootstrapURL         string `env:"MG_AGENT_BOOTSTRAP_URL"                 envDefault:""`
+	BootstrapExternalID  string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_ID"         envDefault:""`
+	BootstrapExternalKey string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_KEY"        envDefault:""`
+	BootstrapRetries     string `env:"MG_AGENT_BOOTSTRAP_RETRIES"             envDefault:"5"`
 	BootstrapRetryDelay  string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
-	BootstrapSkipTLS     string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS" envDefault:"false"`
+	BootstrapSkipTLS     string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS"            envDefault:"false"`
+	ConfigFile           string `env:"MG_AGENT_CONFIG_FILE"                   envDefault:""`
 }
 
 var (
@@ -104,6 +106,18 @@ func main() {
 		}
 	}
 
+	var cs configstore.Store
+	if c.ConfigFile != "" {
+		cs = configstore.New(c.ConfigFile)
+		if err := cs.Load(); err != nil {
+			logger.Warn("Failed to load persistent config", slog.Any("error", err))
+		} else {
+			if err := agent.ApplyOverrides(&cfg, cs.All()); err != nil {
+				logger.Warn("Failed to apply config overrides", slog.Any("error", err))
+			}
+		}
+	}
+
 	if err := validateRuntimeConfig(cfg); err != nil {
 		logger.Error("Failed to validate config", slog.Any("error", err))
 		exitCode = 1
@@ -125,7 +139,7 @@ func main() {
 	}
 	noderedClient := nodered.NewClient(cfg.NodeRed.URL, logger)
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger)
+	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, cs, logger)
 	if err != nil {
 		logger.Error("Error in agent service", slog.Any("error", err))
 		exitCode = 1

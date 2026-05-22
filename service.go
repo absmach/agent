@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/absmach/agent/pkg/configstore"
 	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/ota"
@@ -145,10 +146,11 @@ type agent struct {
 	terminals     map[string]terminal.Session
 	workDir       string
 	otaBusy       atomic.Bool
+	configStore   configstore.Store
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, cs configstore.Store, logger *slog.Logger) (Service, error) {
 	ag := &agent{
 		mqttClient:    mc,
 		noderedClient: nc,
@@ -157,6 +159,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		svcs:          make(map[string]Heartbeat),
 		terminals:     make(map[string]terminal.Session),
 		workDir:       "/",
+		configStore:   cs,
 	}
 
 	topic := fmt.Sprintf("m/%s/c/%s/services/agent/heartbeat",
@@ -259,6 +262,7 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 	}
 	resp := ""
 	cmd := cmdArgs[0]
+	var err error
 	switch cmd {
 	case view:
 		services, err := json.Marshal(a.Services())
@@ -276,8 +280,47 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 		if err := a.saveConfig(ctx, service, fileName, fileCont); err != nil {
 			return err
 		}
+	case "get":
+		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
+			return errInvalidCommand
+		}
+		resp, err = a.configGet(cmdArgs[1])
+	case "set":
+		if len(cmdArgs) < 3 || cmdArgs[1] == "" {
+			return errInvalidCommand
+		}
+		err = a.configSet(cmdArgs[1], strings.Join(cmdArgs[2:], ","))
+	}
+	if err != nil {
+		return err
 	}
 	return a.processResponse(uuid, cmd, resp)
+}
+
+func (a *agent) configGet(key string) (string, error) {
+	b, err := json.Marshal(a.config)
+	if err != nil {
+		return "", err
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return "", err
+	}
+
+	return configGetFromMap(m, key)
+}
+
+func (a *agent) configSet(key, value string) error {
+	if err := applyConfigOverride(a.config, key, value); err != nil {
+		return err
+	}
+
+	if a.configStore != nil {
+		return a.configStore.Set(key, value)
+	}
+
+	return nil
 }
 
 func (a *agent) Terminal(uuid, cmdStr string) error {

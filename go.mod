@@ -5,7 +5,7 @@ go 1.26.2
 require (
 	github.com/absmach/magistrala v0.20.1-0.20260508083500-7f03134d8e5c
 	github.com/absmach/senml v1.0.8
-	github.com/caarlos0/env/v9 v9.0.0
+	github.com/caarlos0/env/v11 v11.4.1
 	github.com/creack/pty v1.1.24
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/go-chi/chi/v5 v5.2.5

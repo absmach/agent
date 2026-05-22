@@ -18,6 +18,7 @@ import (
 
 	"github.com/absmach/agent"
 	agentmocks "github.com/absmach/agent/mocks"
+	"github.com/absmach/agent/pkg/configstore"
 	nrmocks "github.com/absmach/agent/pkg/nodered/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -66,7 +67,7 @@ func newService(t *testing.T, cfg agent.Config) (agent.Service, *agentmocks.MQTT
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return svc, mqttClient, nodeRed, err
 }
 
@@ -979,4 +980,343 @@ func TestGetTopic(t *testing.T) {
 			assert.Equal(t, tc.want, got, fmt.Sprintf("%s: expected topic %s got %s", tc.desc, tc.want, got))
 		})
 	}
+}
+
+func TestConfigGetSet(t *testing.T) {
+	errBoom := fmt.Errorf("boom")
+
+	cases := []struct {
+		desc   string
+		cmd    string
+		err    bool
+		pubErr error
+	}{
+		{
+			desc: "get config value successfully",
+			cmd:  "get,mqtt.url",
+		},
+		{
+			desc: "get nested config value",
+			cmd:  "get,log.level",
+		},
+		{
+			desc: "get top-level config value",
+			cmd:  "get,domain_id",
+		},
+		{
+			desc: "reject get without key",
+			cmd:  "get",
+			err:  true,
+		},
+		{
+			desc: "reject get with empty key",
+			cmd:  "get,",
+			err:  true,
+		},
+		{
+			desc: "return get response publish error",
+			cmd:  "get,mqtt.url",
+			err:  true,
+			pubErr: errBoom,
+		},
+		{
+			desc: "return get error for unknown key",
+			cmd:  "get,nonexistent",
+			err:  true,
+		},
+		{
+			desc: "set config value successfully",
+			cmd:  "set,log.level,debug",
+		},
+		{
+			desc: "set bool config value",
+			cmd:  "set,mqtt.retain,true",
+		},
+		{
+			desc: "set numeric config value",
+			cmd:  "set,mqtt.qos,2",
+		},
+		{
+			desc: "set duration config value",
+			cmd:  "set,heartbeat.interval,30s",
+		},
+		{
+			desc: "reject set without key",
+			cmd:  "set",
+			err:  true,
+		},
+		{
+			desc: "reject set with empty key",
+			cmd:  "set,,value",
+			err:  true,
+		},
+		{
+			desc: "reject set without value",
+			cmd:  "set,log.level",
+			err:  true,
+		},
+		{
+			desc: "return set error for unknown key",
+			cmd:  "set,nonexistent,value",
+			err:  true,
+		},
+		{
+			desc:   "return set response publish error",
+			cmd:    "set,log.level,debug",
+			err:    true,
+			pubErr: errBoom,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			svc, mqttClient, _, err := newService(t, testConfig())
+			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
+			if tc.cmd == "set,mqtt.qos,2" && !tc.err {
+				token := agentmocks.NewMQTTToken(t)
+				token.On("Wait").Return(true).Once()
+				token.On("Error").Return(error(nil)).Once()
+				mqttClient.On("Publish", mqttTopic("ctrl-channel", "res"), byte(2), true, mock.Anything).Return(token).Once()
+			} else if !tc.err || tc.pubErr != nil {
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), tc.pubErr)
+			}
+			err = svc.ServiceConfig(context.Background(), "uuid", tc.cmd)
+			if tc.err {
+				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				return
+			}
+			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
+		})
+	}
+}
+
+func TestConfigGetFromMap(t *testing.T) {
+	m := map[string]any{
+		"mqtt": map[string]any{
+			"url":      "tcp://localhost:1883",
+			"qos":      float64(1),
+			"retain":   true,
+			"skip_tls": false,
+		},
+		"log": map[string]any{
+			"level": "info",
+		},
+		"domain_id": "test-domain",
+	}
+
+	cases := []struct {
+		desc string
+		key  string
+		val  string
+		err  bool
+	}{
+		{
+			desc: "get string value",
+			key:  "mqtt.url",
+			val:  "tcp://localhost:1883",
+		},
+		{
+			desc: "get numeric value",
+			key:  "mqtt.qos",
+			val:  "1",
+		},
+		{
+			desc: "get bool true value",
+			key:  "mqtt.retain",
+			val:  "true",
+		},
+		{
+			desc: "get bool false value",
+			key:  "mqtt.skip_tls",
+			val:  "false",
+		},
+		{
+			desc: "get top-level string value",
+			key:  "domain_id",
+			val:  "test-domain",
+		},
+		{
+			desc: "get nested string value",
+			key:  "log.level",
+			val:  "info",
+		},
+		{
+			desc: "return error for missing key",
+			key:  "nonexistent",
+			err:  true,
+		},
+		{
+			desc: "return error for missing nested key",
+			key:  "mqtt.nonexistent",
+			err:  true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := agent.ConfigGetFromMapForTest(m, tc.key)
+			if tc.err {
+				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				return
+			}
+			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
+			assert.Equal(t, tc.val, got, fmt.Sprintf("%s: unexpected value", tc.desc))
+		})
+	}
+}
+
+func TestSetInMap(t *testing.T) {
+	cases := []struct {
+		desc  string
+		key   string
+		val   string
+		want  any
+		err   bool
+		setup map[string]any
+	}{
+		{
+			desc:  "set string value",
+			setup: map[string]any{"mqtt": map[string]any{"url": "old"}},
+			key:   "mqtt.url",
+			val:   "tcp://new:1883",
+			want:  "tcp://new:1883",
+		},
+		{
+			desc:  "set bool value",
+			setup: map[string]any{"mqtt": map[string]any{"retain": false}},
+			key:   "mqtt.retain",
+			val:   "true",
+			want:  true,
+		},
+		{
+			desc:  "set numeric value",
+			setup: map[string]any{"mqtt": map[string]any{"qos": float64(0)}},
+			key:   "mqtt.qos",
+			val:   "2",
+			want:  float64(2),
+		},
+		{
+			desc:  "return error for missing key",
+			setup: map[string]any{"mqtt": map[string]any{"url": "old"}},
+			key:   "nonexistent.key",
+			val:   "value",
+			err:   true,
+		},
+		{
+			desc:  "return error for missing nested parent",
+			setup: map[string]any{"mqtt": map[string]any{"url": "old"}},
+			key:   "mqtt.missing.key",
+			val:   "value",
+			err:   true,
+		},
+		{
+			desc:  "set duration as string fallback",
+			setup: map[string]any{"heartbeat": map[string]any{"interval": float64(10000000000)}},
+			key:   "heartbeat.interval",
+			val:   "30s",
+			want:  "30s",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			err := agent.SetInMapForTest(tc.setup, tc.key, tc.val)
+			if tc.err {
+				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				return
+			}
+			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
+			parts := strings.Split(tc.key, ".")
+			current := any(tc.setup)
+			for _, part := range parts {
+				cm := current.(map[string]any)
+				current = cm[part]
+			}
+			assert.Equal(t, tc.want, current, fmt.Sprintf("%s: unexpected value", tc.desc))
+		})
+	}
+}
+
+func TestApplyOverrides(t *testing.T) {
+	cfg := testConfig()
+
+	overrides := map[string]string{
+		"log.level": "warn",
+	}
+
+	err := agent.ApplyOverridesForTest(&cfg, overrides)
+	assert.Nil(t, err, fmt.Sprintf("unexpected error %v", err))
+	assert.Equal(t, "warn", cfg.Log.Level, "expected log level to be overridden")
+}
+
+func TestApplyOverridesWithDuration(t *testing.T) {
+	cfg := testConfig()
+
+	overrides := map[string]string{
+		"heartbeat.interval": "30s",
+	}
+
+	err := agent.ApplyOverridesForTest(&cfg, overrides)
+	assert.Nil(t, err, fmt.Sprintf("unexpected error %v", err))
+	assert.Equal(t, 30*time.Second, cfg.Heartbeat.Interval, "expected heartbeat interval to be overridden")
+}
+
+func TestApplyOverridesMultiple(t *testing.T) {
+	cfg := testConfig()
+
+	overrides := map[string]string{
+		"log.level":   "error",
+		"server.port": "8080",
+	}
+
+	err := agent.ApplyOverridesForTest(&cfg, overrides)
+	assert.Nil(t, err, fmt.Sprintf("unexpected error %v", err))
+	assert.Equal(t, "error", cfg.Log.Level, "expected log level to be overridden")
+	assert.Equal(t, "8080", cfg.Server.Port, "expected server port to be overridden")
+}
+
+func TestApplyOverridesInvalidKey(t *testing.T) {
+	cfg := testConfig()
+
+	overrides := map[string]string{
+		"nonexistent.key": "value",
+	}
+
+	err := agent.ApplyOverridesForTest(&cfg, overrides)
+	assert.Error(t, err, "expected error for invalid key")
+}
+
+func TestConfigSetWithStore(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.json")
+
+	cfg := testConfig()
+	cfg.DomainID = domainID
+	mqttClient := agentmocks.NewMQTTClient(t)
+	nodeRed := nrmocks.NewClient(t)
+
+	hbToken := agentmocks.NewMQTTToken(t)
+	hbToken.On("Wait").Maybe().Return(true)
+	hbToken.On("Error").Maybe().Return(error(nil))
+	mqttClient.On("Publish", mqttTopic("ctrl-channel", "services/agent/heartbeat"),
+		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(hbToken)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	cs := configstore.New(path)
+	assert.Nil(t, cs.Load())
+
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, cs, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	assert.Nil(t, err, fmt.Sprintf("unexpected error %v", err))
+
+	expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), nil)
+	err = svc.ServiceConfig(ctx, "uuid", "set,log.level,warn")
+	assert.Nil(t, err, fmt.Sprintf("unexpected error %v", err))
+
+	assert.Equal(t, "warn", svc.Config().Log.Level, "expected config to be updated in memory")
+
+	persisted, pErr := cs.Get("log.level")
+	assert.Nil(t, pErr, fmt.Sprintf("unexpected error %v", pErr))
+	assert.Equal(t, "warn", persisted, "expected config to be persisted")
 }

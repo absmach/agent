@@ -13,6 +13,22 @@ import (
 
 const NodeRedTLSConfigIDForTest = nodeRedTLSConfigID
 
+func ConfigGetFromMapForTest(m map[string]any, key string) (string, error) {
+	return configGetFromMap(m, key)
+}
+
+func SetInMapForTest(m map[string]any, key, value string) error {
+	return setInMap(m, key, value)
+}
+
+func ApplyOverridesForTest(cfg *Config, overrides map[string]string) error {
+	return ApplyOverrides(cfg, overrides)
+}
+
+func ApplyConfigOverrideForTest(cfg *Config, key, value string) error {
+	return applyConfigOverride(cfg, key, value)
+}
+
 func ChangeDirForTest(workDir string, cmd []string) (string, string, error) {
 	ag := &agent{workDir: workDir}
 	output, err := ag.changeDir(cmd)

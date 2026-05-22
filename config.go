@@ -6,10 +6,14 @@ package agent
 import (
 	"crypto/tls"
 	"encoding/json"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/absmach/magistrala/pkg/errors"
 )
+
+var errConfigKeyNotFound = errors.New("config key not found")
 
 type ServerConfig struct {
 	Port string `json:"port"`
@@ -55,7 +59,7 @@ type MQTTConfig struct {
 }
 
 type HeartbeatConfig struct {
-	Interval time.Duration
+	Interval time.Duration `json:"interval"`
 }
 
 type TerminalConfig struct {
@@ -143,4 +147,113 @@ func (d *TerminalConfig) UnmarshalJSON(b []byte) error {
 	default:
 		return errors.New("invalid duration")
 	}
+}
+
+func ApplyOverrides(cfg *Config, overrides map[string]string) error {
+	for key, value := range overrides {
+		if err := applyConfigOverride(cfg, key, value); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func applyConfigOverride(cfg *Config, key, value string) error {
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return err
+	}
+
+	if err := setInMap(m, key, value); err != nil {
+		return err
+	}
+
+	b, err = json.Marshal(m)
+	if err != nil {
+		return err
+	}
+
+	return json.Unmarshal(b, cfg)
+}
+
+func configGetFromMap(m map[string]any, key string) (string, error) {
+	parts := strings.Split(key, ".")
+	current := any(m)
+	for _, part := range parts {
+		cm, ok := current.(map[string]any)
+		if !ok {
+			return "", errConfigKeyNotFound
+		}
+
+		val, ok := cm[part]
+		if !ok {
+			return "", errConfigKeyNotFound
+		}
+		current = val
+	}
+
+	switch v := current.(type) {
+	case string:
+		return v, nil
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	case bool:
+		return strconv.FormatBool(v), nil
+	default:
+		b, _ := json.Marshal(v)
+
+		return string(b), nil
+	}
+}
+
+func setInMap(m map[string]any, key, value string) error {
+	parts := strings.Split(key, ".")
+	current := m
+	for i := 0; i < len(parts)-1; i++ {
+		next, ok := current[parts[i]]
+		if !ok {
+			return errConfigKeyNotFound
+		}
+
+		cm, ok := next.(map[string]any)
+		if !ok {
+			return errConfigKeyNotFound
+		}
+		current = cm
+	}
+
+	leaf := parts[len(parts)-1]
+	existing, ok := current[leaf]
+	if !ok {
+		return errConfigKeyNotFound
+	}
+
+	switch existing.(type) {
+	case bool:
+		b, err := strconv.ParseBool(value)
+		if err != nil {
+			current[leaf] = value
+
+			return nil
+		}
+		current[leaf] = b
+	case float64:
+		f, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			current[leaf] = value
+
+			return nil
+		}
+		current[leaf] = f
+	default:
+		current[leaf] = value
+	}
+
+	return nil
 }
