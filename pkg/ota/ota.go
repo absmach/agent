@@ -160,7 +160,7 @@ func download(ctx context.Context, url, dir string, size uint64, pctFn func(floa
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("server returned HTTP %d", resp.StatusCode)
@@ -180,21 +180,21 @@ func download(ctx context.Context, url, dir string, size uint64, pctFn func(floa
 
 	for {
 		if ctx.Err() != nil {
-			f.Close()
-			os.Remove(tmpName)
+			_ = f.Close()
+			_ = os.Remove(tmpName)
 			return "", ctx.Err()
 		}
 		n, rerr := resp.Body.Read(buf)
 		if n > 0 {
 			if _, werr := f.Write(buf[:n]); werr != nil {
-				f.Close()
-				os.Remove(tmpName)
+				_ = f.Close()
+				_ = os.Remove(tmpName)
 				return "", werr
 			}
 			written += int64(n)
 			if size > 0 && uint64(written) > size {
-				f.Close()
-				os.Remove(tmpName)
+				_ = f.Close()
+				_ = os.Remove(tmpName)
 				return "", fmt.Errorf("download exceeded expected size %d bytes", size)
 			}
 			if total > 0 {
@@ -209,13 +209,13 @@ func download(ctx context.Context, url, dir string, size uint64, pctFn func(floa
 			break
 		}
 		if rerr != nil {
-			f.Close()
-			os.Remove(tmpName)
+			_ = f.Close()
+			_ = os.Remove(tmpName)
 			return "", rerr
 		}
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return "", err
 	}
 	pctFn(100)
@@ -240,7 +240,7 @@ func verify(ctx context.Context, url, tmpPath, sha256hex string) (bool, error) {
 		if err != nil {
 			return false, nil // network error — skip
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			return false, nil // no sidecar — skip
 		}
@@ -255,7 +255,7 @@ func verify(ctx context.Context, url, tmpPath, sha256hex string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return false, err
@@ -287,27 +287,27 @@ func replace(src, dst string) error {
 
 	in, err := os.Open(src)
 	if err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if _, err := io.Copy(tmp, in); err != nil {
-		in.Close()
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = in.Close()
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
-	in.Close()
+	_ = in.Close()
 	if err := tmp.Chmod(0o755); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
-	tmp.Close()
+	_ = tmp.Close()
 	if err := os.Rename(tmpName, dst); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
-	os.Remove(src)
+	_ = os.Remove(src)
 	return nil
 }
