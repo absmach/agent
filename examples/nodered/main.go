@@ -79,9 +79,12 @@ func main() {
 	}
 
 	respBody, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
 	if err != nil {
 		log.Fatalf("failed to read response: %s", err)
+	}
+
+	if err := resp.Body.Close(); err != nil {
+		log.Fatalf("failed to close response body: %s", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {

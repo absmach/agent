@@ -381,7 +381,7 @@ func StopSignalHandler(ctx context.Context, cancel context.CancelFunc, logger *s
 		shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 5*time.Second)
 		defer shutdownCancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("Failed to shutdown %s server: %v", svcName, err)
+			return fmt.Errorf("failed to shutdown %s server: %v", svcName, err)
 		}
 		return fmt.Errorf("%s service shutdown by signal: %s", svcName, sig)
 	case <-ctx.Done():

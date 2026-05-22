@@ -321,7 +321,7 @@ func (a *agent) terminalOpen(uuid string, timeout time.Duration) error {
 		a.terminals[uuid] = term
 		go func() {
 			for range term.IsDone() {
-				a.terminalClose(uuid)
+				_ = a.terminalClose(uuid)
 				delete(a.terminals, uuid)
 				return
 			}
