@@ -47,6 +47,12 @@ const (
 	data    = "data"
 
 	export = "export"
+
+	keyLogLevel               = "log_level"
+	keyHeartbeatInterval      = "heartbeat_interval"
+	keyTerminalSessionTimeout = "terminal_session_timeout"
+
+	notConfigured = "not_configured"
 )
 
 var startTime = time.Now()
@@ -309,7 +315,7 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 			return errInvalidCommand
 		}
 		if a.store == nil {
-			resp = "not_configured"
+			resp = notConfigured
 		} else if val, ok := a.store.Get(cmdArgs[1]); ok {
 			resp = val
 		} else {
@@ -329,7 +335,7 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 			return err
 		}
 		if a.store == nil {
-			resp = "not_configured"
+			resp = notConfigured
 		} else {
 			if err := a.store.Set(key, val); err != nil {
 				return err
@@ -349,7 +355,7 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 			return errInvalidCommand
 		}
 		if a.store == nil {
-			resp = "not_configured"
+			resp = notConfigured
 		} else {
 			if err := a.store.Remove(key); err != nil {
 				return err
@@ -848,25 +854,25 @@ func (a *agent) Shutdown() {
 // get/set. Only these keys are accepted; unknown keys are rejected to prevent
 // arbitrary storage growth.
 var settableKeys = map[string]bool{
-	"log_level":                true,
-	"heartbeat_interval":       true,
-	"terminal_session_timeout": true,
+	keyLogLevel:               true,
+	keyHeartbeatInterval:      true,
+	keyTerminalSessionTimeout: true,
 }
 
 // validateSettableValue returns errInvalidCommand if val is not a valid value for key.
 func validateSettableValue(key, val string) error {
 	switch key {
-	case "log_level":
+	case keyLogLevel:
 		var l slog.Level
 		if err := l.UnmarshalText([]byte(val)); err != nil {
 			return errInvalidCommand
 		}
-	case "heartbeat_interval":
+	case keyHeartbeatInterval:
 		d, err := time.ParseDuration(val)
 		if err != nil || d < time.Second {
 			return errInvalidCommand
 		}
-	case "terminal_session_timeout":
+	case keyTerminalSessionTimeout:
 		d, err := time.ParseDuration(val)
 		if err != nil || d <= 0 {
 			return errInvalidCommand
@@ -881,13 +887,13 @@ func (a *agent) revertToStartup(key string) {
 	a.cfgMu.Lock()
 	var liveVal string
 	switch key {
-	case "log_level":
+	case keyLogLevel:
 		a.config.Log.Level = a.startupConfig.Log.Level
 		liveVal = a.config.Log.Level
-	case "heartbeat_interval":
+	case keyHeartbeatInterval:
 		a.config.Heartbeat.Interval = a.startupConfig.Heartbeat.Interval
 		liveVal = a.config.Heartbeat.Interval.String()
-	case "terminal_session_timeout":
+	case keyTerminalSessionTimeout:
 		a.config.Terminal.SessionTimeout = a.startupConfig.Terminal.SessionTimeout
 		liveVal = a.config.Terminal.SessionTimeout.String()
 	}
@@ -901,13 +907,13 @@ func (a *agent) revertToStartup(key string) {
 // Used at startup to replay persisted overrides before the agent starts.
 func ApplyConfigEntry(cfg *Config, key, val string) {
 	switch key {
-	case "log_level":
+	case keyLogLevel:
 		cfg.Log.Level = val
-	case "heartbeat_interval":
+	case keyHeartbeatInterval:
 		if d, err := time.ParseDuration(val); err == nil && d > 0 {
 			cfg.Heartbeat.Interval = d
 		}
-	case "terminal_session_timeout":
+	case keyTerminalSessionTimeout:
 		if d, err := time.ParseDuration(val); err == nil && d > 0 {
 			cfg.Terminal.SessionTimeout = d
 		}
@@ -918,14 +924,14 @@ func ApplyConfigEntry(cfg *Config, key, val string) {
 // effect is immediate without requiring a restart.
 func (a *agent) applyLiveUpdate(key, val string) {
 	switch key {
-	case "log_level":
+	case keyLogLevel:
 		if a.logLevel != nil {
 			var l slog.Level
 			if err := l.UnmarshalText([]byte(val)); err == nil {
 				a.logLevel.Set(l)
 			}
 		}
-	case "heartbeat_interval":
+	case keyHeartbeatInterval:
 		if d, err := time.ParseDuration(val); err == nil && d > 0 {
 			select {
 			case a.heartbeatIntervalCh <- d:

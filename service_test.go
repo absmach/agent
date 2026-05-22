@@ -602,10 +602,10 @@ func TestConfigGetSet(t *testing.T) {
 
 func TestApplyConfigEntry(t *testing.T) {
 	cases := []struct {
-		desc    string
-		key     string
-		val     string
-		check   func(t *testing.T, cfg agent.Config)
+		desc  string
+		key   string
+		val   string
+		check func(t *testing.T, cfg agent.Config)
 	}{
 		{
 			desc: "set log level",
