@@ -58,8 +58,6 @@ type config struct {
 	BootstrapRetries     string `env:"MG_AGENT_BOOTSTRAP_RETRIES" envDefault:"5"`
 	BootstrapRetryDelay  string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
 	BootstrapSkipTLS     string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS" envDefault:"false"`
-	ProvisionURL         string `env:"MG_AGENT_PROVISION_URL" envDefault:""`
-	ProvisionToken       string `env:"MG_AGENT_PROVISION_TOKEN" envDefault:""`
 	DeviceDBPath         string `env:"MG_AGENT_DEVICE_DB_PATH" envDefault:"/var/lib/agent/devices.db"`
 }
 
@@ -131,8 +129,8 @@ func main() {
 	noderedClient := nodered.NewClient(cfg.NodeRed.URL, logger)
 
 	devices, err := devicemgr.New(c.DeviceDBPath, devicemgr.ProvisionConfig{
-		URL:      c.ProvisionURL,
-		Token:    c.ProvisionToken,
+		URL:      cfg.Provision.URL,
+		Token:    cfg.Provision.Token,
 		DomainID: cfg.DomainID,
 	}, iface.Config{})
 	if err != nil {
