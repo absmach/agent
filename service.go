@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -162,6 +163,8 @@ type agent struct {
 	store               cfgstore.Store
 	heartbeatIntervalCh chan time.Duration
 	logLevel            *slog.LevelVar
+	cfgMu               sync.RWMutex
+	startupConfig       Config
 }
 
 // New returns agent service implementation.
@@ -178,6 +181,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		store:               store,
 		heartbeatIntervalCh: make(chan time.Duration, 1),
 		logLevel:            levelVar,
+		startupConfig:       *cfg,
 	}
 
 	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat",
@@ -321,13 +325,18 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 		if !settableKeys[key] {
 			return errInvalidCommand
 		}
+		if err := validateSettableValue(key, val); err != nil {
+			return err
+		}
 		if a.store == nil {
 			resp = "not_configured"
 		} else {
 			if err := a.store.Set(key, val); err != nil {
 				return err
 			}
+			a.cfgMu.Lock()
 			ApplyConfigEntry(a.config, key, val)
+			a.cfgMu.Unlock()
 			a.applyLiveUpdate(key, val)
 			resp = "ok"
 		}
@@ -345,6 +354,7 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 			if err := a.store.Remove(key); err != nil {
 				return err
 			}
+			a.revertToStartup(key)
 			resp = "ok"
 		}
 	default:
@@ -368,13 +378,14 @@ func (a *agent) Terminal(uuid, cmdStr string) error {
 	if len(cmdArgs) > 1 {
 		ch = cmdArgs[1]
 	}
+	cfg := a.Config()
 	switch cmd {
 	case char:
 		if err := a.terminalWrite(uuid, ch); err != nil {
 			return err
 		}
 	case open:
-		if err := a.terminalOpen(uuid, a.config.Terminal.SessionTimeout); err != nil {
+		if err := a.terminalOpen(uuid, cfg.Terminal.SessionTimeout); err != nil {
 			return err
 		}
 	case close:
@@ -412,7 +423,7 @@ func (a *agent) terminalClose(uuid string) error {
 }
 
 func (a *agent) terminalWrite(uuid, cmd string) error {
-	if err := a.terminalOpen(uuid, a.config.Terminal.SessionTimeout); err != nil {
+	if err := a.terminalOpen(uuid, a.Config().Terminal.SessionTimeout); err != nil {
 		return err
 	}
 	term := a.terminals[uuid]
@@ -475,8 +486,9 @@ func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 		return flowJSON
 	}
 
-	host, port, useTLS := nodeRedMQTTEndpoint(a.config.MQTT.URL)
-	dataChannel := a.config.Channels.DataChan()
+	cfg := a.Config()
+	host, port, useTLS := nodeRedMQTTEndpoint(cfg.MQTT.URL)
+	dataChannel := cfg.Channels.DataChan()
 	brokerIDs := map[string]struct{}{}
 
 	patchNodeRedValue(payload, func(node map[string]any) {
@@ -491,25 +503,25 @@ func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 				node["broker"] = host
 			}
 			node["port"] = port
-			node["clientid"] = a.config.MQTT.Username + "-nr"
+			node["clientid"] = cfg.MQTT.Username + "-nr"
 			node["usetls"] = useTLS
-			if useTLS && a.config.MQTT.SkipTLSVer {
+			if useTLS && cfg.MQTT.SkipTLSVer {
 				node["tls"] = nodeRedTLSConfigID
 			} else {
 				delete(node, "tls")
 			}
 			node["credentials"] = map[string]any{
-				"user":     a.config.MQTT.Username,
-				"password": a.config.MQTT.Password,
+				"user":     cfg.MQTT.Username,
+				"password": cfg.MQTT.Password,
 			}
 		case "function":
 			if fn, ok := node["func"].(string); ok {
-				node["func"] = patchNodeRedTopic(fn, a.config.DomainID, dataChannel)
+				node["func"] = patchNodeRedTopic(fn, cfg.DomainID, dataChannel)
 			}
 		}
 
 		if topic, ok := node["topic"].(string); ok {
-			node["topic"] = patchNodeRedTopic(topic, a.config.DomainID, dataChannel)
+			node["topic"] = patchNodeRedTopic(topic, cfg.DomainID, dataChannel)
 		}
 	})
 
@@ -530,7 +542,7 @@ func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 		})
 	}
 
-	if useTLS && a.config.MQTT.SkipTLSVer {
+	if useTLS && cfg.MQTT.SkipTLSVer {
 		payload = ensureNodeRedTLSConfig(payload)
 	}
 
@@ -687,11 +699,15 @@ func saveExportConfig(fileName string, content []byte) error {
 }
 
 func (a *agent) AddConfig(c Config) error {
+	a.cfgMu.Lock()
+	defer a.cfgMu.Unlock()
 	*a.config = c
 	return nil
 }
 
 func (a *agent) Config() Config {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
 	return *a.config
 }
 
@@ -711,7 +727,7 @@ func (a *agent) Services() []Info {
 
 func (a *agent) Publish(t, payload string) error {
 	topic := a.getTopic(t)
-	mqtt := a.config.MQTT
+	mqtt := a.Config().MQTT
 	token := a.mqttClient.Publish(topic, mqtt.QoS, mqtt.Retain, payload)
 	token.Wait()
 	err := token.Error()
@@ -756,7 +772,7 @@ func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.D
 
 func (a *agent) UpdateLiveness(svcname, svctype string) error {
 	if _, ok := a.svcs[svcname]; !ok {
-		svc := NewHeartbeat(svcname, svctype, a.config.Heartbeat.Interval)
+		svc := NewHeartbeat(svcname, svctype, a.Config().Heartbeat.Interval)
 		a.svcs[svcname] = svc
 	}
 	a.svcs[svcname].Update()
@@ -837,6 +853,50 @@ var settableKeys = map[string]bool{
 	"terminal_session_timeout": true,
 }
 
+// validateSettableValue returns errInvalidCommand if val is not a valid value for key.
+func validateSettableValue(key, val string) error {
+	switch key {
+	case "log_level":
+		var l slog.Level
+		if err := l.UnmarshalText([]byte(val)); err != nil {
+			return errInvalidCommand
+		}
+	case "heartbeat_interval":
+		d, err := time.ParseDuration(val)
+		if err != nil || d < time.Second {
+			return errInvalidCommand
+		}
+	case "terminal_session_timeout":
+		d, err := time.ParseDuration(val)
+		if err != nil || d <= 0 {
+			return errInvalidCommand
+		}
+	}
+	return nil
+}
+
+// revertToStartup restores key's value from startupConfig and applies the
+// live update so running subsystems reflect the reverted value immediately.
+func (a *agent) revertToStartup(key string) {
+	a.cfgMu.Lock()
+	var liveVal string
+	switch key {
+	case "log_level":
+		a.config.Log.Level = a.startupConfig.Log.Level
+		liveVal = a.config.Log.Level
+	case "heartbeat_interval":
+		a.config.Heartbeat.Interval = a.startupConfig.Heartbeat.Interval
+		liveVal = a.config.Heartbeat.Interval.String()
+	case "terminal_session_timeout":
+		a.config.Terminal.SessionTimeout = a.startupConfig.Terminal.SessionTimeout
+		liveVal = a.config.Terminal.SessionTimeout.String()
+	}
+	a.cfgMu.Unlock()
+	if liveVal != "" {
+		a.applyLiveUpdate(key, liveVal)
+	}
+}
+
 // ApplyConfigEntry updates cfg in place for the known settable keys.
 // Used at startup to replay persisted overrides before the agent starts.
 func ApplyConfigEntry(cfg *Config, key, val string) {
@@ -876,14 +936,15 @@ func (a *agent) applyLiveUpdate(key, val string) {
 }
 
 func (a *agent) getTopic(topic string) (t string) {
-	domainID := a.config.DomainID
+	cfg := a.Config()
+	domainID := cfg.DomainID
 	switch topic {
 	case control:
-		t = fmt.Sprintf("m/%s/c/%s/res", domainID, a.config.Channels.CtrlChan())
+		t = fmt.Sprintf("m/%s/c/%s/res", domainID, cfg.Channels.CtrlChan())
 	case data:
 		t = fmt.Sprintf("m/%s/c/%s/gateway/telemetry", domainID, a.config.Channels.DataChan())
 	default:
-		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, a.config.Channels.CtrlChan(), topic)
+		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, cfg.Channels.CtrlChan(), topic)
 	}
 	return t
 }

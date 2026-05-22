@@ -5,6 +5,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"maps"
 	"os"
 	"sync"
@@ -32,7 +33,7 @@ func NewStore(path string) (Store, error) {
 		entries: make(map[string]string),
 		path:    path,
 	}
-	if err := s.load(); err != nil && !os.IsNotExist(err) {
+	if err := s.load(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
 	return s, nil
@@ -48,21 +49,19 @@ func (s *fileStore) Get(key string) (string, bool) {
 
 // Set writes key→value to the in-memory cache and immediately persists.
 // If the disk write fails the in-memory change is rolled back.
+// The lock is held for the duration of the disk write to prevent concurrent
+// writers from racing on the same snapshot file.
 func (s *fileStore) Set(key, value string) error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	prev, existed := s.entries[key]
 	s.entries[key] = value
-	snapshot := s.copyEntries()
-	s.mu.Unlock()
-
-	if err := s.writeSnapshot(snapshot); err != nil {
-		s.mu.Lock()
+	if err := s.writeSnapshot(s.copyEntries()); err != nil {
 		if existed {
 			s.entries[key] = prev
 		} else {
 			delete(s.entries, key)
 		}
-		s.mu.Unlock()
 		return err
 	}
 	return nil
@@ -70,21 +69,18 @@ func (s *fileStore) Set(key, value string) error {
 
 // Remove deletes key from the store and persists immediately.
 // It is a no-op if the key does not exist.
+// The lock is held for the duration of the disk write to prevent concurrent
+// writers from racing on the same snapshot file.
 func (s *fileStore) Remove(key string) error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	prev, existed := s.entries[key]
 	if !existed {
-		s.mu.Unlock()
 		return nil
 	}
 	delete(s.entries, key)
-	snapshot := s.copyEntries()
-	s.mu.Unlock()
-
-	if err := s.writeSnapshot(snapshot); err != nil {
-		s.mu.Lock()
+	if err := s.writeSnapshot(s.copyEntries()); err != nil {
 		s.entries[key] = prev
-		s.mu.Unlock()
 		return err
 	}
 	return nil

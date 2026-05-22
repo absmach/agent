@@ -116,6 +116,13 @@ func main() {
 		return
 	}
 	cfg = applyPersistedOverrides(cfg, store)
+	// Sync the live log-level variable with any persisted log_level override.
+	if val, ok := store.Get("log_level"); ok {
+		var l slog.Level
+		if err := l.UnmarshalText([]byte(val)); err == nil {
+			levelVar.Set(l)
+		}
+	}
 
 	if err := validateRuntimeConfig(cfg); err != nil {
 		logger.Error("Failed to validate config", slog.Any("error", err))

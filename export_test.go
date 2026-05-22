@@ -44,6 +44,7 @@ func TerminalCloseExistingSessionForTest(uuid string) (int, error) {
 	ag := &agent{
 		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		terminals: map[string]terminal.Session{uuid: nil},
+		config:    &Config{},
 	}
 
 	cmd := base64.StdEncoding.EncodeToString([]byte(close))

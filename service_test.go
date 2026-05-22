@@ -489,10 +489,22 @@ func TestConfigGetSet(t *testing.T) {
 			wantResp: "ok",
 		},
 		{
-			desc:     "set heartbeat_interval with invalid duration stores but returns ok",
+			desc:     "reject set with invalid duration",
 			cmd:      "set,heartbeat_interval,not-a-duration",
 			useStore: true,
-			wantResp: "ok",
+			err:      true,
+		},
+		{
+			desc:     "reject set with invalid log level",
+			cmd:      "set,log_level,BOGUS",
+			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "reject set with heartbeat interval below minimum",
+			cmd:      "set,heartbeat_interval,500ms",
+			useStore: true,
+			err:      true,
 		},
 		{
 			desc:     "reject get without key",
@@ -565,7 +577,7 @@ func TestConfigGetSet(t *testing.T) {
 				s, storeErr = cfgstore.NewStore(filepath.Join(t.TempDir(), "config.json"))
 				assert.Nil(t, storeErr, fmt.Sprintf("%s: unexpected store error %v", tc.desc, storeErr))
 				for k, v := range tc.seed {
-					assert.Nil(t, s.Set(k, v))
+					require.NoError(t, s.Set(k, v))
 				}
 			}
 			svc, mqttClient, _, setupErr := newServiceWithStore(t, testConfig(), s)
@@ -623,6 +635,22 @@ func TestApplyConfigEntry(t *testing.T) {
 			desc: "invalid duration is ignored",
 			key:  "heartbeat_interval",
 			val:  "not-a-duration",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, time.Hour, cfg.Heartbeat.Interval)
+			},
+		},
+		{
+			desc: "zero duration is ignored",
+			key:  "heartbeat_interval",
+			val:  "0s",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, time.Hour, cfg.Heartbeat.Interval)
+			},
+		},
+		{
+			desc: "negative duration is ignored",
+			key:  "heartbeat_interval",
+			val:  "-5s",
 			check: func(t *testing.T, cfg agent.Config) {
 				assert.Equal(t, time.Hour, cfg.Heartbeat.Interval)
 			},

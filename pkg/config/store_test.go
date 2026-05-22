@@ -139,4 +139,6 @@ func TestStore_Set_WriteError(t *testing.T) {
 	require.NoError(t, err)
 	err = s.Set("key", "val")
 	assert.Error(t, err, "expected error when parent directory does not exist")
+	_, ok := s.Get("key")
+	assert.False(t, ok, "in-memory entry must be rolled back after write error")
 }
