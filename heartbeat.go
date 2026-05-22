@@ -36,6 +36,7 @@ type Info struct {
 type Heartbeat interface {
 	Update()
 	Info() Info
+	Stop()
 }
 
 // interval - duration of interval
@@ -81,4 +82,8 @@ func (s *svc) Info() Info {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.info
+}
+
+func (s *svc) Stop() {
+	s.ticker.Stop()
 }

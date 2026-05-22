@@ -93,7 +93,7 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		b.WriteString(" ")
 		b.WriteString(a.Key)
 		b.WriteString("=")
-		b.WriteString(fmt.Sprintf("%v", a.Value))
+		fmt.Fprintf(&b, "%v", a.Value)
 		return true
 	})
 	h.stream.push(b.String())
@@ -126,14 +126,14 @@ func SSEHandler(s *Stream) http.Handler {
 		defer s.unsubscribe(id)
 
 		for _, line := range backlog {
-			fmt.Fprintf(w, "data: %s\n\n", line)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", line)
 		}
 		flusher.Flush()
 
 		for {
 			select {
 			case line := <-ch:
-				fmt.Fprintf(w, "data: %s\n\n", line)
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", line)
 				flusher.Flush()
 			case <-r.Context().Done():
 				return

@@ -213,3 +213,9 @@ func (lm *loggingMiddleware) NodeRed(cmdStr string) (resp string, err error) {
 
 	return lm.svc.NodeRed(cmdStr)
 }
+
+func (lm *loggingMiddleware) Shutdown() {
+	lm.logger.Info("Shutdown initiated")
+	lm.svc.Shutdown()
+	lm.logger.Info("Shutdown completed")
+}

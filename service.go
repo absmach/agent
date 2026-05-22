@@ -129,6 +129,9 @@ type Service interface {
 
 	// OTA triggers an over-the-air binary update by downloading from url.
 	OTA(ctx context.Context, url, sha256hex string, size uint64) error
+	// Shutdown performs a graceful shutdown: stops all service heartbeat
+	// tickers and disconnects the MQTT client.
+	Shutdown()
 }
 
 var _ Service = (*agent)(nil)
@@ -318,7 +321,7 @@ func (a *agent) terminalOpen(uuid string, timeout time.Duration) error {
 		a.terminals[uuid] = term
 		go func() {
 			for range term.IsDone() {
-				a.terminalClose(uuid)
+				_ = a.terminalClose(uuid)
 				delete(a.terminals, uuid)
 				return
 			}
@@ -736,6 +739,18 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	}
 
 	return ota.Run(ctx, otaCfg, url, sha256hex, size, progressFn)
+}
+
+func (a *agent) Shutdown() {
+	a.logger.Debug("shutting down service heartbeats")
+	for name, svc := range a.svcs {
+		svc.Stop()
+		a.logger.Debug("stopped service heartbeat", slog.String("service", name))
+	}
+
+	a.logger.Debug("disconnecting MQTT client")
+	a.mqttClient.Disconnect(1000)
+	a.logger.Info("graceful shutdown complete")
 }
 
 func (a *agent) getTopic(topic string) (t string) {

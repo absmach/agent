@@ -643,6 +643,37 @@ func TestPublish(t *testing.T) {
 	}
 }
 
+func TestShutdown(t *testing.T) {
+	cases := []struct {
+		desc        string
+		registerSvc bool
+	}{
+		{
+			desc: "shutdown without registered services",
+		},
+		{
+			desc:        "shutdown with registered services",
+			registerSvc: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			svc, mqttClient, _, err := newService(t, testConfig())
+			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
+
+			if tc.registerSvc {
+				err = svc.UpdateLiveness("nodered", "service")
+				assert.Nil(t, err, fmt.Sprintf("%s: unexpected liveness error %v", tc.desc, err))
+			}
+
+			mqttClient.On("Disconnect", uint(1000)).Once()
+			svc.Shutdown()
+			mqttClient.AssertExpectations(t)
+		})
+	}
+}
+
 func TestChangeDir(t *testing.T) {
 	tmp := t.TempDir()
 	child := filepath.Join(tmp, "child")

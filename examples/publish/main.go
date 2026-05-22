@@ -47,7 +47,11 @@ func main() {
 		logger.Error(err.Error())
 		return
 	}
-	defer ps.Close()
+	defer func() {
+		if err := ps.Close(); err != nil {
+			logger.Error(err.Error())
+		}
+	}()
 
 	if err := ps.Publish(context.Background(), subj, &messaging.Message{
 		Channel: subj,

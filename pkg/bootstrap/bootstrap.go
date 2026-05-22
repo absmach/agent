@@ -185,7 +185,11 @@ func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) 
 	if err != nil {
 		return bootstrapResponse{}, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Error(err.Error())
+		}
+	}()
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		return bootstrapResponse{}, errors.New(http.StatusText(resp.StatusCode))

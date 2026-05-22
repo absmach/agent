@@ -70,7 +70,11 @@ func (nc *noderedClient) DeployFlows(flows string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			nc.logger.Error(err.Error())
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -109,7 +113,11 @@ func (nc *noderedClient) AddFlow(flow string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			nc.logger.Error(err.Error())
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -268,7 +276,11 @@ func (nc *noderedClient) FlowState() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			nc.logger.Error(err.Error())
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -286,7 +298,11 @@ func (nc *noderedClient) FetchFlows() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			nc.logger.Error(err.Error())
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -304,7 +320,11 @@ func (nc *noderedClient) Ping() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			nc.logger.Error(err.Error())
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
