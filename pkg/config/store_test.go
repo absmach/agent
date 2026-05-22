@@ -33,8 +33,10 @@ func TestNewStore_EmptyFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	err := os.WriteFile(path, []byte(""), 0o600)
 	require.NoError(t, err)
-	_, err = config.NewStore(path)
-	assert.Error(t, err, "expected error on empty file")
+	s, err := config.NewStore(path)
+	require.NoError(t, err, "empty file should be treated as an empty store")
+	_, ok := s.Get("any")
+	assert.False(t, ok)
 }
 
 func TestStore_SetGet_RoundTrip(t *testing.T) {

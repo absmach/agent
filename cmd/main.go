@@ -91,7 +91,7 @@ func main() {
 		return
 	}
 
-	logger, err := initLogger(cfg.Log.Level)
+	logger, levelVar, err := initLogger(cfg.Log.Level)
 	if err != nil {
 		log.Printf("Failed to create logger: %s", err)
 		exitCode = 1
@@ -150,7 +150,7 @@ func main() {
 	}
 	defer devices.Close()
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger, devices, store)
+	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger, devices, store, levelVar)
 	if err != nil {
 		logger.Error("Error in agent service", slog.Any("error", err))
 		exitCode = 1
@@ -414,17 +414,19 @@ func StopSignalHandler(ctx context.Context, cancel context.CancelFunc, logger *s
 	}
 }
 
-func initLogger(levelText string) (*slog.Logger, error) {
+func initLogger(levelText string) (*slog.Logger, *slog.LevelVar, error) {
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(levelText)); err != nil {
-		return &slog.Logger{}, fmt.Errorf(`{"level":"error","message":"%s: %s","ts":"%s"}`, err, levelText, time.Now())
+		return &slog.Logger{}, nil, fmt.Errorf(`{"level":"error","message":"%s: %s","ts":"%s"}`, err, levelText, time.Now())
 	}
 
+	var levelVar slog.LevelVar
+	levelVar.Set(level)
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
+		Level: &levelVar,
 	})
 
-	return slog.New(logHandler), nil
+	return slog.New(logHandler), &levelVar, nil
 }
 
 func applyPersistedOverrides(cfg agent.Config, store *pkgconfig.Store) agent.Config {

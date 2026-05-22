@@ -69,7 +69,7 @@ func newServiceWithStore(t *testing.T, cfg agent.Config, store *cfgstore.Store) 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, store)
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, store, nil)
 	return svc, mqttClient, nodeRed, err
 }
 
@@ -96,7 +96,7 @@ func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (
 		mgr = devices[0]
 	}
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr, nil)
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr, nil, nil)
 	return svc, mqttClient, nodeRed, err
 }
 
@@ -383,8 +383,9 @@ func TestServiceConfig(t *testing.T) {
 			pubErr:      errBoom,
 		},
 		{
-			desc: "publish empty response for unknown config command",
+			desc: "return error for unknown config command",
 			cmd:  "noop",
+			err:  true,
 		},
 		{
 			desc: "reject malformed save command",

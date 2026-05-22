@@ -5,6 +5,7 @@ package config
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"sync"
 )
@@ -39,24 +40,33 @@ func (s *Store) Get(key string) (string, bool) {
 	return v, ok
 }
 
-// Set writes the key/value pair to the in-memory cache and flushes the full
-// store to disk before returning.
+// Set writes key→value to the in-memory cache and immediately persists.
+// If the disk write fails the in-memory change is rolled back.
 func (s *Store) Set(key, value string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	prev, existed := s.entries[key]
 	s.entries[key] = value
-	return s.persist()
+	snapshot := s.copyEntries()
+	s.mu.Unlock()
+
+	if err := s.writeSnapshot(snapshot); err != nil {
+		s.mu.Lock()
+		if existed {
+			s.entries[key] = prev
+		} else {
+			delete(s.entries, key)
+		}
+		s.mu.Unlock()
+		return err
+	}
+	return nil
 }
 
 // All returns a snapshot of all entries.
 func (s *Store) All() map[string]string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make(map[string]string, len(s.entries))
-	for k, v := range s.entries {
-		out[k] = v
-	}
-	return out
+	return s.copyEntries()
 }
 
 func (s *Store) load() error {
@@ -64,11 +74,21 @@ func (s *Store) load() error {
 	if err != nil {
 		return err
 	}
+	if len(b) == 0 {
+		return nil
+	}
 	return json.Unmarshal(b, &s.entries)
 }
 
-func (s *Store) persist() error {
-	b, err := json.MarshalIndent(s.entries, "", "  ")
+// copyEntries returns a copy of s.entries. Must be called with the lock held.
+func (s *Store) copyEntries() map[string]string {
+	out := make(map[string]string, len(s.entries))
+	maps.Copy(out, s.entries)
+	return out
+}
+
+func (s *Store) writeSnapshot(m map[string]string) error {
+	b, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
 	}

@@ -150,30 +150,34 @@ type Service interface {
 var _ Service = (*agent)(nil)
 
 type agent struct {
-	mqttClient    paho.Client
-	config        *Config
-	noderedClient nodered.Client
-	logger        *slog.Logger
-	svcs          map[string]Heartbeat
-	terminals     map[string]terminal.Session
-	devices       *devicemgr.Manager
-	workDir       string
-	otaBusy       atomic.Bool
-	store         *cfgstore.Store
+	mqttClient          paho.Client
+	config              *Config
+	noderedClient       nodered.Client
+	logger              *slog.Logger
+	svcs                map[string]Heartbeat
+	terminals           map[string]terminal.Session
+	devices             *devicemgr.Manager
+	workDir             string
+	otaBusy             atomic.Bool
+	store               *cfgstore.Store
+	heartbeatIntervalCh chan time.Duration
+	logLevel            *slog.LevelVar
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store *cfgstore.Store) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store *cfgstore.Store, levelVar *slog.LevelVar) (Service, error) {
 	ag := &agent{
-		mqttClient:    mc,
-		noderedClient: nc,
-		config:        cfg,
-		logger:        logger,
-		svcs:          make(map[string]Heartbeat),
-		terminals:     make(map[string]terminal.Session),
-		devices:       devices,
-		workDir:       "/",
-		store:         store,
+		mqttClient:          mc,
+		noderedClient:       nc,
+		config:              cfg,
+		logger:              logger,
+		svcs:                make(map[string]Heartbeat),
+		terminals:           make(map[string]terminal.Session),
+		devices:             devices,
+		workDir:             "/",
+		store:               store,
+		heartbeatIntervalCh: make(chan time.Duration, 1),
+		logLevel:            levelVar,
 	}
 
 	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat",
@@ -297,7 +301,7 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
 			return errInvalidCommand
 		}
-		if !SettableKeys[cmdArgs[1]] {
+		if !settableKeys[cmdArgs[1]] {
 			return errInvalidCommand
 		}
 		if a.store == nil {
@@ -308,11 +312,13 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 			resp = "not_found"
 		}
 	case "set":
-		if len(cmdArgs) < 3 || cmdArgs[1] == "" || cmdArgs[2] == "" {
+		// Use SplitN(3) so values containing commas (e.g. URLs) are preserved.
+		setArgs := strings.SplitN(strings.ReplaceAll(cmdStr, " ", ""), ",", 3)
+		if len(setArgs) < 3 || setArgs[1] == "" || setArgs[2] == "" {
 			return errInvalidCommand
 		}
-		key, val := cmdArgs[1], cmdArgs[2]
-		if !SettableKeys[key] {
+		key, val := setArgs[1], setArgs[2]
+		if !settableKeys[key] {
 			return errInvalidCommand
 		}
 		if a.store == nil {
@@ -322,8 +328,11 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 				return err
 			}
 			ApplyConfigEntry(a.config, key, val)
+			a.applyLiveUpdate(key, val)
 			resp = "ok"
 		}
+	default:
+		return errInvalidCommand
 	}
 	return a.processResponse(uuid, cmd, resp)
 }
@@ -721,6 +730,8 @@ func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.D
 		select {
 		case <-ticker.C:
 			publish()
+		case d := <-a.heartbeatIntervalCh:
+			ticker.Reset(d)
 		case <-ctx.Done():
 			return
 		}
@@ -801,34 +812,50 @@ func (a *agent) Shutdown() {
 	a.logger.Info("graceful shutdown complete")
 }
 
-// SettableKeys is the allowlist of config keys that can be read and written
-// via MQTT get/set commands. Only keys in this set are accepted; unknown keys
-// are rejected to prevent arbitrary storage growth and SSRF via nodered_url.
-var SettableKeys = map[string]bool{
+// settableKeys is the allowlist of config keys readable/writable via MQTT
+// get/set. Only these keys are accepted; unknown keys are rejected to prevent
+// arbitrary storage growth.
+var settableKeys = map[string]bool{
 	"log_level":                true,
 	"heartbeat_interval":       true,
 	"terminal_session_timeout": true,
-	"nodered_url":              true,
-	"server_port":              true,
 }
 
 // ApplyConfigEntry updates cfg in place for the known settable keys.
+// Used at startup to replay persisted overrides before the agent starts.
 func ApplyConfigEntry(cfg *Config, key, val string) {
 	switch key {
 	case "log_level":
 		cfg.Log.Level = val
 	case "heartbeat_interval":
-		if d, err := time.ParseDuration(val); err == nil {
+		if d, err := time.ParseDuration(val); err == nil && d > 0 {
 			cfg.Heartbeat.Interval = d
 		}
 	case "terminal_session_timeout":
-		if d, err := time.ParseDuration(val); err == nil {
+		if d, err := time.ParseDuration(val); err == nil && d > 0 {
 			cfg.Terminal.SessionTimeout = d
 		}
-	case "nodered_url":
-		cfg.NodeRed.URL = val
-	case "server_port":
-		cfg.Server.Port = val
+	}
+}
+
+// applyLiveUpdate propagates a config change to running subsystems so the
+// effect is immediate without requiring a restart.
+func (a *agent) applyLiveUpdate(key, val string) {
+	switch key {
+	case "log_level":
+		if a.logLevel != nil {
+			var l slog.Level
+			if err := l.UnmarshalText([]byte(val)); err == nil {
+				a.logLevel.Set(l)
+			}
+		}
+	case "heartbeat_interval":
+		if d, err := time.ParseDuration(val); err == nil && d > 0 {
+			select {
+			case a.heartbeatIntervalCh <- d:
+			default:
+			}
+		}
 	}
 }
 
