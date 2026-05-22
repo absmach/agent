@@ -159,13 +159,13 @@ type agent struct {
 	devices             *devicemgr.Manager
 	workDir             string
 	otaBusy             atomic.Bool
-	store               *cfgstore.Store
+	store               cfgstore.Store
 	heartbeatIntervalCh chan time.Duration
 	logLevel            *slog.LevelVar
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store *cfgstore.Store, levelVar *slog.LevelVar) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store cfgstore.Store, levelVar *slog.LevelVar) (Service, error) {
 	ag := &agent{
 		mqttClient:          mc,
 		noderedClient:       nc,
@@ -329,6 +329,22 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 			}
 			ApplyConfigEntry(a.config, key, val)
 			a.applyLiveUpdate(key, val)
+			resp = "ok"
+		}
+	case "reset":
+		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
+			return errInvalidCommand
+		}
+		key := cmdArgs[1]
+		if !settableKeys[key] {
+			return errInvalidCommand
+		}
+		if a.store == nil {
+			resp = "not_configured"
+		} else {
+			if err := a.store.Remove(key); err != nil {
+				return err
+			}
 			resp = "ok"
 		}
 	default:

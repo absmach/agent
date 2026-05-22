@@ -93,6 +93,44 @@ func TestStore_All_Snapshot(t *testing.T) {
 	assert.False(t, ok, "snapshot mutation must not affect the store")
 }
 
+func TestStore_Remove_ExistingKey(t *testing.T) {
+	s, err := config.NewStore(filepath.Join(t.TempDir(), "config.json"))
+	require.NoError(t, err)
+	require.NoError(t, s.Set("key", "value"))
+	require.NoError(t, s.Remove("key"))
+	_, ok := s.Get("key")
+	assert.False(t, ok, "expected key to be removed")
+}
+
+func TestStore_Remove_MissingKey(t *testing.T) {
+	s, err := config.NewStore(filepath.Join(t.TempDir(), "config.json"))
+	require.NoError(t, err)
+	assert.NoError(t, s.Remove("nonexistent"), "remove of missing key must not error")
+}
+
+func TestStore_Remove_Persists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	s1, err := config.NewStore(path)
+	require.NoError(t, err)
+	require.NoError(t, s1.Set("key", "value"))
+	require.NoError(t, s1.Remove("key"))
+
+	s2, err := config.NewStore(path)
+	require.NoError(t, err)
+	_, ok := s2.Get("key")
+	assert.False(t, ok, "removed key must not reappear after reload")
+}
+
+func TestStore_Remove_WriteError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "noexist", "config.json")
+	s, err := config.NewStore(path)
+	require.NoError(t, err)
+	// Manually seed an entry so Remove actually tries to write.
+	require.Error(t, s.Set("key", "val"), "expected write error")
+	// Remove on a missing-key store is a no-op — no write attempted.
+	assert.NoError(t, s.Remove("key"))
+}
+
 func TestStore_Set_WriteError(t *testing.T) {
 	// Path in a non-existent subdirectory — NewStore succeeds (file not found),
 	// but persist() fails because the parent directory doesn't exist.

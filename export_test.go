@@ -13,6 +13,10 @@ import (
 
 const NodeRedTLSConfigIDForTest = nodeRedTLSConfigID
 
+func ApplyConfigEntryForTest(cfg *Config, key, val string) {
+	ApplyConfigEntry(cfg, key, val)
+}
+
 func ChangeDirForTest(workDir string, cmd []string) (string, string, error) {
 	ag := &agent{workDir: workDir}
 	output, err := ag.changeDir(cmd)

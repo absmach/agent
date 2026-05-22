@@ -55,7 +55,7 @@ func testConfig() agent.Config {
 	)
 }
 
-func newServiceWithStore(t *testing.T, cfg agent.Config, store *cfgstore.Store) (agent.Service, *agentmocks.MQTTClient, *nrmocks.Client, error) {
+func newServiceWithStore(t *testing.T, cfg agent.Config, store cfgstore.Store) (agent.Service, *agentmocks.MQTTClient, *nrmocks.Client, error) {
 	cfg.DomainID = domainID
 	mqttClient := agentmocks.NewMQTTClient(t)
 	nodeRed := nrmocks.NewClient(t)
@@ -524,11 +524,42 @@ func TestConfigGetSet(t *testing.T) {
 			useStore: true,
 			err:      true,
 		},
+		{
+			desc:     "reset key without store returns not_configured",
+			cmd:      "reset,log_level",
+			useStore: false,
+			wantResp: "not_configured",
+		},
+		{
+			desc:     "reset existing key returns ok",
+			cmd:      "reset,log_level",
+			useStore: true,
+			seed:     map[string]string{"log_level": "debug"},
+			wantResp: "ok",
+		},
+		{
+			desc:     "reset missing key is no-op and returns ok",
+			cmd:      "reset,log_level",
+			useStore: true,
+			wantResp: "ok",
+		},
+		{
+			desc:     "reject reset without key",
+			cmd:      "reset",
+			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "reject reset with unknown key",
+			cmd:      "reset,mqtt_password",
+			useStore: true,
+			err:      true,
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			var s *cfgstore.Store
+			var s cfgstore.Store
 			if tc.useStore {
 				var storeErr error
 				s, storeErr = cfgstore.NewStore(filepath.Join(t.TempDir(), "config.json"))
@@ -553,6 +584,64 @@ func TestConfigGetSet(t *testing.T) {
 			} else {
 				assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
 			}
+		})
+	}
+}
+
+func TestApplyConfigEntry(t *testing.T) {
+	cases := []struct {
+		desc    string
+		key     string
+		val     string
+		check   func(t *testing.T, cfg agent.Config)
+	}{
+		{
+			desc: "set log level",
+			key:  "log_level",
+			val:  "warn",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, "warn", cfg.Log.Level)
+			},
+		},
+		{
+			desc: "set heartbeat interval",
+			key:  "heartbeat_interval",
+			val:  "30s",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, 30*time.Second, cfg.Heartbeat.Interval)
+			},
+		},
+		{
+			desc: "set terminal session timeout",
+			key:  "terminal_session_timeout",
+			val:  "2m",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, 2*time.Minute, cfg.Terminal.SessionTimeout)
+			},
+		},
+		{
+			desc: "invalid duration is ignored",
+			key:  "heartbeat_interval",
+			val:  "not-a-duration",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, time.Hour, cfg.Heartbeat.Interval)
+			},
+		},
+		{
+			desc: "unknown key is a no-op",
+			key:  "mqtt_password",
+			val:  "secret",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, "client-secret", cfg.MQTT.Password)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			cfg := testConfig()
+			agent.ApplyConfigEntryForTest(&cfg, tc.key, tc.val)
+			tc.check(t, cfg)
 		})
 	}
 }

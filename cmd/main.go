@@ -429,7 +429,7 @@ func initLogger(levelText string) (*slog.Logger, *slog.LevelVar, error) {
 	return slog.New(logHandler), &levelVar, nil
 }
 
-func applyPersistedOverrides(cfg agent.Config, store *pkgconfig.Store) agent.Config {
+func applyPersistedOverrides(cfg agent.Config, store pkgconfig.Store) agent.Config {
 	for key, val := range store.All() {
 		agent.ApplyConfigEntry(&cfg, key, val)
 	}
