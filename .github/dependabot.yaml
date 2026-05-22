@@ -1,0 +1,41 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "./.github/workflows"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+    groups:
+      gh-dependency:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "gomod"
+    directory: "."
+    schedule:
+      interval: "monthly"
+      day: "monday"
+    groups:
+      go-dependency:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directory: "./docker"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+    groups:
+      docker-dependency:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker-compose"
+    directory: "./docker"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+    groups:
+      docker-compose-dependency:
+        patterns:
+          - "*"
