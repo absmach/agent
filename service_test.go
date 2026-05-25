@@ -112,38 +112,21 @@ func expectMQTTPublish(t *testing.T, mqttClient *agentmocks.MQTTClient, topic st
 }
 
 func TestSelfHeartbeatPublishesRichPayload(t *testing.T) {
-	cfg := testConfig()
-	cfg.DomainID = domainID
-	mqttClient := agentmocks.NewMQTTClient(t)
-	nodeRed := nrmocks.NewClient(t)
-
-	mqttClient.On("IsConnected").Return(true).Maybe()
-
-	published := make(chan struct{})
-	token := agentmocks.NewMQTTToken(t)
-	token.On("Wait").Return(true).Once()
-	token.On("Error").Run(func(_ mock.Arguments) {
-		close(published)
-	}).Return(error(nil)).Once()
-
-	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"), cfg.MQTT.QoS, false, mock.MatchedBy(func(payload interface{}) bool {
-		return richHeartbeatPayload(t, payload)
-	})).Return(token).Once()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+	_, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	require.NoError(t, err)
 
 	select {
 	case <-published:
 	case <-time.After(time.Second):
-		t.Fatal("self-heartbeat was not published")
+		t.Fatal("telemetry was not published")
 	}
 }
 
-func richHeartbeatPayload(t *testing.T, payload interface{}) bool {
+func telemetryPayload(t *testing.T, payload interface{}) bool {
 	t.Helper()
 
 	var b []byte
@@ -162,24 +145,27 @@ func richHeartbeatPayload(t *testing.T, payload interface{}) bool {
 	}
 
 	records := make(map[string]senml.Record, len(pack.Records))
+	hasNetworkStats := false
 	for _, record := range pack.Records {
 		records[record.Name] = record
+		if strings.HasPrefix(record.Name, "net_") {
+			hasNetworkStats = true
+		}
 	}
 
-	return records["service_type"].StringValue != nil &&
-		*records["service_type"].StringValue == "agent" &&
-		records["heartbeat"].BoolValue != nil &&
-		*records["heartbeat"].BoolValue &&
-		records["fw_version"].StringValue != nil &&
-		*records["fw_version"].StringValue == agent.Version &&
+	return records["cpu_usage"].Value != nil &&
+		records["cpu_usage"].Unit == "%" &&
+		records["memory_used"].Value != nil &&
+		records["memory_used"].Unit == "By" &&
+		records["memory_free"].Value != nil &&
+		records["memory_free"].Unit == "By" &&
+		records["disk_used"].Value != nil &&
+		records["disk_used"].Unit == "By" &&
+		records["disk_free"].Value != nil &&
+		records["disk_free"].Unit == "By" &&
 		records["uptime"].Value != nil &&
 		records["uptime"].Unit == "s" &&
-		records["heap_free"].Value != nil &&
-		records["heap_free"].Unit == "By" &&
-		records["devices"].Value != nil &&
-		records["devices"].Unit == "count" &&
-		records["connected"].BoolValue != nil &&
-		*records["connected"].BoolValue
+		hasNetworkStats
 }
 
 func TestChannelConfig(t *testing.T) {
@@ -268,6 +254,53 @@ func TestDurationConfigUnmarshalJSON(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tc.heartbeat, cfg.Heartbeat.Interval)
 			assert.Equal(t, tc.terminal, cfg.Terminal.SessionTimeout)
+		})
+	}
+}
+
+func TestTelemetryConfigUnmarshalJSON(t *testing.T) {
+	cases := []struct {
+		desc      string
+		body      string
+		enabled   bool
+		interval  time.Duration
+		expectErr bool
+	}{
+		{
+			desc:     "parse enabled telemetry duration",
+			body:     `{"enabled":true,"interval":"30s"}`,
+			enabled:  true,
+			interval: 30 * time.Second,
+		},
+		{
+			desc:     "allow disabled telemetry without interval",
+			body:     `{"enabled":false}`,
+			enabled:  false,
+			interval: 0,
+		},
+		{
+			desc:      "reject invalid enabled type",
+			body:      `{"enabled":"yes","interval":"30s"}`,
+			expectErr: true,
+		},
+		{
+			desc:      "reject invalid duration",
+			body:      `{"enabled":true,"interval":"soon"}`,
+			expectErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			var cfg agent.TelemetryConfig
+			err := json.Unmarshal([]byte(tc.body), &cfg)
+			if tc.expectErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.enabled, cfg.Enabled)
+			assert.Equal(t, tc.interval, cfg.Interval)
 		})
 	}
 }

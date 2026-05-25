@@ -212,6 +212,8 @@ Environment variables:
 | `MG_AGENT_MQTT_RETAIN` | MQTT retain flag | `false` |
 | `MG_AGENT_NODERED_URL` | Node-RED API URL | `http://localhost:1880/` |
 | `MG_AGENT_HEARTBEAT_INTERVAL` | Expected heartbeat interval | `10s` |
+| `MG_AGENT_TELEMETRY_ENABLED` | Enable periodic gateway telemetry publishing | `false` |
+| `MG_AGENT_TELEMETRY_INTERVAL` | Periodic gateway telemetry interval | `60s` |
 | `MG_AGENT_TERMINAL_SESSION_TIMEOUT` | Terminal session timeout | `60s` |
 | `MG_AGENT_BOOTSTRAP_URL` | Bootstrap base URL | |
 | `MG_AGENT_BOOTSTRAP_EXTERNAL_ID` | Bootstrap external ID | |

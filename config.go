@@ -68,6 +68,11 @@ type HeartbeatConfig struct {
 	Interval time.Duration
 }
 
+type TelemetryConfig struct {
+	Enabled  bool          `json:"enabled"`
+	Interval time.Duration `json:"interval"`
+}
+
 type TerminalConfig struct {
 	SessionTimeout time.Duration `json:"session_timeout"`
 }
@@ -91,6 +96,7 @@ type Config struct {
 	Server    ServerConfig    `json:"server"`
 	Terminal  TerminalConfig  `json:"terminal"`
 	Heartbeat HeartbeatConfig `json:"heartbeat"`
+	Telemetry TelemetryConfig `json:"telemetry"`
 	Channels  ChanConfig      `json:"channels"`
 	NodeRed   NodeRedConfig   `json:"nodered"`
 	Log       LogConfig       `json:"log"`
@@ -122,6 +128,40 @@ func (d *HeartbeatConfig) UnmarshalJSON(b []byte) error {
 	interval, ok := v["interval"]
 	if !ok {
 		return errors.New("missing value")
+	}
+	switch value := interval.(type) {
+	case float64:
+		d.Interval = time.Duration(value)
+		return nil
+	case string:
+		var err error
+		d.Interval, err = time.ParseDuration(value)
+		if err != nil {
+			return err
+		}
+		return nil
+	default:
+		return errors.New("invalid duration")
+	}
+}
+
+// UnmarshalJSON parses the telemetry interval duration when present.
+func (d *TelemetryConfig) UnmarshalJSON(b []byte) error {
+	var v map[string]any
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	if enabled, ok := v["enabled"]; ok {
+		switch value := enabled.(type) {
+		case bool:
+			d.Enabled = value
+		default:
+			return errors.New("invalid enabled")
+		}
+	}
+	interval, ok := v["interval"]
+	if !ok {
+		return nil
 	}
 	switch value := interval.(type) {
 	case float64:

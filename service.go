@@ -251,6 +251,10 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat",
 		cfg.DomainID, cfg.Channels.DataChan())
 	go ag.selfHeartbeat(ctx, topic, cfg.Heartbeat.Interval, cfg.MQTT.QoS)
+	if cfg.Telemetry.Enabled {
+		telemetryTopic := fmt.Sprintf("m/%s/c/%s/msg", cfg.DomainID, cfg.Channels.DataChan())
+		go ag.periodicTelemetry(ctx, telemetryTopic, cfg.Telemetry.Interval, cfg.MQTT.QoS)
+	}
 
 	return ag, nil
 }

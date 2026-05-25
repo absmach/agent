@@ -49,6 +49,8 @@ type config struct {
 	MqttCert             string `env:"MG_AGENT_MQTT_CLIENT_CERT" envDefault:"client.cert"`
 	MqttPrivateKey       string `env:"MG_AGENT_MQTT_CLIENT_KEY" envDefault:"client.key"`
 	HeartbeatInterval    string `env:"MG_AGENT_HEARTBEAT_INTERVAL" envDefault:"10s"`
+	TelemetryEnabled     string `env:"MG_AGENT_TELEMETRY_ENABLED" envDefault:"false"`
+	TelemetryInterval    string `env:"MG_AGENT_TELEMETRY_INTERVAL" envDefault:"60s"`
 	TermSessionTimeout   string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT" envDefault:"60s"`
 	OTAEnabled           string `env:"MG_AGENT_OTA_ENABLED" envDefault:"false"`
 	OTABinaryPath        string `env:"MG_AGENT_OTA_BINARY_PATH" envDefault:"/usr/local/bin/agent"`
@@ -70,6 +72,7 @@ type config struct {
 var (
 	errFailedToSetupMTLS       = errors.New("Failed to set up mtls certs")
 	errFailedToConfigHeartbeat = errors.New("Failed to configure heartbeat")
+	errFailedToConfigTelemetry = errors.New("Failed to configure telemetry")
 	errFetchingBootstrapFailed = errors.New("Fetching bootstrap failed with error")
 	errInvalidRuntimeConfig    = errors.New("Invalid runtime config")
 )
@@ -244,6 +247,9 @@ func validateRuntimeConfig(cfg agent.Config) error {
 	if cfg.Heartbeat.Interval <= 0 {
 		missing = append(missing, "heartbeat.interval")
 	}
+	if cfg.Telemetry.Enabled && cfg.Telemetry.Interval <= 0 {
+		missing = append(missing, "telemetry.interval")
+	}
 	if len(missing) > 0 {
 		return errors.New(fmt.Sprintf("%s: missing required runtime fields: %s", errInvalidRuntimeConfig, strings.Join(missing, ", ")))
 	}
@@ -265,6 +271,18 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 
 	ch := agent.HeartbeatConfig{
 		Interval: interval,
+	}
+	telemetryInterval, err := time.ParseDuration(cfg.TelemetryInterval)
+	if err != nil {
+		return agent.Config{}, errors.Wrap(errFailedToConfigTelemetry, err)
+	}
+	telemetryEnabled, err := strconv.ParseBool(cfg.TelemetryEnabled)
+	if err != nil {
+		telemetryEnabled = false
+	}
+	tcTelemetry := agent.TelemetryConfig{
+		Enabled:  telemetryEnabled,
+		Interval: telemetryInterval,
 	}
 	termSessionTimeout, err := time.ParseDuration(cfg.TermSessionTimeout)
 	if err != nil {
@@ -318,6 +336,7 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 	}
 
 	c := agent.NewConfig(sc, agent.ChanConfig{}, nc, lc, mc, ch, ct, oc)
+	c.Telemetry = tcTelemetry
 	return c, nil
 }
 
