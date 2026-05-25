@@ -285,7 +285,11 @@ func (a *agent) Control(uuid, cmdStr string) error {
 //	b, _ := toml.Marshal(cfg)
 //	config_file_content := base64.StdEncoding.EncodeToString(b).
 func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
-	cmdArgs := strings.Split(strings.ReplaceAll(cmdStr, " ", ""), ",")
+	rawParts := strings.Split(cmdStr, ",")
+	cmdArgs := make([]string, len(rawParts))
+	for i, p := range rawParts {
+		cmdArgs[i] = strings.TrimSpace(p)
+	}
 	if len(cmdArgs) < 1 {
 		return errInvalidCommand
 	}
@@ -323,16 +327,10 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 			resp = notFound
 		}
 	case "set":
-		// Use SplitN(3) so values containing commas (e.g. URLs) are preserved.
-		parts := strings.SplitN(cmdStr, ",", 3)
-		setArgs := make([]string, len(parts))
-		for i, p := range parts {
-			setArgs[i] = strings.TrimSpace(p)
-		}
-		if len(setArgs) < 3 || setArgs[1] == "" || setArgs[2] == "" {
+		if len(cmdArgs) < 3 || cmdArgs[1] == "" || cmdArgs[2] == "" {
 			return errInvalidCommand
 		}
-		key, val := setArgs[1], setArgs[2]
+		key, val := cmdArgs[1], cmdArgs[2]
 		if !settableKeys[key] {
 			return errInvalidCommand
 		}
@@ -882,6 +880,8 @@ func validateSettableValue(key, val string) error {
 		if err != nil || d <= 0 {
 			return errInvalidCommand
 		}
+	default:
+		return errInvalidCommand
 	}
 	return nil
 }
