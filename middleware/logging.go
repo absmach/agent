@@ -219,3 +219,21 @@ func (lm *loggingMiddleware) Shutdown() {
 	lm.svc.Shutdown()
 	lm.logger.Info("Shutdown completed")
 }
+
+func (lm *loggingMiddleware) DeviceManager(uuid, cmdStr string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.String("uuid", uuid),
+			slog.String("cmd", cmdStr),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("DeviceManager command failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("DeviceManager command completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.DeviceManager(uuid, cmdStr)
+}

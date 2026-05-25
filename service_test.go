@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,9 +20,12 @@ import (
 
 	"github.com/absmach/agent"
 	agentmocks "github.com/absmach/agent/mocks"
+	"github.com/absmach/agent/pkg/devicemgr"
+	"github.com/absmach/agent/pkg/iface"
 	nrmocks "github.com/absmach/agent/pkg/nodered/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 var domainID = "1e7295a6-8de9-4c3c-8e36-387217f131f6"
@@ -49,7 +54,8 @@ func testConfig() agent.Config {
 	)
 }
 
-func newService(t *testing.T, cfg agent.Config) (agent.Service, *agentmocks.MQTTClient, *nrmocks.Client, error) {
+func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (agent.Service, *agentmocks.MQTTClient, *nrmocks.Client, error) {
+	t.Helper()
 	cfg.DomainID = domainID
 	mqttClient := agentmocks.NewMQTTClient(t)
 	nodeRed := nrmocks.NewClient(t)
@@ -66,7 +72,12 @@ func newService(t *testing.T, cfg agent.Config) (agent.Service, *agentmocks.MQTT
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	var mgr *devicemgr.Manager
+	if len(devices) > 0 {
+		mgr = devices[0]
+	}
+
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr)
 	return svc, mqttClient, nodeRed, err
 }
 
@@ -94,8 +105,8 @@ func TestChannelConfig(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			assert.Equal(t, tc.ctrl, tc.cfg.CtrlChan(), fmt.Sprintf("%s: unexpected control channel", tc.desc))
-			assert.Equal(t, tc.data, tc.cfg.DataChan(), fmt.Sprintf("%s: unexpected data channel", tc.desc))
+			assert.Equal(t, tc.ctrl, tc.cfg.CtrlChan())
+			assert.Equal(t, tc.data, tc.cfg.DataChan())
 		})
 	}
 }
@@ -157,12 +168,12 @@ func TestDurationConfigUnmarshalJSON(t *testing.T) {
 			var cfg agent.Config
 			err := json.Unmarshal([]byte(tc.body), &cfg)
 			if tc.err {
-				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				assert.Error(t, err)
 				return
 			}
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
-			assert.Equal(t, tc.heartbeat, cfg.Heartbeat.Interval, fmt.Sprintf("%s: unexpected heartbeat interval", tc.desc))
-			assert.Equal(t, tc.terminal, cfg.Terminal.SessionTimeout, fmt.Sprintf("%s: unexpected terminal timeout", tc.desc))
+			assert.NoError(t, err)
+			assert.Equal(t, tc.heartbeat, cfg.Heartbeat.Interval)
+			assert.Equal(t, tc.terminal, cfg.Terminal.SessionTimeout)
 		})
 	}
 }
@@ -185,8 +196,8 @@ func TestHeartbeat(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	svc, _, _, err := newService(t, testConfig())
-	assert.Nil(t, err, "unexpected error creating service")
-	assert.NotNil(t, svc, "expected service to be non-nil")
+	assert.NoError(t, err)
+	assert.NotNil(t, svc)
 }
 
 func TestExecute(t *testing.T) {
@@ -241,7 +252,7 @@ func TestExecute(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			svc, mqttClient, _, err := newService(t, testConfig())
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
+			require.NoError(t, err)
 			var payload any
 			if tc.topic != "" {
 				expectMQTTPublish(t, mqttClient, tc.topic, tc.pubErr).Run(func(args mock.Arguments) {
@@ -250,13 +261,13 @@ func TestExecute(t *testing.T) {
 			}
 			got, err := svc.Execute("uuid", tc.cmd)
 			if tc.err {
-				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				assert.Error(t, err)
 			} else {
-				assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
+				assert.NoError(t, err)
 			}
-			assert.Equal(t, tc.output, got, fmt.Sprintf("%s: unexpected output", tc.desc))
+			assert.Equal(t, tc.output, got)
 			if tc.topic != "" && tc.pubErr == nil {
-				assert.NotEmpty(t, payload, fmt.Sprintf("%s: expected publish payload", tc.desc))
+				assert.NotEmpty(t, payload)
 			}
 		})
 	}
@@ -269,8 +280,7 @@ func TestControl(t *testing.T) {
 		desc   string
 		cmd    string
 		err    bool
-		fail   bool
-		pubErr error
+		mockFn func(t *testing.T, mqttClient *agentmocks.MQTTClient, nodeRed *nrmocks.Client)
 	}{
 		{
 			desc: "reject empty command",
@@ -285,42 +295,42 @@ func TestControl(t *testing.T) {
 		{
 			desc: "run node-red command successfully",
 			cmd:  "nodered-ping",
+			mockFn: func(t *testing.T, mqttClient *agentmocks.MQTTClient, nodeRed *nrmocks.Client) {
+				nodeRed.On("Ping").Return("pong", nil).Once()
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), nil)
+			},
 		},
 		{
 			desc: "return node-red error",
 			cmd:  "nodered-ping",
 			err:  true,
-			fail: true,
+			mockFn: func(_ *testing.T, _ *agentmocks.MQTTClient, nodeRed *nrmocks.Client) {
+				nodeRed.On("Ping").Return("pong", errBoom).Once()
+			},
 		},
 		{
-			desc:   "return response publish error",
-			cmd:    "nodered-ping",
-			err:    true,
-			pubErr: errBoom,
+			desc: "return response publish error",
+			cmd:  "nodered-ping",
+			err:  true,
+			mockFn: func(t *testing.T, mqttClient *agentmocks.MQTTClient, nodeRed *nrmocks.Client) {
+				nodeRed.On("Ping").Return("pong", nil).Once()
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), errBoom)
+			},
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			svc, mqttClient, nodeRed, err := newService(t, testConfig())
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
-			if strings.HasPrefix(tc.cmd, "nodered-") {
-				clientErr := error(nil)
-				if tc.fail {
-					clientErr = errBoom
-				}
-				nodeRed.On("Ping").Return("pong", clientErr).Once()
-			}
-			if strings.HasPrefix(tc.cmd, "nodered-") && !tc.fail && tc.cmd == "nodered-ping" {
-				if tc.pubErr != nil || !tc.err {
-					expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), tc.pubErr)
-				}
+			require.NoError(t, err)
+			if tc.mockFn != nil {
+				tc.mockFn(t, mqttClient, nodeRed)
 			}
 			err = svc.Control("uuid", tc.cmd)
 			if tc.err {
-				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				assert.Error(t, err)
 			} else {
-				assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -392,22 +402,21 @@ func TestServiceConfig(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			svc, mqttClient, _, err := newService(t, testConfig())
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
+			require.NoError(t, err)
 			if tc.registerSvc {
-				err = svc.UpdateLiveness("nodered", "service")
-				assert.Nil(t, err, fmt.Sprintf("%s: unexpected liveness error %v", tc.desc, err))
+				require.NoError(t, svc.UpdateLiveness("nodered", "service"))
 			}
 			if !tc.err || tc.pubErr != nil {
 				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), tc.pubErr)
 			}
 			err = svc.ServiceConfig(context.Background(), "uuid", tc.cmd)
 			if tc.err {
-				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				assert.Error(t, err)
 				return
 			}
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
+			assert.NoError(t, err)
 			if tc.file != "" {
-				assert.FileExists(t, tc.file, fmt.Sprintf("%s: expected export file", tc.desc))
+				assert.FileExists(t, tc.file)
 			}
 		})
 	}
@@ -448,12 +457,12 @@ func TestTerminal(t *testing.T) {
 				t.Setenv("PATH", "")
 			}
 			svc, _, _, err := newService(t, testConfig())
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
+			require.NoError(t, err)
 			err = svc.Terminal("uuid", tc.cmd)
 			if tc.err {
-				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				assert.Error(t, err)
 			} else {
-				assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -462,38 +471,58 @@ func TestTerminal(t *testing.T) {
 func TestNodeRed(t *testing.T) {
 	flow := base64.StdEncoding.EncodeToString([]byte(`[{"id":"broker","type":"mqtt-broker"}]`))
 	errBoom := fmt.Errorf("boom")
+	normalizedFlow := mock.MatchedBy(func(f string) bool {
+		return strings.Contains(f, "mqtt.example.com") &&
+			strings.Contains(f, "client-id-nr") &&
+			strings.Contains(f, "magistrala-agent-tls")
+	})
 
 	cases := []struct {
-		desc string
-		cmd  string
-		resp string
-		err  bool
-		fail bool
+		desc   string
+		cmd    string
+		resp   string
+		err    bool
+		mockFn func(nodeRed *nrmocks.Client)
 	}{
 		{
 			desc: "deploy flows successfully",
 			cmd:  "nodered-deploy," + flow,
 			resp: "deployed",
+			mockFn: func(nodeRed *nrmocks.Client) {
+				nodeRed.On("DeployFlows", normalizedFlow).Return("deployed", nil).Once()
+			},
 		},
 		{
 			desc: "add flow successfully",
 			cmd:  "nodered-add-flow," + flow,
 			resp: "added",
+			mockFn: func(nodeRed *nrmocks.Client) {
+				nodeRed.On("AddFlow", normalizedFlow).Return("added", nil).Once()
+			},
 		},
 		{
 			desc: "fetch flows successfully",
 			cmd:  "nodered-flows",
 			resp: "flows",
+			mockFn: func(nodeRed *nrmocks.Client) {
+				nodeRed.On("FetchFlows").Return("flows", nil).Once()
+			},
 		},
 		{
 			desc: "fetch state successfully",
 			cmd:  "nodered-state",
 			resp: "started",
+			mockFn: func(nodeRed *nrmocks.Client) {
+				nodeRed.On("FlowState").Return("started", nil).Once()
+			},
 		},
 		{
 			desc: "ping successfully",
 			cmd:  "nodered-ping",
 			resp: "pong",
+			mockFn: func(nodeRed *nrmocks.Client) {
+				nodeRed.On("Ping").Return("pong", nil).Once()
+			},
 		},
 		{
 			desc: "reject empty command",
@@ -529,72 +558,53 @@ func TestNodeRed(t *testing.T) {
 			desc: "wrap node-red client error",
 			cmd:  "nodered-ping",
 			err:  true,
-			fail: true,
+			mockFn: func(nodeRed *nrmocks.Client) {
+				nodeRed.On("Ping").Return("", errBoom).Once()
+			},
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			svc, _, nodeRed, err := newService(t, testConfig())
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
-			clientErr := error(nil)
-			if tc.fail {
-				clientErr = errBoom
-			}
-			normalizedFlow := mock.MatchedBy(func(flow string) bool {
-				return strings.Contains(flow, "mqtt.example.com") &&
-					strings.Contains(flow, "client-id-nr") &&
-					strings.Contains(flow, "magistrala-agent-tls")
-			})
-			switch tc.desc {
-			case "deploy flows successfully":
-				nodeRed.On("DeployFlows", normalizedFlow).Return(tc.resp, clientErr).Once()
-			case "add flow successfully":
-				nodeRed.On("AddFlow", normalizedFlow).Return(tc.resp, clientErr).Once()
-			case "fetch flows successfully":
-				nodeRed.On("FetchFlows").Return(tc.resp, clientErr).Once()
-			case "fetch state successfully":
-				nodeRed.On("FlowState").Return(tc.resp, clientErr).Once()
-			case "ping successfully", "wrap node-red client error":
-				nodeRed.On("Ping").Return(tc.resp, clientErr).Once()
+			require.NoError(t, err)
+			if tc.mockFn != nil {
+				tc.mockFn(nodeRed)
 			}
 			got, err := svc.NodeRed(tc.cmd)
 			if tc.err {
-				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				assert.Error(t, err)
 			} else {
-				assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
+				assert.NoError(t, err)
 			}
-			assert.Equal(t, tc.resp, got, fmt.Sprintf("%s: unexpected response", tc.desc))
+			assert.Equal(t, tc.resp, got)
 		})
 	}
 }
 
-func TestAddConfigAndConfig(t *testing.T) {
+func TestAddConfig(t *testing.T) {
 	// nolint:dogsled
 	svc, _, _, err := newService(t, testConfig())
-	assert.Nil(t, err, fmt.Sprintf("unexpected setup error %v", err))
+	require.NoError(t, err)
 
 	cfg := testConfig()
 	cfg.DomainID = domainID
-	err = svc.AddConfig(cfg)
-	assert.Nil(t, err, fmt.Sprintf("unexpected add config error %v", err))
-	assert.Equal(t, cfg.DomainID, svc.Config().DomainID, "unexpected returned config")
+	require.NoError(t, svc.AddConfig(cfg))
+	assert.Equal(t, cfg.DomainID, svc.Config().DomainID)
 }
 
 func TestServices(t *testing.T) {
 	// nolint:dogsled
 	svc, _, _, err := newService(t, testConfig())
-	assert.Nil(t, err, fmt.Sprintf("unexpected setup error %v", err))
+	require.NoError(t, err)
 
-	err = svc.UpdateLiveness("z-service", "service")
-	assert.Nil(t, err, fmt.Sprintf("unexpected liveness error %v", err))
-	err = svc.UpdateLiveness("a-service", "service")
-	assert.Nil(t, err, fmt.Sprintf("unexpected liveness error %v", err))
+	require.NoError(t, svc.UpdateLiveness("z-service", "service"))
+	require.NoError(t, svc.UpdateLiveness("a-service", "service"))
 
 	got := svc.Services()
-	assert.Len(t, got, 2, "unexpected services count")
-	assert.Equal(t, "a-service", got[0].Name, "expected sorted services")
-	assert.Equal(t, "z-service", got[1].Name, "expected sorted services")
+	assert.Len(t, got, 2)
+	assert.Equal(t, "a-service", got[0].Name)
+	assert.Equal(t, "z-service", got[1].Name)
 }
 
 func TestPublish(t *testing.T) {
@@ -627,18 +637,18 @@ func TestPublish(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			svc, mqttClient, _, err := newService(t, testConfig())
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
+			require.NoError(t, err)
 			var payload any
 			expectMQTTPublish(t, mqttClient, tc.output, tc.err).Run(func(args mock.Arguments) {
 				payload = args.Get(3)
 			})
 			err = svc.Publish(tc.topic, "payload")
 			if tc.err != nil {
-				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				assert.Error(t, err)
 			} else {
-				assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
+				assert.NoError(t, err)
 			}
-			assert.Equal(t, "payload", payload, fmt.Sprintf("%s: unexpected payload", tc.desc))
+			assert.Equal(t, "payload", payload)
 		})
 	}
 }
@@ -677,8 +687,7 @@ func TestShutdown(t *testing.T) {
 func TestChangeDir(t *testing.T) {
 	tmp := t.TempDir()
 	child := filepath.Join(tmp, "child")
-	err := os.Mkdir(child, 0o755)
-	assert.Nil(t, err, fmt.Sprintf("unexpected mkdir error %v", err))
+	require.NoError(t, os.Mkdir(child, 0o755))
 
 	cases := []struct {
 		desc    string
@@ -728,9 +737,9 @@ func TestChangeDir(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			got, workDir, err := agent.ChangeDirForTest(tc.workDir, tc.cmd)
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
-			assert.Equal(t, tc.output, got, fmt.Sprintf("%s: unexpected output", tc.desc))
-			assert.Equal(t, tc.dir, workDir, fmt.Sprintf("%s: unexpected workdir", tc.desc))
+			assert.NoError(t, err)
+			assert.Equal(t, tc.output, got)
+			assert.Equal(t, tc.dir, workDir)
 		})
 	}
 }
@@ -774,13 +783,13 @@ func TestNormalizeNodeRedFlow(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			got := agent.NormalizeNodeRedFlowForTest(cfg, tc.flow)
 			if tc.same {
-				assert.Equal(t, tc.flow, got, fmt.Sprintf("%s: expected unchanged flow", tc.desc))
+				assert.Equal(t, tc.flow, got)
 				return
 			}
 
 			var nodes []map[string]any
 			err := json.Unmarshal([]byte(got), &nodes)
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected json error %v", tc.desc, err))
+			require.NoError(t, err)
 
 			byID := map[string]map[string]any{}
 			for _, node := range nodes {
@@ -789,16 +798,16 @@ func TestNormalizeNodeRedFlow(t *testing.T) {
 			}
 
 			broker := byID["broker-a"]
-			assert.Equal(t, "mqtt.example.com", broker["broker"], fmt.Sprintf("%s: unexpected mqtt host", tc.desc))
-			assert.Equal(t, "8883", broker["port"], fmt.Sprintf("%s: unexpected mqtt port", tc.desc))
-			assert.Equal(t, "client-id-nr", broker["clientid"], fmt.Sprintf("%s: unexpected node-red client id", tc.desc))
-			assert.Equal(t, true, broker["usetls"], fmt.Sprintf("%s: unexpected tls flag", tc.desc))
-			assert.Equal(t, agent.NodeRedTLSConfigIDForTest, broker["tls"], fmt.Sprintf("%s: unexpected tls config id", tc.desc))
-			assert.Equal(t, map[string]any{"user": "client-id", "password": "client-secret"}, broker["credentials"], fmt.Sprintf("%s: unexpected credentials", tc.desc))
-			assert.Equal(t, fmt.Sprintf(`msg.topic = "%s";`, mqttTopic("data-channel", "msg")), byID["fn"]["func"], fmt.Sprintf("%s: unexpected function topic", tc.desc))
-			assert.Equal(t, "broker-a", byID["out"]["broker"], fmt.Sprintf("%s: unexpected mqtt out broker", tc.desc))
-			assert.Equal(t, mqttTopic("data-channel", "msg"), byID["out"]["topic"], fmt.Sprintf("%s: unexpected mqtt out topic", tc.desc))
-			assert.Contains(t, byID, agent.NodeRedTLSConfigIDForTest, fmt.Sprintf("%s: expected tls config node", tc.desc))
+			assert.Equal(t, "mqtt.example.com", broker["broker"])
+			assert.Equal(t, "8883", broker["port"])
+			assert.Equal(t, "client-id-nr", broker["clientid"])
+			assert.Equal(t, true, broker["usetls"])
+			assert.Equal(t, agent.NodeRedTLSConfigIDForTest, broker["tls"])
+			assert.Equal(t, map[string]any{"user": "client-id", "password": "client-secret"}, broker["credentials"])
+			assert.Equal(t, fmt.Sprintf(`msg.topic = "%s";`, mqttTopic("data-channel", "msg")), byID["fn"]["func"])
+			assert.Equal(t, "broker-a", byID["out"]["broker"])
+			assert.Equal(t, mqttTopic("data-channel", "msg"), byID["out"]["topic"])
+			assert.Contains(t, byID, agent.NodeRedTLSConfigIDForTest)
 		})
 	}
 }
@@ -846,9 +855,9 @@ func TestNodeRedMQTTEndpoint(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			host, port, useTLS := agent.NodeRedMQTTEndpointForTest(tc.rawURL)
-			assert.Equal(t, tc.host, host, fmt.Sprintf("%s: unexpected host", tc.desc))
-			assert.Equal(t, tc.port, port, fmt.Sprintf("%s: unexpected port", tc.desc))
-			assert.Equal(t, tc.tls, useTLS, fmt.Sprintf("%s: unexpected tls flag", tc.desc))
+			assert.Equal(t, tc.host, host)
+			assert.Equal(t, tc.port, port)
+			assert.Equal(t, tc.tls, useTLS)
 		})
 	}
 }
@@ -885,16 +894,17 @@ func TestPatchNodeRedTopic(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			got := agent.PatchNodeRedTopicForTest(tc.input, tc.domainID, tc.channel)
-			assert.Equal(t, tc.want, got, fmt.Sprintf("%s: expected content %s got %s", tc.desc, tc.want, got))
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }
 
 func TestEnsureNodeRedTLSConfig(t *testing.T) {
 	cases := []struct {
-		desc string
-		in   any
-		len  int
+		desc      string
+		in        any
+		len       int
+		wantEqual bool
 	}{
 		{
 			desc: "append tls config to flow array",
@@ -916,30 +926,34 @@ func TestEnsureNodeRedTLSConfig(t *testing.T) {
 			in:   map[string]any{"configs": []any{map[string]any{"id": agent.NodeRedTLSConfigIDForTest}}},
 			len:  1,
 		},
+		{
+			desc:      "ignore unsupported payload",
+			in:        "flow",
+			wantEqual: true,
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			got := agent.EnsureNodeRedTLSConfigForTest(tc.in)
+			if tc.wantEqual {
+				assert.Equal(t, tc.in, got)
+				return
+			}
 			switch typed := got.(type) {
 			case []any:
-				assert.Len(t, typed, tc.len, fmt.Sprintf("%s: unexpected array length", tc.desc))
+				assert.Len(t, typed, tc.len)
 			case map[string]any:
-				assert.Len(t, typed["configs"], tc.len, fmt.Sprintf("%s: unexpected config length", tc.desc))
+				assert.Len(t, typed["configs"], tc.len)
 			}
 		})
 	}
-
-	t.Run("ignore unsupported payload", func(t *testing.T) {
-		got := agent.EnsureNodeRedTLSConfigForTest("flow")
-		assert.Equal(t, "flow", got, "expected unsupported payload to be unchanged")
-	})
 }
 
 func TestTerminalCloseExistingSession(t *testing.T) {
 	sessionCount, err := agent.TerminalCloseExistingSessionForTest("uuid")
-	assert.Nil(t, err, fmt.Sprintf("unexpected terminal close error %v", err))
-	assert.Zero(t, sessionCount, "expected terminal to be removed")
+	assert.NoError(t, err)
+	assert.Zero(t, sessionCount)
 }
 
 func TestGetTopic(t *testing.T) {
@@ -976,7 +990,249 @@ func TestGetTopic(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			got := agent.GetTopicForTest(cfg, tc.topic)
-			assert.Equal(t, tc.want, got, fmt.Sprintf("%s: expected topic %s got %s", tc.desc, tc.want, got))
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// provisionHandlerOK returns a handler that always responds with one client and one channel.
+func provisionHandlerOK(t *testing.T, deviceID, deviceKey, channelID string) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		resp := map[string]any{
+			"clients":  []map[string]any{{"id": deviceID, "secret": deviceKey, "name": "test-device"}},
+			"channels": []map[string]any{{"id": channelID}},
+		}
+		b, err := json.Marshal(resp)
+		assert.NoError(t, err)
+		_, err = w.Write(b)
+		assert.NoError(t, err)
+	}
+}
+
+func TestDeviceManager(t *testing.T) {
+	const (
+		deviceID  = "device-uuid-123"
+		deviceKey = "device-key-abc"
+		channelID = "channel-uuid-456"
+		addCmd    = `add,{"name":"test-device","external_id":"ext-id","external_key":"ext-key","iface_type":"ble","iface_addr":"AA:BB:CC:DD:EE:FF"}`
+	)
+
+	provSrv := httptest.NewServer(provisionHandlerOK(t, deviceID, deviceKey, channelID))
+	t.Cleanup(provSrv.Close)
+
+	newMgr := func(t *testing.T) *devicemgr.Manager {
+		t.Helper()
+		mgr, err := devicemgr.New(
+			filepath.Join(t.TempDir(), "devices.db"),
+			devicemgr.ProvisionConfig{URL: provSrv.URL, Token: "test-token", DomainID: domainID},
+			iface.Config{},
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() { mgr.Close() })
+		return mgr
+	}
+
+	cases := []struct {
+		desc      string
+		withMgr   bool
+		setup     func(t *testing.T, svc agent.Service)
+		setupPubs int
+		cmdStr    string
+		wantErr   bool
+	}{
+		{
+			desc:    "nil manager returns error",
+			cmdStr:  "list",
+			wantErr: true,
+		},
+		{
+			desc:    "list empty store",
+			withMgr: true,
+			cmdStr:  "list",
+		},
+		{
+			desc:    "add device via provision API",
+			withMgr: true,
+			cmdStr:  addCmd,
+		},
+		{
+			desc:    "list after add returns device",
+			withMgr: true,
+			setup: func(t *testing.T, svc agent.Service) {
+				t.Helper()
+				require.NoError(t, svc.DeviceManager("setup", addCmd))
+			},
+			setupPubs: 1,
+			cmdStr:    "list",
+		},
+		{
+			desc:    "get existing device",
+			withMgr: true,
+			setup: func(t *testing.T, svc agent.Service) {
+				t.Helper()
+				require.NoError(t, svc.DeviceManager("setup", addCmd))
+			},
+			setupPubs: 1,
+			cmdStr:    "get," + deviceID,
+		},
+		{
+			desc:    "mark device seen",
+			withMgr: true,
+			setup: func(t *testing.T, svc agent.Service) {
+				t.Helper()
+				require.NoError(t, svc.DeviceManager("setup", addCmd))
+			},
+			setupPubs: 1,
+			cmdStr:    "seen," + deviceID,
+		},
+		{
+			desc:    "remove device",
+			withMgr: true,
+			setup: func(t *testing.T, svc agent.Service) {
+				t.Helper()
+				require.NoError(t, svc.DeviceManager("setup", addCmd))
+			},
+			setupPubs: 1,
+			cmdStr:    "remove," + deviceID,
+		},
+		{
+			desc:    "get removed device returns error",
+			withMgr: true,
+			setup: func(t *testing.T, svc agent.Service) {
+				t.Helper()
+				require.NoError(t, svc.DeviceManager("setup-add", addCmd))
+				require.NoError(t, svc.DeviceManager("setup-remove", "remove,"+deviceID))
+			},
+			setupPubs: 2,
+			cmdStr:    "get," + deviceID,
+			wantErr:   true,
+		},
+		{
+			desc:    "open unknown device returns error",
+			withMgr: true,
+			cmdStr:  "open,no-such-device",
+			wantErr: true,
+		},
+		{
+			desc:    "close unknown device returns error",
+			withMgr: true,
+			cmdStr:  "close,no-such-device",
+			wantErr: true,
+		},
+		{
+			desc:    "read interface not open returns error",
+			withMgr: true,
+			cmdStr:  "read,no-such-device,4",
+			wantErr: true,
+		},
+		{
+			desc:    "write interface not open returns error",
+			withMgr: true,
+			cmdStr:  "write,no-such-device,deadbeef",
+			wantErr: true,
+		},
+		{
+			desc:    "empty command",
+			withMgr: true,
+			cmdStr:  "",
+			wantErr: true,
+		},
+		{
+			desc:    "unknown subcommand",
+			withMgr: true,
+			cmdStr:  "bogus",
+			wantErr: true,
+		},
+		{
+			desc:    "add missing args",
+			withMgr: true,
+			cmdStr:  "add,name,ext-id",
+			wantErr: true,
+		},
+		{
+			desc:    "remove missing id",
+			withMgr: true,
+			cmdStr:  "remove",
+			wantErr: true,
+		},
+		{
+			desc:    "get missing id",
+			withMgr: true,
+			cmdStr:  "get",
+			wantErr: true,
+		},
+		{
+			desc:    "seen missing id",
+			withMgr: true,
+			cmdStr:  "seen",
+			wantErr: true,
+		},
+		{
+			desc:    "open missing id",
+			withMgr: true,
+			cmdStr:  "open",
+			wantErr: true,
+		},
+		{
+			desc:    "close missing id",
+			withMgr: true,
+			cmdStr:  "close",
+			wantErr: true,
+		},
+		{
+			desc:    "read missing args",
+			withMgr: true,
+			cmdStr:  "read,dev-id",
+			wantErr: true,
+		},
+		{
+			desc:    "read invalid n",
+			withMgr: true,
+			cmdStr:  "read,dev-id,notanumber",
+			wantErr: true,
+		},
+		{
+			desc:    "write missing hex",
+			withMgr: true,
+			cmdStr:  "write,dev-id",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			var mgr *devicemgr.Manager
+			if tc.withMgr {
+				mgr = newMgr(t)
+			}
+			svc, mqttClient, _, err := newService(t, testConfig(), mgr)
+			require.NoError(t, err)
+
+			registerPublish := func() {
+				tok := agentmocks.NewMQTTToken(t)
+				tok.On("Wait").Return(true)
+				tok.On("Error").Return(error(nil))
+				mqttClient.On("Publish", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tok).Once()
+			}
+			for range tc.setupPubs {
+				registerPublish()
+			}
+			if tc.setup != nil {
+				tc.setup(t, svc)
+			}
+			if !tc.wantErr {
+				registerPublish()
+			}
+
+			err = svc.DeviceManager("uuid", tc.cmdStr)
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
