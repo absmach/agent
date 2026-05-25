@@ -66,7 +66,7 @@ func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (
 	hbToken := agentmocks.NewMQTTToken(t)
 	hbToken.On("Wait").Maybe().Return(true)
 	hbToken.On("Error").Maybe().Return(error(nil))
-	mqttClient.On("Publish", mqttTopic("ctrl-channel", "services/agent/heartbeat"),
+	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"),
 		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(hbToken)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -624,7 +624,7 @@ func TestPublish(t *testing.T) {
 		{
 			desc:   "publish data message successfully",
 			topic:  "data",
-			output: mqttTopic("data-channel", "msg"),
+			output: mqttTopic("data-channel", "gateway/telemetry"),
 		},
 		{
 			desc:   "return mqtt publish error",
@@ -774,7 +774,7 @@ func TestNormalizeNodeRedFlow(t *testing.T) {
 				{"id":"tab","type":"tab","label":"flow"},
 				{"id":"broker-a","type":"mqtt-broker","broker":"old","port":"1883","tls":"old"},
 				{"id":"fn","type":"function","func":"msg.topic = \"m/old-domain/c/old-channel/data\";"},
-				{"id":"out","type":"mqtt out","broker":"missing","topic":"m/old-domain/c/old-channel/msg"}
+				{"id":"out","type":"mqtt out","broker":"missing","topic":"m/old-domain/c/old-channel/data"}
 			]`,
 		},
 	}
@@ -798,16 +798,16 @@ func TestNormalizeNodeRedFlow(t *testing.T) {
 			}
 
 			broker := byID["broker-a"]
-			assert.Equal(t, "mqtt.example.com", broker["broker"])
-			assert.Equal(t, "8883", broker["port"])
-			assert.Equal(t, "client-id-nr", broker["clientid"])
-			assert.Equal(t, true, broker["usetls"])
-			assert.Equal(t, agent.NodeRedTLSConfigIDForTest, broker["tls"])
-			assert.Equal(t, map[string]any{"user": "client-id", "password": "client-secret"}, broker["credentials"])
-			assert.Equal(t, fmt.Sprintf(`msg.topic = "%s";`, mqttTopic("data-channel", "msg")), byID["fn"]["func"])
-			assert.Equal(t, "broker-a", byID["out"]["broker"])
-			assert.Equal(t, mqttTopic("data-channel", "msg"), byID["out"]["topic"])
-			assert.Contains(t, byID, agent.NodeRedTLSConfigIDForTest)
+			assert.Equal(t, "mqtt.example.com", broker["broker"], fmt.Sprintf("%s: unexpected mqtt host", tc.desc))
+			assert.Equal(t, "8883", broker["port"], fmt.Sprintf("%s: unexpected mqtt port", tc.desc))
+			assert.Equal(t, "client-id-nr", broker["clientid"], fmt.Sprintf("%s: unexpected node-red client id", tc.desc))
+			assert.Equal(t, true, broker["usetls"], fmt.Sprintf("%s: unexpected tls flag", tc.desc))
+			assert.Equal(t, agent.NodeRedTLSConfigIDForTest, broker["tls"], fmt.Sprintf("%s: unexpected tls config id", tc.desc))
+			assert.Equal(t, map[string]any{"user": "client-id", "password": "client-secret"}, broker["credentials"], fmt.Sprintf("%s: unexpected credentials", tc.desc))
+			assert.Equal(t, fmt.Sprintf(`msg.topic = "%s";`, mqttTopic("data-channel", "gateway/telemetry")), byID["fn"]["func"], fmt.Sprintf("%s: unexpected function topic", tc.desc))
+			assert.Equal(t, "broker-a", byID["out"]["broker"], fmt.Sprintf("%s: unexpected mqtt out broker", tc.desc))
+			assert.Equal(t, mqttTopic("data-channel", "gateway/telemetry"), byID["out"]["topic"], fmt.Sprintf("%s: unexpected mqtt out topic", tc.desc))
+			assert.Contains(t, byID, agent.NodeRedTLSConfigIDForTest, fmt.Sprintf("%s: expected tls config node", tc.desc))
 		})
 	}
 }
@@ -875,19 +875,19 @@ func TestPatchNodeRedTopic(t *testing.T) {
 			input:    `msg.topic = "m/old-domain/c/old-channel/data";`,
 			domainID: domainID,
 			channel:  "channel-id",
-			want:     fmt.Sprintf(`msg.topic = "m/%s/c/channel-id/msg";`, domainID),
-		},
-		{
-			desc:     "message topic",
-			input:    `msg.topic = "m/old-domain/c/old-channel/msg";`,
-			domainID: domainID,
-			channel:  "channel-id",
-			want:     fmt.Sprintf(`msg.topic = "m/%s/c/channel-id/msg";`, domainID),
+			want:     fmt.Sprintf(`msg.topic = "m/%s/c/channel-id/gateway/telemetry";`, domainID),
 		},
 		{
 			desc:  "leave topic unchanged without ids",
-			input: `msg.topic = "m/old-domain/c/old-channel/msg";`,
-			want:  `msg.topic = "m/old-domain/c/old-channel/msg";`,
+			input: `msg.topic = "m/old-domain/c/old-channel/data";`,
+			want:  `msg.topic = "m/old-domain/c/old-channel/data";`,
+		},
+		{
+			desc:     "gateway telemetry topic",
+			input:    `msg.topic = "m/old-domain/c/old-channel/gateway/telemetry";`,
+			domainID: domainID,
+			channel:  "channel-id",
+			want:     fmt.Sprintf(`msg.topic = "m/%s/c/channel-id/gateway/telemetry";`, domainID),
 		},
 	}
 
@@ -978,7 +978,7 @@ func TestGetTopic(t *testing.T) {
 		{
 			desc:  "data message",
 			topic: "data",
-			want:  mqttTopic("data-channel", "msg"),
+			want:  mqttTopic("data-channel", "gateway/telemetry"),
 		},
 		{
 			desc:  "named response",

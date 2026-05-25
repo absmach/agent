@@ -173,8 +173,8 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		workDir:       "/",
 	}
 
-	topic := fmt.Sprintf("m/%s/c/%s/services/agent/heartbeat",
-		cfg.DomainID, cfg.Channels.CtrlChan())
+	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat",
+		cfg.DomainID, cfg.Channels.DataChan())
 	go ag.selfHeartbeat(ctx, topic, cfg.Heartbeat.Interval, cfg.MQTT.QoS)
 
 	return ag, nil
@@ -484,7 +484,7 @@ func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 
 const nodeRedTLSConfigID = "magistrala-agent-tls"
 
-var nodeRedTopicPattern = regexp.MustCompile(`m/[^/"'\s]*/c/[^/"'\s]*/(?:data|msg)`)
+var nodeRedTopicPattern = regexp.MustCompile(`m/[^/"'\s]*/c/[^/"'\s]*/(?:data|gateway/telemetry)`)
 
 func nodeRedMQTTEndpoint(rawURL string) (host, port string, useTLS bool) {
 	if rawURL == "" {
@@ -524,7 +524,7 @@ func patchNodeRedTopic(value, domainID, channelID string) string {
 	if domainID == "" || channelID == "" {
 		return value
 	}
-	return nodeRedTopicPattern.ReplaceAllString(value, fmt.Sprintf("m/%s/c/%s/msg", domainID, channelID))
+	return nodeRedTopicPattern.ReplaceAllString(value, fmt.Sprintf("m/%s/c/%s/gateway/telemetry", domainID, channelID))
 }
 
 func patchNodeRedValue(value any, patch func(map[string]any)) {
@@ -773,7 +773,7 @@ func (a *agent) getTopic(topic string) (t string) {
 	case control:
 		t = fmt.Sprintf("m/%s/c/%s/res", domainID, a.config.Channels.CtrlChan())
 	case data:
-		t = fmt.Sprintf("m/%s/c/%s/msg", domainID, a.config.Channels.DataChan())
+		t = fmt.Sprintf("m/%s/c/%s/gateway/telemetry", domainID, a.config.Channels.DataChan())
 	default:
 		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, a.config.Channels.CtrlChan(), topic)
 	}
