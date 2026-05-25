@@ -75,7 +75,11 @@ func (s *Store) Get(id string) (Device, error) {
 func (s *Store) Count() (int, error) {
 	var n int
 	err := s.db.View(func(tx *bolt.Tx) error {
-		n = tx.Bucket(devicesBucket).Stats().KeyN
+		b := tx.Bucket(devicesBucket)
+		if b == nil {
+			return fmt.Errorf("bucket %q not found", devicesBucket)
+		}
+		n = b.Stats().KeyN
 		return nil
 	})
 	return n, err

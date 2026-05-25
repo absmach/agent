@@ -124,7 +124,7 @@ func TestSelfHeartbeatPublishesRichPayload(t *testing.T) {
 		close(published)
 	}).Return(error(nil)).Once()
 
-	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"), byte(1), false, mock.MatchedBy(func(payload interface{}) bool {
+	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"), cfg.MQTT.QoS, false, mock.MatchedBy(func(payload interface{}) bool {
 		return richHeartbeatPayload(t, payload)
 	})).Return(token).Once()
 
