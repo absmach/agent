@@ -87,11 +87,13 @@ func (s *Store) List() ([]Device, error) {
 	return devices, err
 }
 
+// errAddrFound is a sentinel returned from ForEach to stop iteration early.
+var errAddrFound = fmt.Errorf("found")
+
 // FindByAddr returns the first active device matching the given interface type
 // and address. Returns an error if no match is found.
 func (s *Store) FindByAddr(ifaceType iface.InterfaceType, addr string) (Device, error) {
 	var found Device
-	var ok bool
 	err := s.db.View(func(tx *bolt.Tx) error {
 		return tx.Bucket(devicesBucket).ForEach(func(_, v []byte) error {
 			var d Device
@@ -100,18 +102,18 @@ func (s *Store) FindByAddr(ifaceType iface.InterfaceType, addr string) (Device, 
 			}
 			if d.Active && d.InterfaceType == ifaceType && d.InterfaceAddr == addr {
 				found = d
-				ok = true
+				return errAddrFound
 			}
 			return nil
 		})
 	})
+	if err == errAddrFound {
+		return found, nil
+	}
 	if err != nil {
 		return Device{}, err
 	}
-	if !ok {
-		return Device{}, fmt.Errorf("no device with interface type %v addr %s", ifaceType, addr)
-	}
-	return found, nil
+	return Device{}, fmt.Errorf("no device with interface type %v addr %s", ifaceType, addr)
 }
 
 // MarkSeen sets LastSeen = now and Active = true for the given device ID.

@@ -106,7 +106,7 @@ type addDeviceReq struct {
 }
 
 func (req addDeviceReq) validate() error {
-	if req.Name == "" || req.ExtID == "" || req.ExtKey == "" || req.IfaceType == "" {
+	if req.Name == "" || req.ExtID == "" || req.ExtKey == "" || req.IfaceType == "" || req.IfaceAddr == "" {
 		return agent.ErrMalformedEntity
 	}
 	return nil

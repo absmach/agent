@@ -195,8 +195,12 @@ func otaTriggerEndpoint(svc agent.Service) endpoint.Endpoint {
 		if err := req.validate(); err != nil {
 			return nil, err
 		}
+		// Detach from the request context so the OTA download continues after
+		// the HTTP response is sent, while still inheriting request metadata
+		// (e.g. trace IDs) via context values.
+		otaCtx := context.WithoutCancel(ctx)
 		go func() {
-			_ = svc.OTA(ctx, req.URL, req.SHA256Hex, req.Size)
+			_ = svc.OTA(otaCtx, req.URL, req.SHA256Hex, req.Size)
 		}()
 		return otaTriggerRes{Status: "triggered"}, nil
 	}

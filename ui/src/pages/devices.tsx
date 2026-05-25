@@ -58,8 +58,10 @@ async function extractError(res: Response): Promise<string> {
   try {
     const body = await res.json();
     if (body?.error) return body.error;
-  } catch { /* fall through */ }
-  return `HTTP ${res.status}`;
+    return `HTTP ${res.status}`;
+  } catch (parseErr) {
+    return `HTTP ${res.status} (${parseErr})`;
+  }
 }
 
 export function DevicesPage() {
@@ -113,8 +115,11 @@ export function DevicesPage() {
   }
 
   async function handleRemove(id: string) {
+    const name = devices.find((d) => d.id === id)?.name ?? id;
+    if (!confirm(`Remove device "${name}"? This will deprovision it from Magistrala.`)) return;
     try {
-      await fetch(`/api/devices/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/devices/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await extractError(res));
       setDevices((d) => d.filter((x) => x.id !== id));
     } catch (e) {
       setError(String(e));

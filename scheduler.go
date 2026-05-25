@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	schedulerReadSize  = 4096
-	schedulerReconnect = 5 * time.Second
+	schedulerReadSize       = 4096
+	schedulerReconnectMin   = 1 * time.Second
+	schedulerReconnectMax   = 30 * time.Second
 )
 
 // Scheduler manages per-device telemetry goroutines.
@@ -31,7 +32,6 @@ type Scheduler struct {
 	mqttCfg  MQTTConfig
 	domainID string
 	logger   *slog.Logger
-	ctx      context.Context
 	mu       sync.Mutex
 	cancels  map[string]context.CancelFunc
 }
@@ -46,10 +46,9 @@ func newScheduler(devices *devicemgr.Manager, mqttCfg MQTTConfig, domainID strin
 	}
 }
 
-// Start stores the parent context and launches goroutines for all active devices
-// already in the registry (devices persisted from a prior run).
+// Start launches goroutines for all active devices already in the registry
+// (devices persisted from a prior run).
 func (s *Scheduler) Start(ctx context.Context) error {
-	s.ctx = ctx
 	devs, err := s.devices.List()
 	if err != nil {
 		return fmt.Errorf("scheduler start: %w", err)
@@ -63,12 +62,13 @@ func (s *Scheduler) Start(ctx context.Context) error {
 }
 
 // StartDevice launches the telemetry goroutine for a newly provisioned device.
+// ctx must be the application-level context, not a per-request context.
 // A second call for the same device ID is a no-op.
-func (s *Scheduler) StartDevice(d devicemgr.Device) {
+func (s *Scheduler) StartDevice(ctx context.Context, d devicemgr.Device) {
 	if d.ChannelID == "" {
 		return
 	}
-	s.startDevice(s.ctx, d)
+	s.startDevice(ctx, d)
 }
 
 // StopDevice cancels the telemetry goroutine for the given device ID and
@@ -97,41 +97,47 @@ func (s *Scheduler) startDevice(ctx context.Context, d devicemgr.Device) {
 }
 
 // runDevice is the per-device goroutine. It retries the connect→open→read
-// cycle with a fixed delay after any failure.
+// cycle with exponential backoff after any failure.
 func (s *Scheduler) runDevice(ctx context.Context, d devicemgr.Device) {
 	log := s.logger.With(slog.String("device_id", d.ID), slog.String("device", d.Name))
 	topic := fmt.Sprintf("m/%s/c/%s/msg", s.domainID, d.ChannelID)
+	delay := schedulerReconnectMin
 
 	for {
 		mqttClient, err := s.connectDevice(d)
 		if err != nil {
 			log.Warn("Device MQTT connect failed", slog.Any("error", err))
-			if !sleepCtx(ctx, schedulerReconnect) {
+			if !sleepCtx(ctx, delay) {
 				return
 			}
+			delay = min(delay*2, schedulerReconnectMax)
 			continue
 		}
 
 		if err := s.devices.OpenIface(d.ID); err != nil {
 			log.Warn("Device interface open failed", slog.Any("error", err))
-			mqttClient.Disconnect(250)
-			if !sleepCtx(ctx, schedulerReconnect) {
+			go mqttClient.Disconnect(250)
+			if !sleepCtx(ctx, delay) {
 				return
 			}
+			delay = min(delay*2, schedulerReconnectMax)
 			continue
 		}
 
+		delay = schedulerReconnectMin
 		log.Info("Device telemetry started")
 		s.readPublishLoop(ctx, mqttClient, d.ID, topic, log)
-		mqttClient.Disconnect(250)
 		_ = s.devices.CloseIface(d.ID)
 
 		if ctx.Err() != nil {
+			go mqttClient.Disconnect(250)
 			return
 		}
-		if !sleepCtx(ctx, schedulerReconnect) {
+		mqttClient.Disconnect(250)
+		if !sleepCtx(ctx, delay) {
 			return
 		}
+		delay = min(delay*2, schedulerReconnectMax)
 	}
 }
 
@@ -161,9 +167,9 @@ func (s *Scheduler) readPublishLoop(ctx context.Context, mqttClient mqtt.Client,
 }
 
 // connectDevice creates a fresh MQTT connection authenticated as the device.
-// Device credentials (ID/Key) are used as the MQTT ClientID/Password.
 // TLS settings are inherited from the gateway's MQTT config (same broker).
 func (s *Scheduler) connectDevice(d devicemgr.Device) (mqtt.Client, error) {
+	// Magistrala uses the Client ID as the MQTT username for device auth.
 	opts := mqtt.NewClientOptions().
 		AddBroker(s.mqttCfg.URL).
 		SetClientID(d.ID).

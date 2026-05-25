@@ -246,7 +246,7 @@ func TestExecute(t *testing.T) {
 		{
 			desc:   "execute command with no output successfully",
 			cmd:    "true",
-			output: "",
+			output: "(no output)",
 			topic:  mqttTopic("ctrl-channel", "res"),
 		},
 		{

@@ -109,6 +109,28 @@ var (
 	errDeviceManagerDisabled = errors.New("device manager not configured")
 )
 
+// DeviceService groups the downstream-device management methods of Service.
+// Handlers or components that only manage devices can depend on this narrower interface.
+type DeviceService interface {
+	// DeviceManager handles downstream device registration and provisioning commands.
+	DeviceManager(ctx context.Context, uuid, cmdStr string) error
+
+	// ListDevices returns all registered downstream devices.
+	ListDevices() ([]devicemgr.Device, error)
+
+	// GetDevice returns a single downstream device by ID.
+	GetDevice(id string) (devicemgr.Device, error)
+
+	// AddDevice provisions and registers a new downstream device.
+	AddDevice(ctx context.Context, name, extID, extKey, ifaceType, ifaceAddr string) (devicemgr.Device, error)
+
+	// RemoveDevice removes a downstream device by ID.
+	RemoveDevice(id string) error
+
+	// MarkDeviceSeen records a live heartbeat for a downstream device.
+	MarkDeviceSeen(id string) error
+}
+
 // Service specifies API for publishing messages and subscribing to topics.
 type Service interface {
 	// Execute command.
@@ -155,23 +177,7 @@ type Service interface {
 	// OTAStatus returns whether an OTA operation is currently in progress and the last error message, if any.
 	OTAStatus() OTAStatusInfo
 
-	// DeviceManager handles downstream device registration and provisioning commands.
-	DeviceManager(ctx context.Context, uuid, cmdStr string) error
-
-	// ListDevices returns all registered downstream devices.
-	ListDevices() ([]devicemgr.Device, error)
-
-	// GetDevice returns a single downstream device by ID.
-	GetDevice(id string) (devicemgr.Device, error)
-
-	// AddDevice provisions and registers a new downstream device.
-	AddDevice(ctx context.Context, name, extID, extKey, ifaceType, ifaceAddr string) (devicemgr.Device, error)
-
-	// RemoveDevice removes a downstream device by ID.
-	RemoveDevice(id string) error
-
-	// MarkDeviceSeen records a live heartbeat for a downstream device.
-	MarkDeviceSeen(id string) error
+	DeviceService
 }
 
 // OTAStatusInfo reports the current state of the OTA subsystem.
@@ -183,6 +189,7 @@ type OTAStatusInfo struct {
 var _ Service = (*agent)(nil)
 
 type agent struct {
+	ctx           context.Context
 	mqttClient          paho.Client
 	config              *Config
 	noderedClient       nodered.Client
@@ -205,6 +212,7 @@ type agent struct {
 // New returns agent service implementation.
 func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store cfgstore.Store, levelVar *slog.LevelVar) (Service, error) {
 	ag := &agent{
+		ctx:           ctx,
 		mqttClient:          mc,
 		noderedClient:       nc,
 		config:              cfg,
@@ -271,7 +279,12 @@ func (a *agent) Execute(uuid, cmd string) (string, error) {
 		return "", errors.Wrap(errFailedExecute, err)
 	}
 
-	payload, err := encoder.EncodeSenML(uuid, strings.Join(cmdArr, " "), string(out))
+	result := string(out)
+	if result == "" {
+		result = "(no output)"
+	}
+
+	payload, err := encoder.EncodeSenML(uuid, strings.Join(cmdArr, " "), result)
 	if err != nil {
 		return "", errors.Wrap(errFailedEncode, err)
 	}
@@ -280,7 +293,7 @@ func (a *agent) Execute(uuid, cmd string) (string, error) {
 		return "", errors.Wrap(errFailedToPublish, err)
 	}
 
-	return string(out), nil
+	return result, nil
 }
 
 func (a *agent) Control(uuid, cmdStr string) error {
@@ -910,7 +923,7 @@ func (a *agent) AddDevice(ctx context.Context, name, extID, extKey, ifaceType, i
 		return d, err
 	}
 	if a.sched != nil {
-		a.sched.StartDevice(d)
+		a.sched.StartDevice(a.ctx, d)
 	}
 	return d, nil
 }

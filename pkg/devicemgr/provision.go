@@ -64,7 +64,10 @@ func (p *provisionClient) Provision(ctx context.Context, name, externalID, exter
 		Name: fmt.Sprintf("%s-telemetry", name),
 	}, p.cfg.DomainID, p.cfg.Token)
 	if sdkErr != nil {
-		_ = p.sdk.DeleteClient(ctx, client.ID, p.cfg.DomainID, p.cfg.Token)
+		// Use a detached context for cleanup so a cancelled request doesn't
+		// prevent the rollback from reaching Magistrala.
+		cleanupCtx := context.WithoutCancel(ctx)
+		_ = p.sdk.DeleteClient(cleanupCtx, client.ID, p.cfg.DomainID, p.cfg.Token)
 		return Device{}, fmt.Errorf("create channel for %q: %s", name, sdkErr)
 	}
 
@@ -75,8 +78,9 @@ func (p *provisionClient) Provision(ctx context.Context, name, externalID, exter
 		Types:      []string{"publish", "subscribe"},
 	}, p.cfg.DomainID, p.cfg.Token)
 	if sdkErr != nil {
-		_ = p.sdk.DeleteClient(ctx, client.ID, p.cfg.DomainID, p.cfg.Token)
-		_ = p.sdk.DeleteChannel(ctx, channel.ID, p.cfg.DomainID, p.cfg.Token)
+		cleanupCtx := context.WithoutCancel(ctx)
+		_ = p.sdk.DeleteClient(cleanupCtx, client.ID, p.cfg.DomainID, p.cfg.Token)
+		_ = p.sdk.DeleteChannel(cleanupCtx, channel.ID, p.cfg.DomainID, p.cfg.Token)
 		return Device{}, fmt.Errorf("connect client %s to channel %s: %s", client.ID, channel.ID, sdkErr)
 	}
 
@@ -93,8 +97,9 @@ func (p *provisionClient) Provision(ctx context.Context, name, externalID, exter
 			Status:       "enabled",
 		}, p.cfg.DomainID, p.cfg.Token)
 		if sdkErr != nil {
-			_ = p.sdk.DeleteClient(ctx, client.ID, p.cfg.DomainID, p.cfg.Token)
-			_ = p.sdk.DeleteChannel(ctx, channel.ID, p.cfg.DomainID, p.cfg.Token)
+			cleanupCtx := context.WithoutCancel(ctx)
+			_ = p.sdk.DeleteClient(cleanupCtx, client.ID, p.cfg.DomainID, p.cfg.Token)
+			_ = p.sdk.DeleteChannel(cleanupCtx, channel.ID, p.cfg.DomainID, p.cfg.Token)
 			return Device{}, fmt.Errorf("create rule for %q: %s", name, sdkErr)
 		}
 	}

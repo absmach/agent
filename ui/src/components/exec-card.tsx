@@ -51,7 +51,6 @@ export function ExecCard() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [history, loading]);
 
-
   async function run() {
     const trimmed = cmd.trim();
     if (!trimmed || loading) return;

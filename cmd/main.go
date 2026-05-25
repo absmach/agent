@@ -180,7 +180,11 @@ func main() {
 		exitCode = 1
 		return
 	}
-	defer devices.Close()
+	defer func() {
+		if err := devices.Close(); err != nil {
+			logger.Error("Failed to close device store", slog.Any("error", err))
+		}
+	}()
 
 	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger, devices, store, levelVar)
 	if err != nil {

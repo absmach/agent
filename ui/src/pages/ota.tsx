@@ -48,7 +48,14 @@ export function OTAPage() {
 
   useEffect(() => {
     pollStatus();
-    const id = setInterval(pollStatus, 3000);
+    // Only poll while an update is in flight; clear the interval once idle.
+    const id = setInterval(async () => {
+      await pollStatus();
+      setStatus((s) => {
+        if (!s.busy) clearInterval(id);
+        return s;
+      });
+    }, 3000);
     return () => clearInterval(id);
   }, []);
 
@@ -65,8 +72,16 @@ export function OTAPage() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt || `HTTP ${res.status}`);
+        let msg = `HTTP ${res.status}`;
+        try {
+          const txt = await res.text();
+          const body = JSON.parse(txt);
+          if (body?.error) msg = body.error;
+          else if (txt) msg = txt;
+        } catch {
+          // body is not JSON — msg stays as HTTP status
+        }
+        throw new Error(msg);
       }
       setSubmitted(true);
       await pollStatus();
