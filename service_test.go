@@ -117,16 +117,16 @@ func TestSelfHeartbeatPublishesRichPayload(t *testing.T) {
 
 	mqttClient.On("IsConnected").Return(true).Maybe()
 
+	published := make(chan struct{})
 	token := agentmocks.NewMQTTToken(t)
 	token.On("Wait").Return(true).Once()
-	token.On("Error").Return(error(nil)).Once()
+	token.On("Error").Run(func(_ mock.Arguments) {
+		close(published)
+	}).Return(error(nil)).Once()
 
-	published := make(chan struct{})
 	mqttClient.On("Publish", mqttTopic("ctrl-channel", "services/agent/heartbeat"), byte(1), false, mock.MatchedBy(func(payload interface{}) bool {
 		return richHeartbeatPayload(t, payload)
-	})).Run(func(_ mock.Arguments) {
-		close(published)
-	}).Return(token).Once()
+	})).Return(token).Once()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
