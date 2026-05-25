@@ -204,8 +204,8 @@ func TestManager_Add_AuthHeader(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":   "d1",
-				"name": "n",
+				"id":          "d1",
+				"name":        "n",
 				"credentials": map[string]any{"secret": "k1"},
 			})
 		},
@@ -392,8 +392,8 @@ func TestManager_List(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":   fmt.Sprintf("dev-%d", callCount),
-				"name": fmt.Sprintf("device-%d", callCount),
+				"id":          fmt.Sprintf("dev-%d", callCount),
+				"name":        fmt.Sprintf("device-%d", callCount),
 				"credentials": map[string]any{"secret": "k"},
 			})
 		},
