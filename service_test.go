@@ -87,7 +87,7 @@ func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (
 	hbToken.On("Wait").Maybe().Return(true)
 	hbToken.On("Error").Maybe().Return(error(nil))
 	mqttClient.On("IsConnected").Maybe().Return(true)
-	mqttClient.On("Publish", mqttTopic("ctrl-channel", "services/agent/heartbeat"),
+	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"),
 		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(hbToken)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -124,7 +124,7 @@ func TestSelfHeartbeatPublishesRichPayload(t *testing.T) {
 		close(published)
 	}).Return(error(nil)).Once()
 
-	mqttClient.On("Publish", mqttTopic("ctrl-channel", "services/agent/heartbeat"), byte(1), false, mock.MatchedBy(func(payload interface{}) bool {
+	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"), byte(1), false, mock.MatchedBy(func(payload interface{}) bool {
 		return richHeartbeatPayload(t, payload)
 	})).Return(token).Once()
 
