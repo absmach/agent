@@ -484,7 +484,7 @@ func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 
 const nodeRedTLSConfigID = "magistrala-agent-tls"
 
-var nodeRedTopicPattern = regexp.MustCompile(`m/[^/"'\s]*/c/[^/"'\s]*/(?:data|msg|gateway/telemetry)`)
+var nodeRedTopicPattern = regexp.MustCompile(`m/[^/"'\s]*/c/[^/"'\s]*/(?:data|gateway/telemetry)`)
 
 func nodeRedMQTTEndpoint(rawURL string) (host, port string, useTLS bool) {
 	if rawURL == "" {
