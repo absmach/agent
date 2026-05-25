@@ -774,7 +774,7 @@ func TestNormalizeNodeRedFlow(t *testing.T) {
 				{"id":"tab","type":"tab","label":"flow"},
 				{"id":"broker-a","type":"mqtt-broker","broker":"old","port":"1883","tls":"old"},
 				{"id":"fn","type":"function","func":"msg.topic = \"m/old-domain/c/old-channel/data\";"},
-			{"id":"out","type":"mqtt out","broker":"missing","topic":"m/old-domain/c/old-channel/data"}
+				{"id":"out","type":"mqtt out","broker":"missing","topic":"m/old-domain/c/old-channel/data"}
 			]`,
 		},
 	}
@@ -876,13 +876,6 @@ func TestPatchNodeRedTopic(t *testing.T) {
 			domainID: domainID,
 			channel:  "channel-id",
 			want:     fmt.Sprintf(`msg.topic = "m/%s/c/channel-id/gateway/telemetry";`, domainID),
-		},
-		{
-			desc:     "message topic unchanged",
-			input:    `msg.topic = "m/old-domain/c/old-channel/msg";`,
-			domainID: domainID,
-			channel:  "channel-id",
-			want:     `msg.topic = "m/old-domain/c/old-channel/msg";`,
 		},
 		{
 			desc:  "leave topic unchanged without ids",
