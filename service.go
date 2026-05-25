@@ -13,7 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"runtime"
+	"runtime/metrics"
 	"sort"
 	"strconv"
 	"strings"
@@ -840,21 +840,24 @@ func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.D
 }
 
 func (a *agent) selfHeartbeatPayload() ([]byte, error) {
-	var mem runtime.MemStats
-	runtime.ReadMemStats(&mem)
+	samples := []metrics.Sample{
+		{Name: "/memory/classes/heap/free:bytes"},
+	}
+
+	metrics.Read(samples)
 
 	heapFree := uint64(0)
-	if mem.HeapSys > mem.HeapAlloc {
-		heapFree = mem.HeapSys - mem.HeapAlloc
+	if len(samples) > 0 {
+		heapFree = samples[0].Value.Uint64()
 	}
 
 	deviceCount := 0
 	if a.devices != nil {
-		devices, err := a.devices.List()
+		n, err := a.devices.Count()
 		if err != nil {
-			a.logger.Warn("failed to list devices for self-heartbeat", slog.Any("error", err))
+			a.logger.Warn("failed to count devices for self-heartbeat", slog.Any("error", err))
 		} else {
-			deviceCount = len(devices)
+			deviceCount = n
 		}
 	}
 
