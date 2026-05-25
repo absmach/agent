@@ -221,7 +221,7 @@ func (lm *loggingMiddleware) Shutdown() {
 	lm.logger.Info("Shutdown completed")
 }
 
-func (lm *loggingMiddleware) DeviceManager(uuid, cmdStr string) (err error) {
+func (lm *loggingMiddleware) DeviceManager(ctx context.Context, uuid, cmdStr string) (err error) {
 	defer func(begin time.Time) {
 		args := []any{
 			slog.String("duration", time.Since(begin).String()),
@@ -236,7 +236,7 @@ func (lm *loggingMiddleware) DeviceManager(uuid, cmdStr string) (err error) {
 		lm.logger.Info("DeviceManager command completed successfully.", args...)
 	}(time.Now())
 
-	return lm.svc.DeviceManager(uuid, cmdStr)
+	return lm.svc.DeviceManager(ctx, uuid, cmdStr)
 }
 
 func (lm *loggingMiddleware) OTAStatus() agent.OTAStatusInfo {
@@ -269,7 +269,7 @@ func (lm *loggingMiddleware) GetDevice(id string) (d devicemgr.Device, err error
 	return lm.svc.GetDevice(id)
 }
 
-func (lm *loggingMiddleware) AddDevice(name, extID, extKey, ifaceType, ifaceAddr string) (d devicemgr.Device, err error) {
+func (lm *loggingMiddleware) AddDevice(ctx context.Context, name, extID, extKey, ifaceType, ifaceAddr string) (d devicemgr.Device, err error) {
 	defer func(begin time.Time) {
 		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("name", name)}
 		if err != nil {
@@ -279,7 +279,7 @@ func (lm *loggingMiddleware) AddDevice(name, extID, extKey, ifaceType, ifaceAddr
 		}
 		lm.logger.Info("AddDevice completed.", args...)
 	}(time.Now())
-	return lm.svc.AddDevice(name, extID, extKey, ifaceType, ifaceAddr)
+	return lm.svc.AddDevice(ctx, name, extID, extKey, ifaceType, ifaceAddr)
 }
 
 func (lm *loggingMiddleware) RemoveDevice(id string) (err error) {

@@ -695,7 +695,7 @@ func TestAddDevice(t *testing.T) {
 			body:   validBody,
 			status: http.StatusCreated,
 			mockSetup: func(svc *agentmocks.Service) {
-				svc.On("AddDevice", "sensor-b", "ext-id", "ext-key", "serial", "/dev/ttyUSB0").
+				svc.On("AddDevice", mock.Anything, "sensor-b", "ext-id", "ext-key", "serial", "/dev/ttyUSB0").
 					Return(dev, nil)
 			},
 		},
@@ -716,7 +716,7 @@ func TestAddDevice(t *testing.T) {
 			body:   validBody,
 			status: http.StatusInternalServerError,
 			mockSetup: func(svc *agentmocks.Service) {
-				svc.On("AddDevice", "sensor-b", "ext-id", "ext-key", "serial", "/dev/ttyUSB0").
+				svc.On("AddDevice", mock.Anything, "sensor-b", "ext-id", "ext-key", "serial", "/dev/ttyUSB0").
 					Return(devicemgr.Device{}, svcErr)
 			},
 		},

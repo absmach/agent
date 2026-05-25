@@ -144,13 +144,13 @@ func (ms *metricsMiddleware) Shutdown() {
 	ms.svc.Shutdown()
 }
 
-func (ms *metricsMiddleware) DeviceManager(uuid, cmdStr string) error {
+func (ms *metricsMiddleware) DeviceManager(ctx context.Context, uuid, cmdStr string) error {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "device_manager").Add(1)
 		ms.latency.With("method", "device_manager").Observe(time.Since(begin).Seconds())
 	}(time.Now())
 
-	return ms.svc.DeviceManager(uuid, cmdStr)
+	return ms.svc.DeviceManager(ctx, uuid, cmdStr)
 }
 
 func (ms *metricsMiddleware) OTAStatus() agent.OTAStatusInfo {
@@ -173,12 +173,12 @@ func (ms *metricsMiddleware) GetDevice(id string) (devicemgr.Device, error) {
 	return ms.svc.GetDevice(id)
 }
 
-func (ms *metricsMiddleware) AddDevice(name, extID, extKey, ifaceType, ifaceAddr string) (devicemgr.Device, error) {
+func (ms *metricsMiddleware) AddDevice(ctx context.Context, name, extID, extKey, ifaceType, ifaceAddr string) (devicemgr.Device, error) {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "add_device").Add(1)
 		ms.latency.With("method", "add_device").Observe(time.Since(begin).Seconds())
 	}(time.Now())
-	return ms.svc.AddDevice(name, extID, extKey, ifaceType, ifaceAddr)
+	return ms.svc.AddDevice(ctx, name, extID, extKey, ifaceType, ifaceAddr)
 }
 
 func (ms *metricsMiddleware) RemoveDevice(id string) error {

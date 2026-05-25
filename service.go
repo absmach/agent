@@ -156,7 +156,7 @@ type Service interface {
 	OTAStatus() OTAStatusInfo
 
 	// DeviceManager handles downstream device registration and provisioning commands.
-	DeviceManager(uuid, cmdStr string) error
+	DeviceManager(ctx context.Context, uuid, cmdStr string) error
 
 	// ListDevices returns all registered downstream devices.
 	ListDevices() ([]devicemgr.Device, error)
@@ -165,7 +165,7 @@ type Service interface {
 	GetDevice(id string) (devicemgr.Device, error)
 
 	// AddDevice provisions and registers a new downstream device.
-	AddDevice(name, extID, extKey, ifaceType, ifaceAddr string) (devicemgr.Device, error)
+	AddDevice(ctx context.Context, name, extID, extKey, ifaceType, ifaceAddr string) (devicemgr.Device, error)
 
 	// RemoveDevice removes a downstream device by ID.
 	RemoveDevice(id string) error
@@ -901,11 +901,11 @@ func (a *agent) GetDevice(id string) (devicemgr.Device, error) {
 	return a.devices.Get(id)
 }
 
-func (a *agent) AddDevice(name, extID, extKey, ifaceType, ifaceAddr string) (devicemgr.Device, error) {
+func (a *agent) AddDevice(ctx context.Context, name, extID, extKey, ifaceType, ifaceAddr string) (devicemgr.Device, error) {
 	if a.devices == nil {
 		return devicemgr.Device{}, errDeviceManagerDisabled
 	}
-	d, err := a.devices.Add(name, extID, extKey, iface.ParseInterfaceType(ifaceType), ifaceAddr)
+	d, err := a.devices.Add(ctx, name, extID, extKey, iface.ParseInterfaceType(ifaceType), ifaceAddr)
 	if err != nil {
 		return d, err
 	}
@@ -1063,7 +1063,7 @@ func (a *agent) getTopic(topic string) (t string) {
 //	close,<device_id>                            → close physical interface
 //	read,<device_id>,<n_bytes>                   → read n bytes, reply as hex
 //	write,<device_id>,<hex_data>                 → write hex bytes to interface
-func (a *agent) DeviceManager(uuid, cmdStr string) error {
+func (a *agent) DeviceManager(ctx context.Context, uuid, cmdStr string) error {
 	if a.devices == nil {
 		return errDeviceManagerDisabled
 	}
@@ -1110,7 +1110,7 @@ func (a *agent) DeviceManager(uuid, cmdStr string) error {
 			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
 		}
 		ifaceType := iface.ParseInterfaceType(addReq.IfaceType)
-		d, aerr := a.devices.Add(context.Background(), addReq.Name, addReq.ExternalID, addReq.ExternalKey, ifaceType, addReq.IfaceAddr)
+		d, aerr := a.devices.Add(ctx, addReq.Name, addReq.ExternalID, addReq.ExternalKey, ifaceType, addReq.IfaceAddr)
 		if aerr != nil {
 			return errors.Wrap(errDeviceManagerFailed, aerr)
 		}
@@ -1201,94 +1201,3 @@ func (a *agent) DeviceManager(uuid, cmdStr string) error {
 	return a.processResponse(uuid, sub, resp)
 }
 
-// DeviceManager handles downstream device management commands.
-// cmdStr is comma-delimited: <subcommand>[,args...]
-//
-//	list                                         → JSON array of all devices
-//	add,<name>,<ext_id>,<ext_key>,<iface>,<addr> → provision + register
-//	remove,<device_id>                           → deregister
-//	get,<device_id>                              → JSON for one device
-//	seen,<device_id>                             → mark device active/last-seen
-func (a *agent) DeviceManager(uuid, cmdStr string) error {
-	if a.devices == nil {
-		return errDeviceManagerDisabled
-	}
-
-	args := strings.Split(strings.TrimSpace(cmdStr), ",")
-	if len(args) == 0 || args[0] == "" {
-		return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
-	}
-
-	sub := args[0]
-	var (
-		resp string
-		err  error
-	)
-
-	switch sub {
-	case "list":
-		devs, lerr := a.devices.List()
-		if lerr != nil {
-			return errors.Wrap(errDeviceManagerFailed, lerr)
-		}
-		b, jerr := json.Marshal(devs)
-		if jerr != nil {
-			return errors.Wrap(errDeviceManagerFailed, jerr)
-		}
-		resp = string(b)
-
-	case "add":
-		if len(args) < 6 {
-			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
-		}
-		name, extID, extKey := args[1], args[2], args[3]
-		ifaceType := devicemgr.ParseInterfaceType(args[4])
-		ifaceAddr := args[5]
-		d, aerr := a.devices.Add(name, extID, extKey, ifaceType, ifaceAddr)
-		if aerr != nil {
-			return errors.Wrap(errDeviceManagerFailed, aerr)
-		}
-		b, jerr := json.Marshal(d)
-		if jerr != nil {
-			return errors.Wrap(errDeviceManagerFailed, jerr)
-		}
-		resp = string(b)
-
-	case "remove":
-		if len(args) < 2 {
-			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
-		}
-		if err = a.devices.Remove(args[1]); err != nil {
-			return errors.Wrap(errDeviceManagerFailed, err)
-		}
-		resp = "ok"
-
-	case "get":
-		if len(args) < 2 {
-			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
-		}
-		d, gerr := a.devices.Get(args[1])
-		if gerr != nil {
-			return errors.Wrap(errDeviceManagerFailed, gerr)
-		}
-		b, jerr := json.Marshal(d)
-		if jerr != nil {
-			return errors.Wrap(errDeviceManagerFailed, jerr)
-		}
-		resp = string(b)
-
-	case "seen":
-		if len(args) < 2 {
-			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
-		}
-		if err = a.devices.MarkSeen(args[1]); err != nil {
-			return errors.Wrap(errDeviceManagerFailed, err)
-		}
-		resp = "ok"
-
-	default:
-		return errors.Wrap(errDeviceManagerFailed, errUnknownCommand)
-	}
-
-	return a.processResponse(uuid, sub, resp)
-}

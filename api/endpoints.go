@@ -152,12 +152,12 @@ func getDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
 }
 
 func addDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
-	return func(_ context.Context, request any) (any, error) {
+	return func(ctx context.Context, request any) (any, error) {
 		req := request.(addDeviceReq)
 		if err := req.validate(); err != nil {
 			return nil, err
 		}
-		d, err := svc.AddDevice(req.Name, req.ExtID, req.ExtKey, req.IfaceType, req.IfaceAddr)
+		d, err := svc.AddDevice(ctx, req.Name, req.ExtID, req.ExtKey, req.IfaceType, req.IfaceAddr)
 		if err != nil {
 			return nil, err
 		}

@@ -1349,7 +1349,7 @@ func TestDeviceManager(t *testing.T) {
 			withMgr: true,
 			setup: func(t *testing.T, svc agent.Service) {
 				t.Helper()
-				require.NoError(t, svc.DeviceManager("setup", addCmd))
+				require.NoError(t, svc.DeviceManager(context.Background(), "setup", addCmd))
 			},
 			setupPubs: 1,
 			cmdStr:    "list",
@@ -1359,7 +1359,7 @@ func TestDeviceManager(t *testing.T) {
 			withMgr: true,
 			setup: func(t *testing.T, svc agent.Service) {
 				t.Helper()
-				require.NoError(t, svc.DeviceManager("setup", addCmd))
+				require.NoError(t, svc.DeviceManager(context.Background(), "setup", addCmd))
 			},
 			setupPubs: 1,
 			cmdStr:    "get," + deviceID,
@@ -1369,7 +1369,7 @@ func TestDeviceManager(t *testing.T) {
 			withMgr: true,
 			setup: func(t *testing.T, svc agent.Service) {
 				t.Helper()
-				require.NoError(t, svc.DeviceManager("setup", addCmd))
+				require.NoError(t, svc.DeviceManager(context.Background(), "setup", addCmd))
 			},
 			setupPubs: 1,
 			cmdStr:    "seen," + deviceID,
@@ -1379,7 +1379,7 @@ func TestDeviceManager(t *testing.T) {
 			withMgr: true,
 			setup: func(t *testing.T, svc agent.Service) {
 				t.Helper()
-				require.NoError(t, svc.DeviceManager("setup", addCmd))
+				require.NoError(t, svc.DeviceManager(context.Background(), "setup", addCmd))
 			},
 			setupPubs: 1,
 			cmdStr:    "remove," + deviceID,
@@ -1389,8 +1389,8 @@ func TestDeviceManager(t *testing.T) {
 			withMgr: true,
 			setup: func(t *testing.T, svc agent.Service) {
 				t.Helper()
-				require.NoError(t, svc.DeviceManager("setup-add", addCmd))
-				require.NoError(t, svc.DeviceManager("setup-remove", "remove,"+deviceID))
+				require.NoError(t, svc.DeviceManager(context.Background(), "setup-add", addCmd))
+				require.NoError(t, svc.DeviceManager(context.Background(), "setup-remove", "remove,"+deviceID))
 			},
 			setupPubs: 2,
 			cmdStr:    "get," + deviceID,
@@ -1513,7 +1513,7 @@ func TestDeviceManager(t *testing.T) {
 				registerPublish()
 			}
 
-			err = svc.DeviceManager("uuid", tc.cmdStr)
+			err = svc.DeviceManager(context.Background(), "uuid", tc.cmdStr)
 			if tc.wantErr {
 				assert.Error(t, err)
 			} else {
