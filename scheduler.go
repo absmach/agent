@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	schedulerReadSize       = 4096
-	schedulerReconnectMin   = 1 * time.Second
-	schedulerReconnectMax   = 30 * time.Second
+	schedulerReadSize     = 4096
+	schedulerReconnectMin = 1 * time.Second
+	schedulerReconnectMax = 30 * time.Second
 )
 
 // Scheduler manages per-device telemetry goroutines.

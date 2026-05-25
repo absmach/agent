@@ -923,6 +923,9 @@ func (a *agent) AddDevice(ctx context.Context, name, extID, extKey, ifaceType, i
 		return d, err
 	}
 	if a.sched != nil {
+		// Device goroutines must outlive the per-request context; use the
+		// application-level context captured at service creation.
+		// nolint:contextcheck
 		a.sched.StartDevice(a.ctx, d)
 	}
 	return d, nil

@@ -87,6 +87,8 @@ func EncodeError(_ context.Context, err error, w http.ResponseWriter) {
 		return
 	default:
 		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		if b, marshalErr := json.Marshal(map[string]string{"error": err.Error()}); marshalErr == nil {
+			_, _ = w.Write(b)
+		}
 	}
 }
