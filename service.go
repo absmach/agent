@@ -1200,4 +1200,3 @@ func (a *agent) DeviceManager(ctx context.Context, uuid, cmdStr string) error {
 
 	return a.processResponse(uuid, sub, resp)
 }
-
