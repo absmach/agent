@@ -64,6 +64,8 @@ var (
 	Version   = "unknown"
 	Commit    = "unknown"
 	BuildTime = "unknown"
+
+	heapSamples = []metrics.Sample{{Name: "/memory/classes/heap/free:bytes"}}
 )
 
 // Version is the agent binary version, injected at build time via
@@ -840,15 +842,11 @@ func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.D
 }
 
 func (a *agent) selfHeartbeatPayload() ([]byte, error) {
-	samples := []metrics.Sample{
-		{Name: "/memory/classes/heap/free:bytes"},
-	}
-
-	metrics.Read(samples)
+	metrics.Read(heapSamples)
 
 	heapFree := uint64(0)
-	if len(samples) > 0 {
-		heapFree = samples[0].Value.Uint64()
+	if len(heapSamples) > 0 {
+		heapFree = heapSamples[0].Value.Uint64()
 	}
 
 	deviceCount := 0
