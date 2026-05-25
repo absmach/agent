@@ -41,14 +41,16 @@ func New(dbPath string, cfg ProvisionConfig, ifaceCfg iface.Config) (*Manager, e
 // All interface close errors are collected and joined before returning.
 func (m *Manager) Close() error {
 	m.mu.Lock()
+	interfaces := m.interfaces
+	m.interfaces = make(map[string]iface.Interface)
+	m.mu.Unlock()
+
 	var errs []error
-	for id, ifc := range m.interfaces {
+	for id, ifc := range interfaces {
 		if err := ifc.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("close interface %s: %w", id, err))
 		}
-		delete(m.interfaces, id)
 	}
-	m.mu.Unlock()
 	return errors.Join(append(errs, m.store.Close())...)
 }
 
