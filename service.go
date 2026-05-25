@@ -53,6 +53,7 @@ const (
 	keyTerminalSessionTimeout = "terminal_session_timeout"
 
 	notConfigured = "not_configured"
+	notFound      = "not_found"
 )
 
 var startTime = time.Now()
@@ -319,11 +320,15 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 		} else if val, ok := a.store.Get(cmdArgs[1]); ok {
 			resp = val
 		} else {
-			resp = "not_found"
+			resp = notFound
 		}
 	case "set":
 		// Use SplitN(3) so values containing commas (e.g. URLs) are preserved.
-		setArgs := strings.SplitN(strings.ReplaceAll(cmdStr, " ", ""), ",", 3)
+		parts := strings.SplitN(cmdStr, ",", 3)
+		setArgs := make([]string, len(parts))
+		for i, p := range parts {
+			setArgs[i] = strings.TrimSpace(p)
+		}
 		if len(setArgs) < 3 || setArgs[1] == "" || setArgs[2] == "" {
 			return errInvalidCommand
 		}
