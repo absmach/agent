@@ -195,30 +195,30 @@ The legacy `config.toml` fallback still exists for local development, but bootst
 
 Environment variables:
 
-| Variable | Description | Default |
-|---|---|---|
-| `MG_AGENT_CONFIG_FILE` | Legacy fallback config file, ignored in bootstrap mode | `config.toml` |
-| `MG_AGENT_LOG_LEVEL` | Log level | `info` |
-| `MG_AGENT_HTTP_PORT` | Agent HTTP port | `9999` |
-| `MG_AGENT_PORT` | Alias for agent HTTP port | |
-| `MG_AGENT_BROKER_URL` | FluxMQ (AMQP) broker URL | `amqp://guest:guest@localhost:5682/` |
-| `MG_AGENT_MQTT_URL` | MQTT broker URL | `localhost:1883` |
-| `MG_AGENT_MQTT_SKIP_TLS` | Skip TLS verification for MQTT | `true` |
-| `MG_AGENT_MQTT_MTLS` | Use mTLS for MQTT | `false` |
-| `MG_AGENT_MQTT_CA` | CA certificate path for mTLS | `ca.crt` |
-| `MG_AGENT_MQTT_CLIENT_CERT` | Client certificate path for mTLS | `client.cert` |
-| `MG_AGENT_MQTT_CLIENT_KEY` | Client private key path for mTLS | `client.key` |
-| `MG_AGENT_MQTT_QOS` | MQTT QoS level | `0` |
-| `MG_AGENT_MQTT_RETAIN` | MQTT retain flag | `false` |
-| `MG_AGENT_NODERED_URL` | Node-RED API URL | `http://localhost:1880/` |
-| `MG_AGENT_HEARTBEAT_INTERVAL` | Expected heartbeat interval | `10s` |
-| `MG_AGENT_TERMINAL_SESSION_TIMEOUT` | Terminal session timeout | `60s` |
-| `MG_AGENT_BOOTSTRAP_URL` | Bootstrap base URL | |
-| `MG_AGENT_BOOTSTRAP_EXTERNAL_ID` | Bootstrap external ID | |
-| `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` | Bootstrap external key | |
-| `MG_AGENT_BOOTSTRAP_RETRIES` | Bootstrap fetch retries | `5` |
-| `MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS` | Bootstrap retry delay in seconds | `10` |
-| `MG_AGENT_BOOTSTRAP_SKIP_TLS` | Skip TLS verification for bootstrap fetch | `false` |
+| Variable                                 | Description                                            | Default                              |
+| ---------------------------------------- | ------------------------------------------------------ | ------------------------------------ |
+| `MG_AGENT_CONFIG_FILE`                   | Legacy fallback config file, ignored in bootstrap mode | `config.toml`                        |
+| `MG_AGENT_LOG_LEVEL`                     | Log level                                              | `info`                               |
+| `MG_AGENT_HTTP_PORT`                     | Agent HTTP port                                        | `9999`                               |
+| `MG_AGENT_PORT`                          | Alias for agent HTTP port                              |                                      |
+| `MG_AGENT_BROKER_URL`                    | FluxMQ (AMQP) broker URL                               | `amqp://guest:guest@localhost:5682/` |
+| `MG_AGENT_MQTT_URL`                      | MQTT broker URL                                        | `localhost:1883`                     |
+| `MG_AGENT_MQTT_SKIP_TLS`                 | Skip TLS verification for MQTT                         | `true`                               |
+| `MG_AGENT_MQTT_MTLS`                     | Use mTLS for MQTT                                      | `false`                              |
+| `MG_AGENT_MQTT_CA`                       | CA certificate path for mTLS                           | `ca.crt`                             |
+| `MG_AGENT_MQTT_CLIENT_CERT`              | Client certificate path for mTLS                       | `client.cert`                        |
+| `MG_AGENT_MQTT_CLIENT_KEY`               | Client private key path for mTLS                       | `client.key`                         |
+| `MG_AGENT_MQTT_QOS`                      | MQTT QoS level                                         | `0`                                  |
+| `MG_AGENT_MQTT_RETAIN`                   | MQTT retain flag                                       | `false`                              |
+| `MG_AGENT_NODERED_URL`                   | Node-RED API URL                                       | `http://localhost:1880/`             |
+| `MG_AGENT_HEARTBEAT_INTERVAL`            | Expected heartbeat interval                            | `10s`                                |
+| `MG_AGENT_TERMINAL_SESSION_TIMEOUT`      | Terminal session timeout                               | `60s`                                |
+| `MG_AGENT_BOOTSTRAP_URL`                 | Bootstrap base URL                                     |                                      |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`         | Bootstrap external ID                                  |                                      |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY`        | Bootstrap external key                                 |                                      |
+| `MG_AGENT_BOOTSTRAP_RETRIES`             | Bootstrap fetch retries                                | `5`                                  |
+| `MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS` | Bootstrap retry delay in seconds                       | `10`                                 |
+| `MG_AGENT_BOOTSTRAP_SKIP_TLS`            | Skip TLS verification for bootstrap fetch              | `false`                              |
 
 ## MQTT Message Format
 
@@ -227,18 +227,18 @@ Agent uses MQTT against the configured Magistrala MQTT broker. It subscribes to 
 All messages use [SenML][senml] JSON array format:
 
 ```json
-[{"bn": "<uuid>:", "n": "<subsystem>", "vs": "<command>[,<args>]"}]
+[{ "bn": "<uuid>:", "n": "<subsystem>", "vs": "<command>[,<args>]" }]
 ```
 
 The `n` field selects the subsystem. Supported subsystems:
 
-| `n` | Description |
-|---|---|
-| `control` | Node-RED commands |
-| `exec` | Execute a shell command |
-| `config` | View runtime config or save export service config |
-| `term` | Terminal session control |
-| `nodered` | Node-RED flow management |
+| `n`       | Description                                       |
+| --------- | ------------------------------------------------- |
+| `control` | Node-RED commands                                 |
+| `exec`    | Execute a shell command                           |
+| `config`  | View runtime config or save export service config |
+| `term`    | Terminal session control                          |
+| `nodered` | Node-RED flow management                          |
 
 ## Sending Commands
 
@@ -330,7 +330,6 @@ mosquitto_pub \
 In both cases `flows` is the flow JSON **base64-encoded**. The agent automatically patches the MQTT `clientid` inside the deployed flows to `<client-id>-nr` to prevent Node-RED from conflicting with the agent's own MQTT session.
 
 See [docs/nodered.md](docs/nodered.md) for the full setup guide, Docker Compose stack, and provisioning instructions.
-
 
 ## Heartbeat Service
 

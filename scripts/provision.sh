@@ -264,7 +264,7 @@ template = """{
 payload = {
     "name": "agent-linux-device-profile",
     "description": "Bootstrap profile for Linux IoT gateway device running Magistrala Agent",
-    "template_format": "json",
+    "content_format": "json",
     "content_template": template,
     "binding_slots": [
         {
@@ -488,7 +488,7 @@ require_created "Commands channel connection" "${CONNECT_URL}" "${COMMANDS_CONNE
 echo "  ${CLIENT_ID} → ${COMMANDS_CHANNEL} (Publish, Subscribe)"
 
 # ---------------------------------------------------------------------------
-# Step 4a: Create Bootstrap Profile
+# Step 4a: Create Bootstrap Profile (reuse if one with the same name exists)
 # ---------------------------------------------------------------------------
 echo ""
 echo "Step 4a: Creating Bootstrap Profile..."
@@ -496,46 +496,120 @@ PROFILE_URL="${MG_BOOTSTRAP_API}/${DOMAIN_ID}/clients/bootstrap/profiles"
 echo "  API: ${PROFILE_URL}"
 
 PROFILE_PAYLOAD=$(build_profile_payload)
-PROFILE_RESPONSE=$(post_json "${PROFILE_URL}" "${PROFILE_PAYLOAD}")
-require_created "Bootstrap Profile creation" "${PROFILE_URL}" "${PROFILE_RESPONSE}"
-PROFILE_BODY=$(response_body "${PROFILE_RESPONSE}")
+PROFILE_NAME=$(echo "${PROFILE_PAYLOAD}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('name',''))" 2>/dev/null || echo "")
 
-PROFILE_ID=$(echo "${PROFILE_BODY}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
-if [ -z "${PROFILE_ID}" ]; then
-  echo "ERROR: Failed to extract Profile ID from response."
-  echo "Response: ${PROFILE_BODY}"
-  exit 1
+PROFILE_ID=""
+
+PROFILE_LOOKUP=$(curl -sSL "${PROFILE_URL}?limit=100" \
+  -H "Authorization: Bearer ${TOKEN}" 2>/dev/null || echo "")
+PROFILE_ID=$(echo "${PROFILE_LOOKUP}" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for p in data.get('profiles', []):
+        if p.get('name') == '${PROFILE_NAME}':
+            print(p['id'])
+            break
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+
+if [ -n "${PROFILE_ID}" ]; then
+  echo "  Reusing existing profile: ${PROFILE_ID}"
+else
+  PROFILE_RESPONSE=$(post_json "${PROFILE_URL}" "${PROFILE_PAYLOAD}")
+  PROFILE_HTTP_CODE=$(response_code "${PROFILE_RESPONSE}")
+  PROFILE_BODY=$(response_body "${PROFILE_RESPONSE}")
+
+  if [ "${PROFILE_HTTP_CODE}" = "200" ] || [ "${PROFILE_HTTP_CODE}" = "201" ]; then
+    PROFILE_ID=$(echo "${PROFILE_BODY}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
+    if [ -z "${PROFILE_ID}" ]; then
+      echo "ERROR: Failed to extract Profile ID from response."
+      echo "Response: ${PROFILE_BODY}"
+      exit 1
+    fi
+    echo "  Profile ID: ${PROFILE_ID}"
+  else
+    echo "ERROR: Bootstrap Profile creation returned HTTP ${PROFILE_HTTP_CODE}."
+    echo "Endpoint: ${PROFILE_URL}"
+    echo "Response: ${PROFILE_BODY}"
+    echo "Hint: A profile named '${PROFILE_NAME}' may already exist. Delete it or use a token with admin access."
+    exit 1
+  fi
 fi
-echo "  Profile ID: ${PROFILE_ID}"
 
 # ---------------------------------------------------------------------------
 # Step 4b: Create Bootstrap Enrollment
-# The enrollment ID is returned in the Location response header.
+# If an enrollment with the same external_id already exists, reuse it.
 # ---------------------------------------------------------------------------
 echo ""
 echo "Step 4b: Creating Bootstrap Enrollment..."
 ENROLL_URL="${MG_BOOTSTRAP_API}/${DOMAIN_ID}/clients/configs"
 echo "  API: ${ENROLL_URL}"
 
-ENROLL_PAYLOAD=$(build_enrollment_payload)
-ENROLL_HEADERS=$(mktemp)
-ENROLL_RESPONSE=$(curl -sSL -X POST "${ENROLL_URL}" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -D "${ENROLL_HEADERS}" \
-  -w "\n%{http_code}" \
-  -d "${ENROLL_PAYLOAD}")
-require_created "Bootstrap Enrollment creation" "${ENROLL_URL}" "${ENROLL_RESPONSE}"
+ENROLL_LOOKUP=$(curl -sSL "${ENROLL_URL}?offset=0&limit=100" \
+  -H "Authorization: Bearer ${TOKEN}" 2>/dev/null || echo "")
+ENROLLMENT_ID=$(echo "${ENROLL_LOOKUP}" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    ext_id = '${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}'
+    for c in data.get('configs', []):
+        if c.get('external_id') == ext_id:
+            print(c.get('id', ''))
+            break
+except Exception:
+    pass
+" 2>/dev/null || echo "")
 
-ENROLL_LOCATION=$(grep -i "^location:" "${ENROLL_HEADERS}" | tr -d '\r' | awk '{print $2}')
-ENROLLMENT_ID=$(basename "${ENROLL_LOCATION}")
-rm -f "${ENROLL_HEADERS}"
+if [ -n "${ENROLLMENT_ID}" ]; then
+  echo "  Reusing existing enrollment: ${ENROLLMENT_ID}"
+else
+  ENROLL_PAYLOAD=$(build_enrollment_payload)
+  ENROLL_HEADERS=$(mktemp)
+  ENROLL_RESPONSE=$(curl -sSL -X POST "${ENROLL_URL}" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -D "${ENROLL_HEADERS}" \
+    -w "\n%{http_code}" \
+    -d "${ENROLL_PAYLOAD}")
+  ENROLL_HTTP_CODE=$(response_code "${ENROLL_RESPONSE}")
+  ENROLL_BODY=$(response_body "${ENROLL_RESPONSE}")
 
-if [ -z "${ENROLLMENT_ID}" ]; then
-  echo "ERROR: Failed to extract Enrollment ID from Location header."
-  exit 1
+  if [ "${ENROLL_HTTP_CODE}" = "200" ] || [ "${ENROLL_HTTP_CODE}" = "201" ]; then
+    ENROLL_LOCATION=$(grep -i "^location:" "${ENROLL_HEADERS}" | tr -d '\r' | awk '{print $2}')
+    ENROLLMENT_ID=$(basename "${ENROLL_LOCATION}")
+    rm -f "${ENROLL_HEADERS}"
+
+    if [ -z "${ENROLLMENT_ID}" ]; then
+      echo "ERROR: Failed to extract Enrollment ID from Location header."
+      exit 1
+    fi
+    echo "  Enrollment ID: ${ENROLLMENT_ID}"
+  else
+    echo "  Enrollment creation returned HTTP ${ENROLL_HTTP_CODE}, checking for existing enrollment..."
+    ENROLLMENT_ID=$(echo "${ENROLL_LOOKUP}" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    ext_id = '${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}'
+    for c in data.get('configs', []):
+        if c.get('external_id') == ext_id:
+            print(c.get('id', ''))
+            break
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+    if [ -n "${ENROLLMENT_ID}" ]; then
+      echo "  Reusing existing enrollment: ${ENROLLMENT_ID}"
+    else
+      echo "ERROR: Bootstrap Enrollment creation returned HTTP ${ENROLL_HTTP_CODE}."
+      echo "Endpoint: ${ENROLL_URL}"
+      echo "Response: ${ENROLL_BODY}"
+      exit 1
+    fi
+  fi
 fi
-echo "  Enrollment ID: ${ENROLLMENT_ID}"
 
 # ---------------------------------------------------------------------------
 # Step 4c: Bind Resources
