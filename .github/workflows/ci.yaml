@@ -1,33 +1,42 @@
 # Copyright (c) Abstract Machines
 # SPDX-License-Identifier: Apache-2.0
 
-name: CI Pipeline
+name: Continuous Integration
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "LICENSE"
   pull_request:
-    branches: [main]
+
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  lint-and-build:
-    uses: ./.github/workflows/lint-and-build.yaml
-
-  tests:
-    name: Run tests
+  ci:
+    name: CI
     runs-on: ubuntu-latest
-    needs: lint-and-build
+
+    permissions:
+      contents: read
+      pull-requests: write
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: "go.sum"
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -36,21 +45,59 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
 
-      - name: Build UI
-        run: make ui_prod
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
+      - name: Check for changes in specific paths
+        uses: dorny/paths-filter@v4
+        id: changes
         with:
-          go-version-file: go.mod
-          cache-dependency-path: "go.sum"
+          base: ${{ github.event.before }}
+          filters: |
+            golang:
+              - "*.go"
+              - "**/*.go"
+              - "go.mod"
+              - "go.sum"
 
-      - name: Run tests
+            ui:
+              - "*.ts"
+              - "*.js"
+              - "**/*.ts"
+              - "**/*.js"
+              - "ui/**"
+
+      - name: Run Golang Linter
+        if: steps.changes.outputs.golang == 'true'
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          args: --config ./tools/config/.golangci.yaml
+
+      - name: Run Golang tests
+        if: steps.changes.outputs.golang == 'true'
         run: go test -v --race -covermode=atomic -coverprofile cover.out ./...
 
       - name: Upload coverage
+        if: steps.changes.outputs.golang == 'true'
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: cover.out
           fail_ci_if_error: false
+
+      - name: Run UI Linter
+        if: steps.changes.outputs.ui == 'true'
+        run: |
+          cd ui
+          npm run lint
+
+      - name: Run UI Typecheck
+        if: steps.changes.outputs.ui == 'true'
+        run: |
+          cd ui
+          npm run typecheck
+
+      - name: Build UI
+        if: steps.changes.outputs.ui == 'true'
+        run: make ui_prod
+
+      - name: Build binary
+        run: make all
