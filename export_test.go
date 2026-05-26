@@ -13,6 +13,10 @@ import (
 
 const NodeRedTLSConfigIDForTest = nodeRedTLSConfigID
 
+func ApplyConfigEntryForTest(cfg *Config, key, val string) {
+	ApplyConfigEntry(cfg, key, val)
+}
+
 func ChangeDirForTest(workDir string, cmd []string) (string, string, error) {
 	ag := &agent{workDir: workDir}
 	output, err := ag.changeDir(cmd)
@@ -40,6 +44,7 @@ func TerminalCloseExistingSessionForTest(uuid string) (int, error) {
 	ag := &agent{
 		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		terminals: map[string]terminal.Session{uuid: nil},
+		config:    &Config{},
 	}
 
 	cmd := base64.StdEncoding.EncodeToString([]byte(close))

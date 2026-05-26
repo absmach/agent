@@ -22,6 +22,7 @@ import (
 	"github.com/absmach/agent/api"
 	"github.com/absmach/agent/middleware"
 	"github.com/absmach/agent/pkg/bootstrap"
+	pkgconfig "github.com/absmach/agent/pkg/config"
 	"github.com/absmach/agent/pkg/conn"
 	"github.com/absmach/agent/pkg/devicemgr"
 	"github.com/absmach/agent/pkg/iface"
@@ -59,6 +60,7 @@ type config struct {
 	BootstrapRetryDelay  string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
 	BootstrapSkipTLS     string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS" envDefault:"false"`
 	DeviceDBPath         string `env:"MG_AGENT_DEVICE_DB_PATH" envDefault:"/var/lib/agent/devices.db"`
+	ConfigPath           string `env:"MG_AGENT_CONFIG_PATH" envDefault:"agent-config.json"`
 }
 
 var (
@@ -89,7 +91,7 @@ func main() {
 		return
 	}
 
-	logger, err := initLogger(cfg.Log.Level)
+	logger, levelVar, err := initLogger(cfg.Log.Level)
 	if err != nil {
 		log.Printf("Failed to create logger: %s", err)
 		exitCode = 1
@@ -104,6 +106,21 @@ func main() {
 			logger.Error("Failed to load bootstrap config", slog.Any("error", err))
 			exitCode = 1
 			return
+		}
+	}
+
+	store, err := pkgconfig.NewStore(c.ConfigPath)
+	if err != nil {
+		logger.Error("Failed to open persistent config store", slog.Any("error", err))
+		exitCode = 1
+		return
+	}
+	cfg = applyPersistedOverrides(cfg, store)
+	// Sync the live log-level variable with any persisted log_level override.
+	if val, ok := store.Get("log_level"); ok {
+		var l slog.Level
+		if err := l.UnmarshalText([]byte(val)); err == nil {
+			levelVar.Set(l)
 		}
 	}
 
@@ -140,7 +157,7 @@ func main() {
 	}
 	defer devices.Close()
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger, devices)
+	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger, devices, store, levelVar)
 	if err != nil {
 		logger.Error("Error in agent service", slog.Any("error", err))
 		exitCode = 1
@@ -404,17 +421,26 @@ func StopSignalHandler(ctx context.Context, cancel context.CancelFunc, logger *s
 	}
 }
 
-func initLogger(levelText string) (*slog.Logger, error) {
+func initLogger(levelText string) (*slog.Logger, *slog.LevelVar, error) {
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(levelText)); err != nil {
-		return &slog.Logger{}, fmt.Errorf(`{"level":"error","message":"%s: %s","ts":"%s"}`, err, levelText, time.Now())
+		return &slog.Logger{}, nil, fmt.Errorf(`{"level":"error","message":"%s: %s","ts":"%s"}`, err, levelText, time.Now())
 	}
 
+	var levelVar slog.LevelVar
+	levelVar.Set(level)
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
+		Level: &levelVar,
 	})
 
-	return slog.New(logHandler), nil
+	return slog.New(logHandler), &levelVar, nil
+}
+
+func applyPersistedOverrides(cfg agent.Config, store pkgconfig.Store) agent.Config {
+	for key, val := range store.All() {
+		agent.ApplyConfigEntry(&cfg, key, val)
+	}
+	return cfg
 }
 
 func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Config, error) {

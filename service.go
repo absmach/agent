@@ -16,9 +16,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	cfgstore "github.com/absmach/agent/pkg/config"
 	"github.com/absmach/agent/pkg/devicemgr"
 	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/iface"
@@ -45,6 +47,13 @@ const (
 	data    = "data"
 
 	export = "export"
+
+	keyLogLevel               = "log_level"
+	keyHeartbeatInterval      = "heartbeat_interval"
+	keyTerminalSessionTimeout = "terminal_session_timeout"
+
+	notConfigured = "not_configured"
+	notFound      = "not_found"
 )
 
 var startTime = time.Now()
@@ -149,28 +158,37 @@ type Service interface {
 var _ Service = (*agent)(nil)
 
 type agent struct {
-	mqttClient    paho.Client
-	config        *Config
-	noderedClient nodered.Client
-	logger        *slog.Logger
-	svcs          map[string]Heartbeat
-	terminals     map[string]terminal.Session
-	devices       *devicemgr.Manager
-	workDir       string
-	otaBusy       atomic.Bool
+	mqttClient          paho.Client
+	config              *Config
+	noderedClient       nodered.Client
+	logger              *slog.Logger
+	svcs                map[string]Heartbeat
+	terminals           map[string]terminal.Session
+	devices             *devicemgr.Manager
+	workDir             string
+	otaBusy             atomic.Bool
+	store               cfgstore.Store
+	heartbeatIntervalCh chan time.Duration
+	logLevel            *slog.LevelVar
+	cfgMu               sync.RWMutex
+	startupConfig       Config
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store cfgstore.Store, levelVar *slog.LevelVar) (Service, error) {
 	ag := &agent{
-		mqttClient:    mc,
-		noderedClient: nc,
-		config:        cfg,
-		logger:        logger,
-		svcs:          make(map[string]Heartbeat),
-		terminals:     make(map[string]terminal.Session),
-		devices:       devices,
-		workDir:       "/",
+		mqttClient:          mc,
+		noderedClient:       nc,
+		config:              cfg,
+		logger:              logger,
+		svcs:                make(map[string]Heartbeat),
+		terminals:           make(map[string]terminal.Session),
+		devices:             devices,
+		workDir:             "/",
+		store:               store,
+		heartbeatIntervalCh: make(chan time.Duration, 1),
+		logLevel:            levelVar,
+		startupConfig:       *cfg,
 	}
 
 	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat",
@@ -267,7 +285,11 @@ func (a *agent) Control(uuid, cmdStr string) error {
 //	b, _ := toml.Marshal(cfg)
 //	config_file_content := base64.StdEncoding.EncodeToString(b).
 func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
-	cmdArgs := strings.Split(strings.ReplaceAll(cmdStr, " ", ""), ",")
+	rawParts := strings.Split(cmdStr, ",")
+	cmdArgs := make([]string, len(rawParts))
+	for i, p := range rawParts {
+		cmdArgs[i] = strings.TrimSpace(p)
+	}
 	if len(cmdArgs) < 1 {
 		return errInvalidCommand
 	}
@@ -290,6 +312,62 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 		if err := a.saveConfig(ctx, service, fileName, fileCont); err != nil {
 			return err
 		}
+	case "get":
+		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
+			return errInvalidCommand
+		}
+		if !settableKeys[cmdArgs[1]] {
+			return errInvalidCommand
+		}
+		if a.store == nil {
+			resp = notConfigured
+		} else if val, ok := a.store.Get(cmdArgs[1]); ok {
+			resp = val
+		} else {
+			resp = notFound
+		}
+	case "set":
+		if len(cmdArgs) < 3 || cmdArgs[1] == "" || cmdArgs[2] == "" {
+			return errInvalidCommand
+		}
+		key, val := cmdArgs[1], cmdArgs[2]
+		if !settableKeys[key] {
+			return errInvalidCommand
+		}
+		if err := validateSettableValue(key, val); err != nil {
+			return err
+		}
+		if a.store == nil {
+			resp = notConfigured
+		} else {
+			if err := a.store.Set(key, val); err != nil {
+				return err
+			}
+			a.cfgMu.Lock()
+			ApplyConfigEntry(a.config, key, val)
+			a.cfgMu.Unlock()
+			a.applyLiveUpdate(key, val)
+			resp = "ok"
+		}
+	case "reset":
+		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
+			return errInvalidCommand
+		}
+		key := cmdArgs[1]
+		if !settableKeys[key] {
+			return errInvalidCommand
+		}
+		if a.store == nil {
+			resp = notConfigured
+		} else {
+			if err := a.store.Remove(key); err != nil {
+				return err
+			}
+			a.revertToStartup(key)
+			resp = "ok"
+		}
+	default:
+		return errInvalidCommand
 	}
 	return a.processResponse(uuid, cmd, resp)
 }
@@ -309,13 +387,14 @@ func (a *agent) Terminal(uuid, cmdStr string) error {
 	if len(cmdArgs) > 1 {
 		ch = cmdArgs[1]
 	}
+	cfg := a.Config()
 	switch cmd {
 	case char:
 		if err := a.terminalWrite(uuid, ch); err != nil {
 			return err
 		}
 	case open:
-		if err := a.terminalOpen(uuid, a.config.Terminal.SessionTimeout); err != nil {
+		if err := a.terminalOpen(uuid, cfg.Terminal.SessionTimeout); err != nil {
 			return err
 		}
 	case close:
@@ -353,7 +432,7 @@ func (a *agent) terminalClose(uuid string) error {
 }
 
 func (a *agent) terminalWrite(uuid, cmd string) error {
-	if err := a.terminalOpen(uuid, a.config.Terminal.SessionTimeout); err != nil {
+	if err := a.terminalOpen(uuid, a.Config().Terminal.SessionTimeout); err != nil {
 		return err
 	}
 	term := a.terminals[uuid]
@@ -416,8 +495,9 @@ func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 		return flowJSON
 	}
 
-	host, port, useTLS := nodeRedMQTTEndpoint(a.config.MQTT.URL)
-	dataChannel := a.config.Channels.DataChan()
+	cfg := a.Config()
+	host, port, useTLS := nodeRedMQTTEndpoint(cfg.MQTT.URL)
+	dataChannel := cfg.Channels.DataChan()
 	brokerIDs := map[string]struct{}{}
 
 	patchNodeRedValue(payload, func(node map[string]any) {
@@ -432,25 +512,25 @@ func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 				node["broker"] = host
 			}
 			node["port"] = port
-			node["clientid"] = a.config.MQTT.Username + "-nr"
+			node["clientid"] = cfg.MQTT.Username + "-nr"
 			node["usetls"] = useTLS
-			if useTLS && a.config.MQTT.SkipTLSVer {
+			if useTLS && cfg.MQTT.SkipTLSVer {
 				node["tls"] = nodeRedTLSConfigID
 			} else {
 				delete(node, "tls")
 			}
 			node["credentials"] = map[string]any{
-				"user":     a.config.MQTT.Username,
-				"password": a.config.MQTT.Password,
+				"user":     cfg.MQTT.Username,
+				"password": cfg.MQTT.Password,
 			}
 		case "function":
 			if fn, ok := node["func"].(string); ok {
-				node["func"] = patchNodeRedTopic(fn, a.config.DomainID, dataChannel)
+				node["func"] = patchNodeRedTopic(fn, cfg.DomainID, dataChannel)
 			}
 		}
 
 		if topic, ok := node["topic"].(string); ok {
-			node["topic"] = patchNodeRedTopic(topic, a.config.DomainID, dataChannel)
+			node["topic"] = patchNodeRedTopic(topic, cfg.DomainID, dataChannel)
 		}
 	})
 
@@ -471,7 +551,7 @@ func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 		})
 	}
 
-	if useTLS && a.config.MQTT.SkipTLSVer {
+	if useTLS && cfg.MQTT.SkipTLSVer {
 		payload = ensureNodeRedTLSConfig(payload)
 	}
 
@@ -628,11 +708,15 @@ func saveExportConfig(fileName string, content []byte) error {
 }
 
 func (a *agent) AddConfig(c Config) error {
+	a.cfgMu.Lock()
+	defer a.cfgMu.Unlock()
 	*a.config = c
 	return nil
 }
 
 func (a *agent) Config() Config {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
 	return *a.config
 }
 
@@ -652,7 +736,7 @@ func (a *agent) Services() []Info {
 
 func (a *agent) Publish(t, payload string) error {
 	topic := a.getTopic(t)
-	mqtt := a.config.MQTT
+	mqtt := a.Config().MQTT
 	token := a.mqttClient.Publish(topic, mqtt.QoS, mqtt.Retain, payload)
 	token.Wait()
 	err := token.Error()
@@ -687,6 +771,8 @@ func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.D
 		select {
 		case <-ticker.C:
 			publish()
+		case d := <-a.heartbeatIntervalCh:
+			ticker.Reset(d)
 		case <-ctx.Done():
 			return
 		}
@@ -695,7 +781,7 @@ func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.D
 
 func (a *agent) UpdateLiveness(svcname, svctype string) error {
 	if _, ok := a.svcs[svcname]; !ok {
-		svc := NewHeartbeat(svcname, svctype, a.config.Heartbeat.Interval)
+		svc := NewHeartbeat(svcname, svctype, a.Config().Heartbeat.Interval)
 		a.svcs[svcname] = svc
 	}
 	a.svcs[svcname].Update()
@@ -767,15 +853,109 @@ func (a *agent) Shutdown() {
 	a.logger.Info("graceful shutdown complete")
 }
 
+// settableKeys is the allowlist of config keys readable/writable via MQTT
+// get/set. Only these keys are accepted; unknown keys are rejected to prevent
+// arbitrary storage growth.
+var settableKeys = map[string]bool{
+	keyLogLevel:               true,
+	keyHeartbeatInterval:      true,
+	keyTerminalSessionTimeout: true,
+}
+
+// validateSettableValue returns errInvalidCommand if val is not a valid value for key.
+func validateSettableValue(key, val string) error {
+	switch key {
+	case keyLogLevel:
+		var l slog.Level
+		if err := l.UnmarshalText([]byte(val)); err != nil {
+			return errInvalidCommand
+		}
+	case keyHeartbeatInterval:
+		d, err := time.ParseDuration(val)
+		if err != nil || d < time.Second {
+			return errInvalidCommand
+		}
+	case keyTerminalSessionTimeout:
+		d, err := time.ParseDuration(val)
+		if err != nil || d <= 0 {
+			return errInvalidCommand
+		}
+	default:
+		return errInvalidCommand
+	}
+	return nil
+}
+
+// revertToStartup restores key's value from startupConfig and applies the
+// live update so running subsystems reflect the reverted value immediately.
+func (a *agent) revertToStartup(key string) {
+	a.cfgMu.Lock()
+	var liveVal string
+	switch key {
+	case keyLogLevel:
+		a.config.Log.Level = a.startupConfig.Log.Level
+		liveVal = a.config.Log.Level
+	case keyHeartbeatInterval:
+		a.config.Heartbeat.Interval = a.startupConfig.Heartbeat.Interval
+		liveVal = a.config.Heartbeat.Interval.String()
+	case keyTerminalSessionTimeout:
+		a.config.Terminal.SessionTimeout = a.startupConfig.Terminal.SessionTimeout
+		liveVal = a.config.Terminal.SessionTimeout.String()
+	}
+	a.cfgMu.Unlock()
+	if liveVal != "" {
+		a.applyLiveUpdate(key, liveVal)
+	}
+}
+
+// ApplyConfigEntry updates cfg in place for the known settable keys.
+// Used at startup to replay persisted overrides before the agent starts.
+func ApplyConfigEntry(cfg *Config, key, val string) {
+	switch key {
+	case keyLogLevel:
+		cfg.Log.Level = val
+	case keyHeartbeatInterval:
+		if d, err := time.ParseDuration(val); err == nil && d > 0 {
+			cfg.Heartbeat.Interval = d
+		}
+	case keyTerminalSessionTimeout:
+		if d, err := time.ParseDuration(val); err == nil && d > 0 {
+			cfg.Terminal.SessionTimeout = d
+		}
+	}
+}
+
+// applyLiveUpdate propagates a config change to running subsystems so the
+// effect is immediate without requiring a restart.
+func (a *agent) applyLiveUpdate(key, val string) {
+	switch key {
+	case keyLogLevel:
+		if a.logLevel != nil {
+			var l slog.Level
+			if err := l.UnmarshalText([]byte(val)); err == nil {
+				a.logLevel.Set(l)
+			}
+		}
+	case keyHeartbeatInterval:
+		if d, err := time.ParseDuration(val); err == nil && d > 0 {
+			select {
+			case a.heartbeatIntervalCh <- d:
+			default:
+			}
+		}
+	}
+}
+
 func (a *agent) getTopic(topic string) (t string) {
-	domainID := a.config.DomainID
+	cfg := a.Config()
+	domainID := cfg.DomainID
 	switch topic {
 	case control:
-		t = fmt.Sprintf("m/%s/c/%s/res", domainID, a.config.Channels.CtrlChan())
+		t = fmt.Sprintf("m/%s/c/%s/res", domainID, cfg.Channels.CtrlChan())
 	case data:
-		t = fmt.Sprintf("m/%s/c/%s/gateway/telemetry", domainID, a.config.Channels.DataChan())
+		t = fmt.Sprintf("m/%s/c/%s/gateway/telemetry", domainID, cfg.Channels.DataChan())
 	default:
-		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, a.config.Channels.CtrlChan(), topic)
+		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, cfg.Channels.CtrlChan(), topic)
 	}
 	return t
 }

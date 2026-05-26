@@ -143,7 +143,7 @@ func TestDownload_Success(t *testing.T) {
 		progressCalls = append(progressCalls, pct)
 	})
 	require.NoError(t, err)
-	defer os.Remove(path)
+	defer func() { _ = os.Remove(path) }()
 
 	got, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -223,7 +223,7 @@ func TestDownload_ProgressReportedEvery5Percent(t *testing.T) {
 		calls = append(calls, pct)
 	})
 	require.NoError(t, err)
-	os.Remove(path)
+	_ = os.Remove(path)
 
 	// consecutive reported values should differ by at least 5%, except the final 100%
 	for i := 1; i < len(calls)-1; i++ {
@@ -265,7 +265,7 @@ func TestVerify_Sidecar_Match(t *testing.T) {
 	path := writeTempFile(t, content)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "%s  agent.bin\n", sha256hex(content))
+		_, _ = fmt.Fprintf(w, "%s  agent.bin\n", sha256hex(content))
 	}))
 	defer srv.Close()
 
@@ -277,7 +277,7 @@ func TestVerify_Sidecar_Mismatch(t *testing.T) {
 	path := writeTempFile(t, []byte("agent binary"))
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "deadbeef  agent.bin\n")
+		_, _ = fmt.Fprintf(w, "deadbeef  agent.bin\n")
 	}))
 	defer srv.Close()
 
@@ -312,7 +312,7 @@ func TestVerify_InlineTakesPrecedenceOverSidecar(t *testing.T) {
 
 	// sidecar serves wrong hash — inline hash is correct, should pass
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "deadbeef  agent.bin\n")
+		_, _ = fmt.Fprintf(w, "deadbeef  agent.bin\n")
 	}))
 	defer srv.Close()
 
