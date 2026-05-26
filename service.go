@@ -51,6 +51,7 @@ const (
 
 	keyLogLevel               = "log_level"
 	keyHeartbeatInterval      = "heartbeat_interval"
+	keyTelemetryInterval      = "telemetry_interval"
 	keyTerminalSessionTimeout = "terminal_session_timeout"
 	keyCommandSecret          = "command_secret"
 	keyBsValid                = "bs_valid"
@@ -221,6 +222,7 @@ type agent struct {
 	otaBusy             atomic.Bool
 	store               cfgstore.Store
 	heartbeatIntervalCh chan time.Duration
+	telemetryIntervalCh chan time.Duration
 	logLevel            *slog.LevelVar
 	cfgMu               sync.RWMutex
 	startupConfig       Config
@@ -242,6 +244,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		workDir:             "/",
 		store:               store,
 		heartbeatIntervalCh: make(chan time.Duration, 1),
+		telemetryIntervalCh: make(chan time.Duration, 1),
 		logLevel:            levelVar,
 		startupConfig:       *cfg,
 		bootstrapCachePath:  bootstrapCachePath,
@@ -258,6 +261,12 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat",
 		cfg.DomainID, cfg.Channels.DataChan())
 	go ag.selfHeartbeat(ctx, topic, cfg.Heartbeat.Interval, cfg.MQTT.QoS)
+
+	if cfg.Telemetry.Interval > 0 {
+		telemetryTopic := fmt.Sprintf("m/%s/c/%s/gateway/telemetry",
+			cfg.DomainID, cfg.Channels.DataChan())
+		go ag.selfTelemetry(ctx, telemetryTopic, cfg.Telemetry.Interval, cfg.MQTT.QoS)
+	}
 
 	return ag, nil
 }
@@ -905,6 +914,38 @@ func (a *agent) selfHeartbeatPayload() ([]byte, error) {
 	return senml.EncodeRecords(pack)
 }
 
+func (a *agent) selfTelemetry(ctx context.Context, topic string, interval time.Duration, qos byte) {
+	publish := func() {
+		now := float64(time.Now().UnixNano())
+		uptime := time.Since(startTime).Seconds()
+		pack := []senml.Record{
+			{BaseName: "gw:", BaseTime: now, Name: "uptime", Unit: "s", Value: &uptime},
+		}
+		b, err := senml.EncodeRecords(pack)
+		if err != nil {
+			a.logger.Warn("failed to encode self-telemetry", slog.Any("error", err))
+			return
+		}
+		token := a.mqttClient.Publish(topic, qos, false, b)
+		token.Wait()
+		if err := token.Error(); err != nil {
+			a.logger.Warn("self-telemetry publish failed", slog.Any("error", err))
+		}
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			publish()
+		case d := <-a.telemetryIntervalCh:
+			ticker.Reset(d)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 func (a *agent) UpdateLiveness(svcname, svctype string) error {
 	a.svcsMu.Lock()
 	defer a.svcsMu.Unlock()
@@ -1060,6 +1101,7 @@ func (a *agent) Shutdown() {
 var settableKeys = map[string]bool{
 	keyLogLevel:               true,
 	keyHeartbeatInterval:      true,
+	keyTelemetryInterval:      true,
 	keyTerminalSessionTimeout: true,
 	keyCommandSecret:          true,
 	keyBsValid:                true,
@@ -1076,6 +1118,11 @@ func validateSettableValue(key, val string) error {
 	case keyHeartbeatInterval:
 		d, err := time.ParseDuration(val)
 		if err != nil || d < time.Second {
+			return errInvalidCommand
+		}
+	case keyTelemetryInterval:
+		d, err := time.ParseDuration(val)
+		if err != nil || d < time.Second || d > time.Hour {
 			return errInvalidCommand
 		}
 	case keyTerminalSessionTimeout:
@@ -1107,6 +1154,9 @@ func (a *agent) revertToStartup(key string) {
 	case keyHeartbeatInterval:
 		a.config.Heartbeat.Interval = a.startupConfig.Heartbeat.Interval
 		liveVal = a.config.Heartbeat.Interval.String()
+	case keyTelemetryInterval:
+		a.config.Telemetry.Interval = a.startupConfig.Telemetry.Interval
+		liveVal = a.config.Telemetry.Interval.String()
 	case keyTerminalSessionTimeout:
 		a.config.Terminal.SessionTimeout = a.startupConfig.Terminal.SessionTimeout
 		liveVal = a.config.Terminal.SessionTimeout.String()
@@ -1129,6 +1179,10 @@ func ApplyConfigEntry(cfg *Config, key, val string) {
 	case keyHeartbeatInterval:
 		if d, err := time.ParseDuration(val); err == nil && d > 0 {
 			cfg.Heartbeat.Interval = d
+		}
+	case keyTelemetryInterval:
+		if d, err := time.ParseDuration(val); err == nil && d > 0 {
+			cfg.Telemetry.Interval = d
 		}
 	case keyTerminalSessionTimeout:
 		if d, err := time.ParseDuration(val); err == nil && d > 0 {
@@ -1164,6 +1218,13 @@ func (a *agent) applyLiveUpdate(key, val string) {
 		if d, err := time.ParseDuration(val); err == nil && d > 0 {
 			select {
 			case a.heartbeatIntervalCh <- d:
+			default:
+			}
+		}
+	case keyTelemetryInterval:
+		if d, err := time.ParseDuration(val); err == nil && d > 0 {
+			select {
+			case a.telemetryIntervalCh <- d:
 			default:
 			}
 		}

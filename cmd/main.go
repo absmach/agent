@@ -50,6 +50,7 @@ type config struct {
 	MqttCert             string `env:"MG_AGENT_MQTT_CLIENT_CERT"              envDefault:"client.cert"`
 	MqttPrivateKey       string `env:"MG_AGENT_MQTT_CLIENT_KEY"               envDefault:"client.key"`
 	HeartbeatInterval    string `env:"MG_AGENT_HEARTBEAT_INTERVAL"            envDefault:"10s"`
+	TelemetryInterval    string `env:"MG_AGENT_TELEMETRY_INTERVAL"            envDefault:"0s"`
 	TermSessionTimeout   string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT"      envDefault:"60s"`
 	OTAEnabled           string `env:"MG_AGENT_OTA_ENABLED"                   envDefault:"false"`
 	OTABinaryPath        string `env:"MG_AGENT_OTA_BINARY_PATH"               envDefault:"/usr/local/bin/agent"`
@@ -284,6 +285,15 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 	ct := agent.TerminalConfig{
 		SessionTimeout: termSessionTimeout,
 	}
+
+	telemetryInterval, err := time.ParseDuration(cfg.TelemetryInterval)
+	if err != nil {
+		return agent.Config{}, err
+	}
+	tlc := agent.TelemetryConfig{
+		Interval: telemetryInterval,
+	}
+
 	nc := agent.NodeRedConfig{URL: cfg.NodeRedURL}
 	lc := agent.LogConfig{Level: cfg.LogLevel}
 
@@ -334,7 +344,7 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 		Retain:      retain,
 	}
 
-	c := agent.NewConfig(sc, agent.ChanConfig{}, nc, lc, mc, ch, ct, oc)
+	c := agent.NewConfig(sc, agent.ChanConfig{}, nc, lc, mc, ch, ct, oc, tlc)
 	c.CommandSecret = cfg.CommandSecret
 	return c, nil
 }
