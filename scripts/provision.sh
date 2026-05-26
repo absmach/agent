@@ -314,6 +314,13 @@ payload = {
     "name": "agent-mock-device-config",
     "profile_id": os.environ["PROFILE_ID"],
     "status": "enabled",
+    # SECURITY NOTE: provision_token (MG_PAT) is an operator-level Personal
+    # Access Token that is persisted inside Magistrala's bootstrap config for
+    # every gateway that runs this script. A compromised gateway therefore
+    # exposes full operator authority over the Magistrala deployment. Before
+    # using this in production, replace MG_PAT with a narrowly-scoped token
+    # that only has permission to create clients/channels/rules within the
+    # target domain.
     "render_context": {
         "mqtt_url":          os.environ["MG_AGENT_MQTT_URL"],
         "clients_url":       os.environ["MG_AGENT_CLIENTS_URL"],

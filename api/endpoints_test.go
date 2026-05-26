@@ -610,7 +610,7 @@ func TestListDevices(t *testing.T) {
 			req := testRequest{
 				client: ts.Client(),
 				method: http.MethodGet,
-				url:    ts.URL + "/api/devices",
+				url:    ts.URL + "/devices",
 			}
 
 			res, err := req.make()
@@ -657,7 +657,7 @@ func TestGetDevice(t *testing.T) {
 			req := testRequest{
 				client: ts.Client(),
 				method: http.MethodGet,
-				url:    ts.URL + "/api/devices/" + tc.id,
+				url:    ts.URL + "/devices/" + tc.id,
 			}
 
 			res, err := req.make()
@@ -731,7 +731,7 @@ func TestAddDevice(t *testing.T) {
 			req := testRequest{
 				client:      ts.Client(),
 				method:      http.MethodPost,
-				url:         ts.URL + "/api/devices",
+				url:         ts.URL + "/devices",
 				contentType: contentType,
 				body:        strings.NewReader(tc.body),
 			}
@@ -779,7 +779,7 @@ func TestRemoveDevice(t *testing.T) {
 			req := testRequest{
 				client: ts.Client(),
 				method: http.MethodDelete,
-				url:    ts.URL + "/api/devices/" + tc.id,
+				url:    ts.URL + "/devices/" + tc.id,
 			}
 
 			res, err := req.make()
@@ -825,7 +825,7 @@ func TestMarkDeviceSeen(t *testing.T) {
 			req := testRequest{
 				client: ts.Client(),
 				method: http.MethodPost,
-				url:    ts.URL + "/api/devices/" + tc.id + "/seen",
+				url:    ts.URL + "/devices/" + tc.id + "/seen",
 			}
 
 			res, err := req.make()
@@ -880,7 +880,7 @@ func TestOTATrigger(t *testing.T) {
 			req := testRequest{
 				client:      ts.Client(),
 				method:      http.MethodPost,
-				url:         ts.URL + "/api/ota",
+				url:         ts.URL + "/ota",
 				contentType: contentType,
 				body:        strings.NewReader(tc.body),
 			}
@@ -930,7 +930,7 @@ func TestOTAStatus(t *testing.T) {
 			req := testRequest{
 				client: ts.Client(),
 				method: http.MethodGet,
-				url:    ts.URL + "/api/ota/status",
+				url:    ts.URL + "/ota/status",
 			}
 
 			res, err := req.make()

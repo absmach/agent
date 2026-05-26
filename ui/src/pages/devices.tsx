@@ -80,7 +80,7 @@ export function DevicesPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/devices");
+      const res = await fetch("/devices");
       if (!res.ok) throw new Error(await extractError(res));
       const data = await res.json();
       setDevices(data.devices ?? []);
@@ -98,7 +98,7 @@ export function DevicesPage() {
     setAdding(true);
     setAddError("");
     try {
-      const res = await fetch("/api/devices", {
+      const res = await fetch("/devices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -118,7 +118,7 @@ export function DevicesPage() {
     const name = devices.find((d) => d.id === id)?.name ?? id;
     if (!confirm(`Remove device "${name}"? This will deprovision it from Magistrala.`)) return;
     try {
-      const res = await fetch(`/api/devices/${id}`, { method: "DELETE" });
+      const res = await fetch(`/devices/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(await extractError(res));
       setDevices((d) => d.filter((x) => x.id !== id));
     } catch (e) {
@@ -128,7 +128,7 @@ export function DevicesPage() {
 
   async function handleSeen(id: string) {
     try {
-      await fetch(`/api/devices/${id}/seen`, { method: "POST" });
+      await fetch(`/devices/${id}/seen`, { method: "POST" });
       await load();
     } catch (e) {
       setError(String(e));

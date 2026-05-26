@@ -6,6 +6,7 @@ package devicemgr
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	mgSDK "github.com/absmach/magistrala/pkg/sdk"
 )
@@ -67,7 +68,9 @@ func (p *provisionClient) Provision(ctx context.Context, name, externalID, exter
 		// Use a detached context for cleanup so a cancelled request doesn't
 		// prevent the rollback from reaching Magistrala.
 		cleanupCtx := context.WithoutCancel(ctx)
-		_ = p.sdk.DeleteClient(cleanupCtx, client.ID, p.cfg.DomainID, p.cfg.Token)
+		if delErr := p.sdk.DeleteClient(cleanupCtx, client.ID, p.cfg.DomainID, p.cfg.Token); delErr != nil {
+			return Device{}, fmt.Errorf("create channel for %q: %s; also failed to roll back client %s: %s", name, sdkErr, client.ID, delErr)
+		}
 		return Device{}, fmt.Errorf("create channel for %q: %s", name, sdkErr)
 	}
 
@@ -79,8 +82,16 @@ func (p *provisionClient) Provision(ctx context.Context, name, externalID, exter
 	}, p.cfg.DomainID, p.cfg.Token)
 	if sdkErr != nil {
 		cleanupCtx := context.WithoutCancel(ctx)
-		_ = p.sdk.DeleteClient(cleanupCtx, client.ID, p.cfg.DomainID, p.cfg.Token)
-		_ = p.sdk.DeleteChannel(cleanupCtx, channel.ID, p.cfg.DomainID, p.cfg.Token)
+		var rollbackErrs []string
+		if delErr := p.sdk.DeleteClient(cleanupCtx, client.ID, p.cfg.DomainID, p.cfg.Token); delErr != nil {
+			rollbackErrs = append(rollbackErrs, fmt.Sprintf("delete client %s: %s", client.ID, delErr))
+		}
+		if delErr := p.sdk.DeleteChannel(cleanupCtx, channel.ID, p.cfg.DomainID, p.cfg.Token); delErr != nil {
+			rollbackErrs = append(rollbackErrs, fmt.Sprintf("delete channel %s: %s", channel.ID, delErr))
+		}
+		if len(rollbackErrs) > 0 {
+			return Device{}, fmt.Errorf("connect client %s to channel %s: %s; rollback failures: %s", client.ID, channel.ID, sdkErr, strings.Join(rollbackErrs, "; "))
+		}
 		return Device{}, fmt.Errorf("connect client %s to channel %s: %s", client.ID, channel.ID, sdkErr)
 	}
 
@@ -98,8 +109,16 @@ func (p *provisionClient) Provision(ctx context.Context, name, externalID, exter
 		}, p.cfg.DomainID, p.cfg.Token)
 		if sdkErr != nil {
 			cleanupCtx := context.WithoutCancel(ctx)
-			_ = p.sdk.DeleteClient(cleanupCtx, client.ID, p.cfg.DomainID, p.cfg.Token)
-			_ = p.sdk.DeleteChannel(cleanupCtx, channel.ID, p.cfg.DomainID, p.cfg.Token)
+			var rollbackErrs []string
+			if delErr := p.sdk.DeleteClient(cleanupCtx, client.ID, p.cfg.DomainID, p.cfg.Token); delErr != nil {
+				rollbackErrs = append(rollbackErrs, fmt.Sprintf("delete client %s: %s", client.ID, delErr))
+			}
+			if delErr := p.sdk.DeleteChannel(cleanupCtx, channel.ID, p.cfg.DomainID, p.cfg.Token); delErr != nil {
+				rollbackErrs = append(rollbackErrs, fmt.Sprintf("delete channel %s: %s", channel.ID, delErr))
+			}
+			if len(rollbackErrs) > 0 {
+				return Device{}, fmt.Errorf("create rule for %q: %s; rollback failures: %s", name, sdkErr, strings.Join(rollbackErrs, "; "))
+			}
 			return Device{}, fmt.Errorf("create rule for %q: %s", name, sdkErr)
 		}
 	}

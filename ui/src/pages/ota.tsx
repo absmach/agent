@@ -39,7 +39,7 @@ export function OTAPage() {
 
   async function pollStatus() {
     try {
-      const res = await fetch("/api/ota/status");
+      const res = await fetch("/ota/status");
       if (res.ok) setStatus(await res.json());
     } catch {
       // network error — keep last known state
@@ -66,7 +66,7 @@ export function OTAPage() {
     try {
       const body: Record<string, string | number> = { url };
       if (sha256.trim()) body.sha256 = sha256.trim();
-      const res = await fetch("/api/ota", {
+      const res = await fetch("/ota", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

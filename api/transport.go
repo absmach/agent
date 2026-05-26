@@ -81,50 +81,48 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 		opts...,
 	).ServeHTTP)
 
-	r.Route("/api", func(r chi.Router) {
-		r.Get("/devices", kithttp.NewServer(
-			listDevicesEndpoint(svc),
-			decodeRequest,
-			EncodeResponse,
-			opts...,
-		).ServeHTTP)
-		r.Post("/devices", kithttp.NewServer(
-			addDeviceEndpoint(svc),
-			decodeAddDeviceRequest,
-			EncodeResponse,
-			opts...,
-		).ServeHTTP)
-		r.Get("/devices/{id}", kithttp.NewServer(
-			getDeviceEndpoint(svc),
-			decodeIDFromPath,
-			EncodeResponse,
-			opts...,
-		).ServeHTTP)
-		r.Delete("/devices/{id}", kithttp.NewServer(
-			removeDeviceEndpoint(svc),
-			decodeIDFromPath,
-			EncodeResponse,
-			opts...,
-		).ServeHTTP)
-		r.Post("/devices/{id}/seen", kithttp.NewServer(
-			markDeviceSeenEndpoint(svc),
-			decodeIDFromPath,
-			EncodeResponse,
-			opts...,
-		).ServeHTTP)
-		r.Post("/ota", kithttp.NewServer(
-			otaTriggerEndpoint(svc),
-			decodeOTATriggerRequest,
-			EncodeResponse,
-			opts...,
-		).ServeHTTP)
-		r.Get("/ota/status", kithttp.NewServer(
-			otaStatusEndpoint(svc),
-			decodeRequest,
-			EncodeResponse,
-			opts...,
-		).ServeHTTP)
-	})
+	r.Get("/devices", kithttp.NewServer(
+		listDevicesEndpoint(svc),
+		decodeRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Post("/devices", kithttp.NewServer(
+		addDeviceEndpoint(svc),
+		decodeAddDeviceRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Get("/devices/{id}", kithttp.NewServer(
+		getDeviceEndpoint(svc),
+		decodeIDFromPath,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Delete("/devices/{id}", kithttp.NewServer(
+		removeDeviceEndpoint(svc),
+		decodeIDFromPath,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Post("/devices/{id}/seen", kithttp.NewServer(
+		markDeviceSeenEndpoint(svc),
+		decodeIDFromPath,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Post("/ota", kithttp.NewServer(
+		otaTriggerEndpoint(svc),
+		decodeOTATriggerRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Get("/ota/status", kithttp.NewServer(
+		otaStatusEndpoint(svc),
+		decodeRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
 
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health", magistrala.Health("agent", instanceID))
