@@ -4,12 +4,16 @@
 package bootstrap
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/absmach/agent"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestApplyBootstrapResponse(t *testing.T) {
@@ -163,4 +167,97 @@ func TestBootstrapConfigURL(t *testing.T) {
 			assert.Equal(t, tc.url, got, fmt.Sprintf("%s: expected url %s got %s", tc.desc, tc.url, got))
 		})
 	}
+}
+
+func TestLoadFromCache(t *testing.T) {
+	cases := []struct {
+		desc    string
+		setup   func(t *testing.T, path string)
+		err     bool
+		content string
+	}{
+		{
+			desc: "load valid cache",
+			setup: func(t *testing.T, path string) {
+				br := bootstrapResponse{
+					Content:    `{"device_id":"dev1"}`,
+					ClientKey:  "key",
+					ClientCert: "cert",
+					CaCert:     "ca",
+				}
+				data, err := json.Marshal(br)
+				require.NoError(t, err)
+				require.NoError(t, os.WriteFile(path, data, 0o600))
+			},
+			content: `{"device_id":"dev1"}`,
+		},
+		{
+			desc: "missing file returns error",
+			setup: func(t *testing.T, path string) {
+			},
+			err: true,
+		},
+		{
+			desc: "corrupt json returns error",
+			setup: func(t *testing.T, path string) {
+				require.NoError(t, os.WriteFile(path, []byte("not json"), 0o600))
+			},
+			err: true,
+		},
+		{
+			desc: "empty content returns error",
+			setup: func(t *testing.T, path string) {
+				br := bootstrapResponse{Content: ""}
+				data, err := json.Marshal(br)
+				require.NoError(t, err)
+				require.NoError(t, os.WriteFile(path, data, 0o600))
+			},
+			err: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "bootstrap.json")
+			tc.setup(t, path)
+			br, err := loadFromCache(path)
+			if tc.err {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.content, br.Content)
+		})
+	}
+}
+
+func TestStoreToCache(t *testing.T) {
+	br := bootstrapResponse{
+		Content:    `{"device_id":"dev1"}`,
+		ClientKey:  "key",
+		ClientCert: "cert",
+		CaCert:     "ca",
+	}
+
+	t.Run("store and reload", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "subdir", "bootstrap.json")
+		require.NoError(t, storeToCache(path, br))
+		got, err := loadFromCache(path)
+		assert.NoError(t, err)
+		assert.Equal(t, br.Content, got.Content)
+		assert.Equal(t, br.ClientKey, got.ClientKey)
+		assert.Equal(t, br.ClientCert, got.ClientCert)
+		assert.Equal(t, br.CaCert, got.CaCert)
+	})
+
+	t.Run("overwrites existing cache", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "bootstrap.json")
+		require.NoError(t, storeToCache(path, bootstrapResponse{Content: `{"old":true}`}))
+		require.NoError(t, storeToCache(path, br))
+		got, err := loadFromCache(path)
+		assert.NoError(t, err)
+		assert.Equal(t, br.Content, got.Content)
+	})
 }

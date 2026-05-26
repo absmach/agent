@@ -53,6 +53,7 @@ const (
 	keyHeartbeatInterval      = "heartbeat_interval"
 	keyTerminalSessionTimeout = "terminal_session_timeout"
 	keyCommandSecret          = "command_secret"
+	keyBsValid                = "bs_valid"
 
 	notConfigured = "not_configured"
 	notFound      = "not_found"
@@ -225,10 +226,11 @@ type agent struct {
 	startupConfig       Config
 	otaMu               sync.Mutex
 	otaLastErr          string
+	bootstrapCachePath  string
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store cfgstore.Store, levelVar *slog.LevelVar) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store cfgstore.Store, levelVar *slog.LevelVar, bootstrapCachePath string) (Service, error) {
 	ag := &agent{
 		mqttClient:          mc,
 		noderedClient:       nc,
@@ -242,6 +244,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		heartbeatIntervalCh: make(chan time.Duration, 1),
 		logLevel:            levelVar,
 		startupConfig:       *cfg,
+		bootstrapCachePath:  bootstrapCachePath,
 	}
 
 	if devices != nil {
@@ -1052,6 +1055,7 @@ var settableKeys = map[string]bool{
 	keyHeartbeatInterval:      true,
 	keyTerminalSessionTimeout: true,
 	keyCommandSecret:          true,
+	keyBsValid:                true,
 }
 
 // validateSettableValue returns errInvalidCommand if val is not a valid value for key.
@@ -1074,6 +1078,10 @@ func validateSettableValue(key, val string) error {
 		}
 	case keyCommandSecret:
 		// Any non-empty string is valid; empty value clears the secret.
+	case keyBsValid:
+		if val != "0" && val != "1" {
+			return errInvalidCommand
+		}
 	default:
 		return errInvalidCommand
 	}
@@ -1128,6 +1136,14 @@ func ApplyConfigEntry(cfg *Config, key, val string) {
 // effect is immediate without requiring a restart.
 func (a *agent) applyLiveUpdate(key, val string) {
 	switch key {
+	case keyBsValid:
+		if val == "0" && a.bootstrapCachePath != "" {
+			if err := os.Remove(a.bootstrapCachePath); err != nil && !os.IsNotExist(err) {
+				a.logger.Warn("Failed to delete bootstrap cache", slog.Any("error", err))
+			} else {
+				a.logger.Info("Bootstrap cache invalidated")
+			}
+		}
 	case keyLogLevel:
 		if a.logLevel != nil {
 			var l slog.Level
