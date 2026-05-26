@@ -953,7 +953,7 @@ func (a *agent) getTopic(topic string) (t string) {
 	case control:
 		t = fmt.Sprintf("m/%s/c/%s/res", domainID, cfg.Channels.CtrlChan())
 	case data:
-		t = fmt.Sprintf("m/%s/c/%s/gateway/telemetry", domainID, a.config.Channels.DataChan())
+		t = fmt.Sprintf("m/%s/c/%s/gateway/telemetry", domainID, cfg.Channels.DataChan())
 	default:
 		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, cfg.Channels.CtrlChan(), topic)
 	}
