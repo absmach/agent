@@ -126,7 +126,6 @@ export function ExecCard() {
         )}
       </div>
 
-      {/* Terminal body */}
       <div
         className="min-h-[32rem] max-h-[calc(100vh-16rem)] overflow-y-auto bg-zinc-900 p-4 font-mono text-sm"
         onClick={() => inputRef.current?.focus()}

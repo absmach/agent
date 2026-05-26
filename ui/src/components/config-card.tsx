@@ -1,7 +1,15 @@
 // Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
-import { Check, CheckCircle, Copy, Eye, EyeOff, Settings, XCircle } from "lucide-react";
+import {
+  Check,
+  CheckCircle,
+  Copy,
+  Eye,
+  EyeOff,
+  Settings,
+  XCircle,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,7 +82,11 @@ function SecretField({
             className="rounded p-1.5 text-muted-foreground transition-colors hover:text-foreground"
             title={visible ? "Hide" : "Show"}
           >
-            {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            {visible ? (
+              <EyeOff className="h-3.5 w-3.5" />
+            ) : (
+              <Eye className="h-3.5 w-3.5" />
+            )}
           </button>
           <button
             type="button"
@@ -82,7 +94,11 @@ function SecretField({
             className="rounded p-1.5 text-muted-foreground transition-colors hover:text-foreground"
             title="Copy to clipboard"
           >
-            {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-emerald-400" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
           </button>
         </div>
       </div>
