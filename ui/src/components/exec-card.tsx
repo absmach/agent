@@ -126,8 +126,9 @@ export function ExecCard() {
         )}
       </div>
 
-      <div
-        className="min-h-[32rem] max-h-[calc(100vh-16rem)] overflow-y-auto bg-zinc-900 p-4 font-mono text-sm"
+      <button
+        type="button"
+        className="min-h-72 max-h-112 w-full overflow-y-auto bg-zinc-900 p-4 font-mono text-sm text-left"
         onClick={() => inputRef.current?.focus()}
       >
         {history.length === 0 && !loading && (
@@ -183,7 +184,7 @@ export function ExecCard() {
         </div>
 
         <div ref={bottomRef} />
-      </div>
+      </button>
     </div>
   );
 }
