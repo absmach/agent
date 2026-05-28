@@ -13,6 +13,9 @@ import (
 // Record is a re-export so callers don't need to import the upstream package.
 type Record = senml.Record
 
+// Pack is a re-export so callers don't need to import the upstream package.
+type Pack = senml.Pack
+
 func now() float64 {
 	return float64(time.Now().UnixNano()) / float64(time.Second)
 }

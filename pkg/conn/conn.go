@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/absmach/agent"
@@ -38,14 +39,22 @@ const (
 
 var channelPartRegExp = regexp.MustCompile(`^m/([\w\-]+)/c/([\w\-]+)/services(/[^?]*)?(\?.*)?$`)
 
+// CommandHandler processes a single inbound MQTT command.
+// pack contains the full decoded SenML pack; pack.Records[0] is always the
+// command record. Multi-record commands (e.g. OTA) use pack.Records[1:].
+type CommandHandler func(ctx context.Context, pack senml.Pack) error
+
 var _ MqttBroker = (*broker)(nil)
 
 // MqttBroker represents the MQTT broker.
 type MqttBroker interface {
-	// Subscribes to given topic and receives events.
+	// Subscribe subscribes to given topic and receives events.
 	Subscribe(ctx context.Context) error
 	// Resubscribe re-runs topic subscriptions after a reconnect.
 	Resubscribe()
+	// RegisterHandler registers a CommandHandler for the given command name.
+	// Calling RegisterHandler with an existing name replaces the previous handler.
+	RegisterHandler(name string, h CommandHandler)
 }
 
 type broker struct {
@@ -55,16 +64,114 @@ type broker struct {
 	channel  string
 	domainID string
 	ctx      context.Context
+	handlers map[string]CommandHandler
+	mu       sync.RWMutex
 }
 
-// NewBroker returns new MQTT broker instance.
+// NewBroker returns a new MQTT broker instance with all built-in command
+// handlers pre-registered.
 func NewBroker(svc agent.Service, client mqtt.Client, chann, domainID string, log *slog.Logger) MqttBroker {
-	return &broker{
+	b := &broker{
 		svc:      svc,
 		client:   client,
 		logger:   log,
 		channel:  chann,
 		domainID: domainID,
+		handlers: make(map[string]CommandHandler),
+	}
+	b.registerBuiltins()
+	return b
+}
+
+// RegisterHandler registers a CommandHandler for name, replacing any existing one.
+func (b *broker) RegisterHandler(name string, h CommandHandler) {
+	b.mu.Lock()
+	b.handlers[name] = h
+	b.mu.Unlock()
+}
+
+// registerBuiltins wires the built-in command set into the handler registry.
+func (b *broker) registerBuiltins() {
+	svc := b.svc
+	log := b.logger
+
+	b.handlers[control] = func(ctx context.Context, pack senml.Pack) error {
+		uuid, cmdStr := extractCmd(pack)
+		log.Info("Control command", slog.String("uuid", uuid), slog.String("command", cmdStr))
+		return svc.Control(uuid, cmdStr)
+	}
+
+	b.handlers[exec] = func(ctx context.Context, pack senml.Pack) error {
+		uuid, cmdStr := extractCmd(pack)
+		log.Info("Execute command", slog.String("uuid", uuid), slog.String("command", cmdStr))
+		_, err := svc.Execute(uuid, cmdStr)
+		return err
+	}
+
+	configHandler := func(ctx context.Context, pack senml.Pack) error {
+		uuid, cmdStr := extractCmd(pack)
+		log.Info("Config command", slog.String("uuid", uuid), slog.String("command", cmdStr))
+		return svc.ServiceConfig(ctx, uuid, cmdStr)
+	}
+	b.handlers[config] = configHandler
+	b.handlers[service] = configHandler
+
+	b.handlers[term] = func(ctx context.Context, pack senml.Pack) error {
+		uuid, cmdStr := extractCmd(pack)
+		log.Info("Term command", slog.String("uuid", uuid), slog.String("command", cmdStr))
+		return svc.Terminal(uuid, cmdStr)
+	}
+
+	b.handlers[nred] = func(ctx context.Context, pack senml.Pack) error {
+		_, cmdStr := extractCmd(pack)
+		log.Info("NodeRed command", slog.String("command", cmdStr))
+		_, err := svc.NodeRed(cmdStr)
+		return err
+	}
+
+	b.handlers[ping] = func(ctx context.Context, pack senml.Pack) error {
+		log.Info("Ping command")
+		return svc.Ping()
+	}
+
+	b.handlers[reset] = func(ctx context.Context, pack senml.Pack) error {
+		uuid, _ := extractCmd(pack)
+		log.Info("Reset command received, performing graceful shutdown", slog.String("uuid", uuid))
+		svc.Shutdown()
+		if err := syscall.Exec(os.Args[0], os.Args, os.Environ()); err != nil {
+			log.Error("Reset failed", slog.Any("error", err))
+			return err
+		}
+		return nil
+	}
+
+	b.handlers[otaCmd] = func(ctx context.Context, pack senml.Pack) error {
+		uuid, _ := extractCmd(pack)
+		trigger, err := ota.TriggerFromRecords(pack.Records[1:])
+		if err != nil {
+			return err
+		}
+		log.Info("OTA command", slog.String("uuid", uuid), slog.String("url", trigger.URL))
+		go func() {
+			if err := svc.OTA(ctx, trigger.URL, trigger.SHA256Hex, trigger.Size); err != nil {
+				log.Warn("OTA operation failed", slog.Any("error", err))
+			}
+		}()
+		return nil
+	}
+
+	b.handlers[devices] = func(ctx context.Context, pack senml.Pack) error {
+		uuid, cmdStr := extractCmd(pack)
+		log.Info("Devices command", slog.String("uuid", uuid), slog.String("command", cmdStr))
+		if err := svc.DeviceManager(uuid, cmdStr); err != nil {
+			if payload, encErr := encoder.EncodeSenML(uuid, devices, err.Error()); encErr == nil {
+				if pubErr := svc.Publish("control", string(payload)); pubErr != nil {
+					log.Warn("Failed to publish DeviceManager error response", slog.Any("error", pubErr))
+				}
+			}
+			return err
+		}
+		return nil
 	}
 }
 
@@ -134,89 +241,42 @@ func parseSvcType(payload []byte) string {
 	return "service"
 }
 
-// handleMsg triggered when new message is received on MQTT broker.
+// handleMsg dispatches an inbound MQTT command to the registered handler.
 func (b *broker) handleMsg(msg mqtt.Message) {
 	records, err := senml.Decode(msg.Payload())
 	if err != nil {
 		b.logger.Warn("SenML decode failed", slog.Any("error", err))
 		return
 	}
-
 	if len(records) == 0 {
 		b.logger.Error("SenML payload empty", slog.Any("payload", msg.Payload()))
 		return
 	}
 
 	cmdType := records[0].Name
-	var cmdStr string
-	if sv := records[0].StringValue; sv != nil {
+
+	b.mu.RLock()
+	h, ok := b.handlers[cmdType]
+	b.mu.RUnlock()
+
+	if !ok {
+		b.logger.Warn("no handler registered for command", slog.String("command", cmdType))
+		return
+	}
+	sm := senml.Pack{Records: records}
+	if err := h(b.ctx, sm); err != nil {
+		b.logger.Warn("command handler failed", slog.String("command", cmdType), slog.Any("error", err))
+	}
+}
+
+// extractCmd returns the uuid and string value from the first SenML record.
+func extractCmd(pack senml.Pack) (uuid, cmdStr string) {
+	if len(pack.Records) == 0 {
+		return "", ""
+	}
+	uuid = strings.TrimSuffix(pack.Records[0].BaseName, ":")
+	if sv := pack.Records[0].StringValue; sv != nil {
 		cmdStr = *sv
 	}
-	uuid := strings.TrimSuffix(records[0].BaseName, ":")
-
-	switch cmdType {
-	case control:
-		b.logger.Info("Control command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-		if err := b.svc.Control(uuid, cmdStr); err != nil {
-			b.logger.Warn("Control operation failed", slog.Any("error", err))
-		}
-	case exec:
-		b.logger.Info("Execute command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-		if _, err := b.svc.Execute(uuid, cmdStr); err != nil {
-			b.logger.Warn("Execute operation failed", slog.Any("error", err))
-		}
-	case config:
-		b.logger.Info("Config command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-		if err := b.svc.ServiceConfig(b.ctx, uuid, cmdStr); err != nil {
-			b.logger.Warn("Config operation failed", slog.Any("error", err))
-		}
-	case service:
-		b.logger.Info("Services view command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-		if err := b.svc.ServiceConfig(b.ctx, uuid, cmdStr); err != nil {
-			b.logger.Warn("Services view operation failed", slog.Any("error", err))
-		}
-	case term:
-		b.logger.Info("Term view command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-		if err := b.svc.Terminal(uuid, cmdStr); err != nil {
-			b.logger.Warn("Term view operation failed", slog.Any("error", err))
-		}
-	case nred:
-		b.logger.Info("NodeRed command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-		if _, err := b.svc.NodeRed(cmdStr); err != nil {
-			b.logger.Warn("NodeRed operation failed", slog.Any("error", err))
-		}
-	case ping:
-		b.logger.Info("Ping command")
-		if err := b.svc.Ping(); err != nil {
-			b.logger.Warn("Ping failed", slog.Any("error", err))
-		}
-	case reset:
-		b.logger.Info("Reset command received, performing graceful shutdown", slog.String("uuid", uuid))
-		b.svc.Shutdown()
-		if err := syscall.Exec(os.Args[0], os.Args, os.Environ()); err != nil {
-			b.logger.Error("Reset failed", slog.Any("error", err))
-		}
-	case otaCmd:
-		trigger, err := ota.TriggerFromRecords(records[1:])
-		if err != nil {
-			b.logger.Warn("OTA trigger parse failed", slog.Any("error", err))
-			return
-		}
-		b.logger.Info("OTA command", slog.String("uuid", uuid), slog.String("url", trigger.URL))
-		go func() {
-			if err := b.svc.OTA(b.ctx, trigger.URL, trigger.SHA256Hex, trigger.Size); err != nil {
-				b.logger.Warn("OTA operation failed", slog.Any("error", err))
-			}
-		}()
-	case devices:
-		b.logger.Info("Devices command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-		if err := b.svc.DeviceManager(b.ctx, uuid, cmdStr); err != nil {
-			b.logger.Warn("DeviceManager operation failed", slog.Any("error", err))
-			if payload, encErr := encoder.EncodeSenML(uuid, devices, err.Error()); encErr == nil {
-				if pubErr := b.svc.Publish("control", string(payload)); pubErr != nil {
-					b.logger.Warn("Failed to publish DeviceManager error response", slog.Any("error", pubErr))
-				}
-			}
-		}
-	}
+	return uuid, cmdStr
 }
