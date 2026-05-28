@@ -46,8 +46,8 @@ func newScheduler(devices *devicemgr.Manager, mqttCfg MQTTConfig, domainID strin
 	}
 }
 
-// Start launches goroutines for all active devices already in the registry
-// (devices persisted from a prior run).
+// Start launches goroutines for all devices already in the registry
+// (persisted from a prior run). Call Stop to cancel them.
 func (s *Scheduler) Start(ctx context.Context) error {
 	devs, err := s.devices.List()
 	if err != nil {
@@ -55,20 +55,29 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	}
 	for _, d := range devs {
 		if d.ChannelID != "" {
-			s.startDevice(ctx, d)
+			s.startDevice(d)
 		}
 	}
 	return nil
 }
 
 // StartDevice launches the telemetry goroutine for a newly provisioned device.
-// ctx must be the application-level context, not a per-request context.
 // A second call for the same device ID is a no-op.
-func (s *Scheduler) StartDevice(ctx context.Context, d devicemgr.Device) {
+func (s *Scheduler) StartDevice(d devicemgr.Device) {
 	if d.ChannelID == "" {
 		return
 	}
-	s.startDevice(ctx, d)
+	s.startDevice(d)
+}
+
+// Stop cancels all running device goroutines.
+func (s *Scheduler) Stop() {
+	s.mu.Lock()
+	for _, cancel := range s.cancels {
+		cancel()
+	}
+	s.cancels = make(map[string]context.CancelFunc)
+	s.mu.Unlock()
 }
 
 // StopDevice cancels the telemetry goroutine for the given device ID and
@@ -85,13 +94,13 @@ func (s *Scheduler) StopDevice(id string) {
 	}
 }
 
-func (s *Scheduler) startDevice(ctx context.Context, d devicemgr.Device) {
+func (s *Scheduler) startDevice(d devicemgr.Device) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.cancels[d.ID]; ok {
 		return
 	}
-	dctx, cancel := context.WithCancel(ctx)
+	dctx, cancel := context.WithCancel(context.Background())
 	s.cancels[d.ID] = cancel
 	go s.runDevice(dctx, d)
 }

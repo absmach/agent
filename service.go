@@ -189,7 +189,6 @@ type OTAStatusInfo struct {
 var _ Service = (*agent)(nil)
 
 type agent struct {
-	ctx           context.Context
 	mqttClient          paho.Client
 	config              *Config
 	noderedClient       nodered.Client
@@ -212,7 +211,6 @@ type agent struct {
 // New returns agent service implementation.
 func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store cfgstore.Store, levelVar *slog.LevelVar) (Service, error) {
 	ag := &agent{
-		ctx:           ctx,
 		mqttClient:          mc,
 		noderedClient:       nc,
 		config:              cfg,
@@ -929,10 +927,7 @@ func (a *agent) AddDevice(ctx context.Context, name, extID, extKey, ifaceType, i
 		return d, err
 	}
 	if a.sched != nil {
-		// Device goroutines must outlive the per-request context; use the
-		// application-level context captured at service creation.
-		// nolint:contextcheck
-		a.sched.StartDevice(a.ctx, d)
+		a.sched.StartDevice(d)
 	}
 	return d, nil
 }
@@ -959,6 +954,10 @@ func (a *agent) Shutdown() {
 	for name, svc := range a.svcs {
 		svc.Stop()
 		a.logger.Debug("stopped service heartbeat", slog.String("service", name))
+	}
+
+	if a.sched != nil {
+		a.sched.Stop()
 	}
 
 	a.logger.Debug("disconnecting MQTT client")
