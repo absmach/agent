@@ -160,7 +160,7 @@ func (res addDeviceRes) Code() int {
 }
 
 func (res addDeviceRes) Headers() map[string]string {
-	return map[string]string{}
+	return map[string]string{"Location": "/devices/" + res.ID}
 }
 
 func (res addDeviceRes) Empty() bool {
