@@ -927,8 +927,7 @@ func (a *agent) AddDevice(ctx context.Context, name, extID, extKey, ifaceType, i
 		return d, err
 	}
 	if a.sched != nil {
-		// Pass context.Background() so the goroutine outlives this request.
-		a.sched.StartDevice(context.Background(), d)
+		a.sched.StartDevice(context.WithoutCancel(ctx), d)
 	}
 	return d, nil
 }
