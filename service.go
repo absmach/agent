@@ -139,7 +139,8 @@ type Service interface {
 	// Publish message.
 	Publish(topic, payload string) error
 
-	// Ping publishes an immediate heartbeat SenML record to the control channel.
+	// Ping publishes an immediate heartbeat SenML record to the data channel
+	// under the gateway/heartbeat topic, matching the periodic self-heartbeat format.
 	Ping() error
 
 	// NodeRed manages Node-RED flow operations.
@@ -790,16 +791,17 @@ func (a *agent) heartbeatPayload() ([]byte, error) {
 	}
 	if a.devices != nil {
 		devs, err := a.devices.List()
-		if err == nil {
-			active := 0
-			for _, d := range devs {
-				if d.Active {
-					active++
-				}
-			}
-			activeFloat := float64(active)
-			records = append(records, senml.Record{Name: "devices", Unit: "count", Value: &activeFloat})
+		if err != nil {
+			return nil, err
 		}
+		active := 0
+		for _, d := range devs {
+			if d.Active {
+				active++
+			}
+		}
+		activeFloat := float64(active)
+		records = append(records, senml.Record{Name: "devices", Unit: "count", Value: &activeFloat})
 	}
 	return senml.Encode(senml.Pack{Records: records}, senml.JSON)
 }
@@ -820,7 +822,7 @@ func (a *agent) Ping() error {
 	if err != nil {
 		return err
 	}
-	token := a.mqttClient.Publish(topic, cfg.MQTT.QoS, false, payload)
+	token := a.mqttClient.Publish(topic, cfg.MQTT.QoS, cfg.MQTT.Retain, payload)
 	token.Wait()
 	return token.Error()
 }
