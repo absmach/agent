@@ -14,9 +14,7 @@ export function ExecPage() {
           Run shell commands on the device through the agent
         </p>
       </div>
-      <div className="max-w-3xl">
-        <ExecCard />
-      </div>
+      <ExecCard />
     </div>
   );
 }

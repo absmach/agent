@@ -191,7 +191,7 @@ func TestManager_Add(t *testing.T) {
 			assert.NotEmpty(t, d.ChannelID)
 			assert.Equal(t, tc.ifaceType, d.InterfaceType)
 			assert.Equal(t, tc.ifaceAddr, d.InterfaceAddr)
-			assert.True(t, d.Active)
+			assert.False(t, d.Active)
 		})
 	}
 }

@@ -54,7 +54,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		return fmt.Errorf("scheduler start: %w", err)
 	}
 	for _, d := range devs {
-		if d.Active && d.ChannelID != "" {
+		if d.ChannelID != "" {
 			s.startDevice(ctx, d)
 		}
 	}

@@ -19,6 +19,7 @@ services:
     entrypoint: ["/seed/scripts/entrypoint.sh"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      - "bootstrap:host-gateway"
     ports:
       - "1880:1880"
     networks:

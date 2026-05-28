@@ -116,7 +116,30 @@ func (s *Store) FindByAddr(ifaceType iface.InterfaceType, addr string) (Device, 
 	return Device{}, fmt.Errorf("no device with interface type %v addr %s", ifaceType, addr)
 }
 
-// MarkSeen sets LastSeen = now and Active = true for the given device ID.
+// MarkInactive sets Active = false for the given device ID.
+func (s *Store) MarkInactive(id string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bkt := tx.Bucket(devicesBucket)
+		v := bkt.Get([]byte(id))
+		if v == nil {
+			return fmt.Errorf("device %s not found", id)
+		}
+		var d Device
+		if err := json.Unmarshal(v, &d); err != nil {
+			return err
+		}
+		d.Active = false
+		b, err := json.Marshal(d)
+		if err != nil {
+			return err
+		}
+		return bkt.Put([]byte(id), b)
+	})
+}
+
+// MarkSeen sets LastSeen = now for the given device ID without changing Active.
+// Use this when the device sends data while the interface is already open,
+// or for manual pings from the UI.
 func (s *Store) MarkSeen(id string) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(devicesBucket)
@@ -129,7 +152,29 @@ func (s *Store) MarkSeen(id string) error {
 			return err
 		}
 		d.LastSeen = time.Now().UTC()
+		b, err := json.Marshal(d)
+		if err != nil {
+			return err
+		}
+		return bkt.Put([]byte(id), b)
+	})
+}
+
+// MarkActive sets Active = true and LastSeen = now for the given device ID.
+// Called only when the physical interface is successfully opened.
+func (s *Store) MarkActive(id string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bkt := tx.Bucket(devicesBucket)
+		v := bkt.Get([]byte(id))
+		if v == nil {
+			return fmt.Errorf("device %s not found", id)
+		}
+		var d Device
+		if err := json.Unmarshal(v, &d); err != nil {
+			return err
+		}
 		d.Active = true
+		d.LastSeen = time.Now().UTC()
 		b, err := json.Marshal(d)
 		if err != nil {
 			return err

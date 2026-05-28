@@ -14,9 +14,7 @@ export function ConfigPage() {
           View and update the agent runtime settings
         </p>
       </div>
-      <div className="max-w-2xl">
-        <ConfigCard />
-      </div>
+      <ConfigCard />
     </div>
   );
 }

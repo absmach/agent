@@ -128,6 +128,7 @@ async function fetchBootstrap() {
 
     const mqtt = content.mqtt || {};
     const telemetry = content.telemetry || {};
+    const commands = content.commands || {};
     const channels = content.channels || {};
 
     const values = {
@@ -135,7 +136,7 @@ async function fetchBootstrap() {
       MG_AGENT_CLIENT_SECRET: process.env.MG_AGENT_CLIENT_SECRET || mqtt.secret || mqtt.password || "",
       MG_AGENT_DOMAIN_ID: process.env.MG_AGENT_DOMAIN_ID || content.domain_id || "",
       MG_AGENT_CHANNEL: process.env.MG_AGENT_CHANNEL || telemetry.channel_id || channels.data_id || channels.id || "",
-      MG_AGENT_CTRL_CHANNEL: process.env.MG_AGENT_CTRL_CHANNEL || channels.ctrl_id || channels.id || "",
+      MG_AGENT_CTRL_CHANNEL: process.env.MG_AGENT_CTRL_CHANNEL || commands.channel_id || channels.ctrl_id || channels.id || "",
       MG_AGENT_MQTT_URL: process.env.MG_AGENT_MQTT_URL || mqtt.url || ""
     };
 
@@ -145,8 +146,8 @@ async function fetchBootstrap() {
       }
     }
   } catch (err) {
-    console.error(`Failed to load bootstrap config for Node-RED: ${err.message}`);
-    process.exit(1);
+    process.stderr.write(`Warning: bootstrap unavailable, Node-RED will start without seeded credentials: ${err.message}\n`);
+    process.exit(0);
   }
 })();
 NODE

@@ -289,9 +289,49 @@ func TestStore_MarkSeen(t *testing.T) {
 			require.NoError(t, err, fmt.Sprintf("%s: unexpected error", tc.desc))
 			got, err := s.Get(tc.id)
 			require.NoError(t, err)
-			assert.True(t, got.Active, "MarkSeen should set Active = true")
+			assert.False(t, got.Active, "MarkSeen should not change Active")
 			assert.True(t, got.LastSeen.After(before) || got.LastSeen.Equal(before),
 				"MarkSeen should update LastSeen")
+		})
+	}
+}
+
+func TestStore_MarkActive(t *testing.T) {
+	s := newTestStore(t)
+	d := makeDevice("device-1")
+	d.Active = false
+	require.NoError(t, s.Save(d))
+
+	cases := []struct {
+		desc    string
+		id      string
+		wantErr bool
+	}{
+		{
+			desc: "mark existing device active",
+			id:   d.ID,
+		},
+		{
+			desc:    "mark non-existent device returns error",
+			id:      "does-not-exist",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			before := time.Now()
+			err := s.MarkActive(tc.id)
+			if tc.wantErr {
+				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				return
+			}
+			require.NoError(t, err, fmt.Sprintf("%s: unexpected error", tc.desc))
+			got, err := s.Get(tc.id)
+			require.NoError(t, err)
+			assert.True(t, got.Active, "MarkActive should set Active = true")
+			assert.True(t, got.LastSeen.After(before) || got.LastSeen.Equal(before),
+				"MarkActive should update LastSeen")
 		})
 	}
 }
