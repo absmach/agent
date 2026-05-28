@@ -164,6 +164,9 @@ func (s *Scheduler) readPublishLoop(ctx context.Context, mqttClient mqtt.Client,
 			return
 		}
 		if len(data) == 0 {
+			if !sleepCtx(ctx, 5*time.Millisecond) {
+				return
+			}
 			continue
 		}
 

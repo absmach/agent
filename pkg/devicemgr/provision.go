@@ -123,13 +123,12 @@ func (p *provisionClient) Provision(ctx context.Context, name, externalID, exter
 		}
 	}
 
-	secret := client.Credentials.Secret
-	if secret == "" {
-		secret = externalKey
+	if client.Credentials.Secret == "" {
+		return Device{}, fmt.Errorf("provision %q: Magistrala returned no client secret", name)
 	}
 	return Device{
 		ID:        client.ID,
-		Key:       secret,
+		Key:       client.Credentials.Secret,
 		Name:      name,
 		ChannelID: channel.ID,
 	}, nil
