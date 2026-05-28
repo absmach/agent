@@ -13,7 +13,8 @@ interface Config {
   httpPort: string;
   clientID: string;
   clientKey: string;
-  channelID: string;
+  ctrlChannelID: string;
+  dataChannelID: string;
   logLevel: string;
   mqttURL: string;
   nodeRedURL: string;
@@ -23,7 +24,8 @@ const emptyConfig: Config = {
   httpPort: "",
   clientID: "",
   clientKey: "",
-  channelID: "",
+  ctrlChannelID: "",
+  dataChannelID: "",
   logLevel: "info",
   mqttURL: "",
   nodeRedURL: "",
@@ -104,7 +106,8 @@ export function ConfigCard() {
         httpPort: data.server?.port ?? "",
         clientID: data.mqtt?.username ?? "",
         clientKey: data.mqtt?.password ?? "",
-        channelID: data.channels?.id ?? "",
+        ctrlChannelID: data.channels?.ctrl_id ?? "",
+        dataChannelID: data.channels?.data_id ?? "",
         logLevel: data.log?.level ?? "info",
         mqttURL: data.mqtt?.url ?? "",
         nodeRedURL: data.nodered?.url ?? "",
@@ -127,7 +130,7 @@ export function ConfigCard() {
     try {
       const body = {
         server: { port: config.httpPort },
-        channels: { id: config.channelID },
+        channels: { ctrl_id: config.ctrlChannelID, data_id: config.dataChannelID },
         mqtt: {
           url: config.mqttURL,
           username: config.clientID,
@@ -199,7 +202,8 @@ export function ConfigCard() {
               }))
             }
           />
-          {field("channelID", "Channel ID", "Magistrala channel ID")}
+          {field("ctrlChannelID", "Control Channel ID", "Magistrala control channel ID")}
+          {field("dataChannelID", "Data Channel ID", "Magistrala data channel ID")}
           {field("mqttURL", "MQTT URL", "Magistrala MQTT broker URL")}
           {field("nodeRedURL", "Node-RED URL", "Node-RED API URL")}
           <div className="space-y-1.5">
