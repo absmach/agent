@@ -33,7 +33,7 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 	r := chi.NewRouter()
 	r.Use(mgapi.RequestIDMiddleware(idp))
 	r.Use(middleware.SetHeader("Access-Control-Allow-Origin", "*"))
-	r.Use(middleware.SetHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS"))
+	r.Use(middleware.SetHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"))
 	r.Use(middleware.SetHeader("Access-Control-Allow-Headers", "Content-Type"))
 	r.MethodFunc(http.MethodOptions, "/*", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

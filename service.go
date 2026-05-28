@@ -887,7 +887,13 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 		token.Wait()
 	}
 
-	return ota.Run(ctx, otaCfg, url, sha256hex, size, progressFn)
+	runErr := ota.Run(ctx, otaCfg, url, sha256hex, size, progressFn)
+	if runErr != nil {
+		a.otaMu.Lock()
+		a.otaLastErr = runErr.Error()
+		a.otaMu.Unlock()
+	}
+	return runErr
 }
 
 func (a *agent) OTAStatus() OTAStatusInfo {
