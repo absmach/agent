@@ -55,19 +55,21 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	}
 	for _, d := range devs {
 		if d.ChannelID != "" {
-			s.startDevice(d)
+			s.startDevice(ctx, d)
 		}
 	}
 	return nil
 }
 
 // StartDevice launches the telemetry goroutine for a newly provisioned device.
+// ctx controls the lifetime of the goroutine; pass context.Background() when
+// the goroutine should outlive the caller (e.g. an HTTP request).
 // A second call for the same device ID is a no-op.
-func (s *Scheduler) StartDevice(d devicemgr.Device) {
+func (s *Scheduler) StartDevice(ctx context.Context, d devicemgr.Device) {
 	if d.ChannelID == "" {
 		return
 	}
-	s.startDevice(d)
+	s.startDevice(ctx, d)
 }
 
 // Stop cancels all running device goroutines.
@@ -94,13 +96,13 @@ func (s *Scheduler) StopDevice(id string) {
 	}
 }
 
-func (s *Scheduler) startDevice(d devicemgr.Device) {
+func (s *Scheduler) startDevice(ctx context.Context, d devicemgr.Device) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.cancels[d.ID]; ok {
 		return
 	}
-	dctx, cancel := context.WithCancel(context.Background())
+	dctx, cancel := context.WithCancel(ctx)
 	s.cancels[d.ID] = cancel
 	go s.runDevice(dctx, d)
 }
