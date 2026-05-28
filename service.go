@@ -58,6 +58,10 @@ const (
 
 var startTime = time.Now()
 
+// Version is the agent binary version, injected at build time via
+// -ldflags "-X github.com/absmach/agent.Version=x.y.z".
+var Version = "0.0.0"
+
 // execAllowlist is the set of command names permitted via the exec MQTT command.
 var execAllowlist = map[string]bool{
 	"cat": true, "cd": true, "curl": true, "date": true, "df": true,
@@ -747,17 +751,12 @@ func (a *agent) Publish(t, payload string) error {
 }
 
 func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.Duration, qos byte) {
-	svcType := "agent"
-	pack := senml.Pack{Records: []senml.Record{
-		{BaseName: "agent:", Name: "service_type", StringValue: &svcType},
-	}}
-	payload, err := senml.Encode(pack, senml.JSON)
-	if err != nil {
-		a.logger.Error("failed to encode self-heartbeat", slog.Any("error", err))
-		return
-	}
-
 	publish := func() {
+		payload, err := a.heartbeatPayload()
+		if err != nil {
+			a.logger.Error("failed to encode self-heartbeat", slog.Any("error", err))
+			return
+		}
 		token := a.mqttClient.Publish(topic, qos, false, payload)
 		token.Wait()
 		if err := token.Error(); err != nil {
@@ -779,6 +778,32 @@ func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.D
 	}
 }
 
+// heartbeatPayload builds an Aeolus-compatible SenML heartbeat pack.
+func (a *agent) heartbeatPayload() ([]byte, error) {
+	vb := true
+	uptime := time.Since(startTime).Seconds()
+	records := []senml.Record{
+		{Name: "heartbeat", BoolValue: &vb},
+		{Name: "fw_version", StringValue: &Version},
+		{Name: "uptime", Unit: "s", Value: &uptime},
+		{Name: "connected", BoolValue: &vb},
+	}
+	if a.devices != nil {
+		devs, err := a.devices.List()
+		if err == nil {
+			active := 0
+			for _, d := range devs {
+				if d.Active {
+					active++
+				}
+			}
+			activeFloat := float64(active)
+			records = append(records, senml.Record{Name: "devices", Unit: "count", Value: &activeFloat})
+		}
+	}
+	return senml.Encode(senml.Pack{Records: records}, senml.JSON)
+}
+
 func (a *agent) UpdateLiveness(svcname, svctype string) error {
 	if _, ok := a.svcs[svcname]; !ok {
 		svc := NewHeartbeat(svcname, svctype, a.Config().Heartbeat.Interval)
@@ -789,18 +814,15 @@ func (a *agent) UpdateLiveness(svcname, svctype string) error {
 }
 
 func (a *agent) Ping() error {
-	now := float64(time.Now().UnixNano())
-	vb := true
-	uptime := time.Since(startTime).Seconds()
-	pack := senml.Pack{Records: []senml.Record{
-		{BaseName: "gw:", BaseTime: now, Name: "heartbeat", BoolValue: &vb},
-		{Name: "uptime", Unit: "s", Value: &uptime},
-	}}
-	b, err := senml.Encode(pack, senml.JSON)
+	cfg := a.Config()
+	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat", cfg.DomainID, cfg.Channels.DataChan())
+	payload, err := a.heartbeatPayload()
 	if err != nil {
 		return err
 	}
-	return a.Publish(control, string(b))
+	token := a.mqttClient.Publish(topic, cfg.MQTT.QoS, false, payload)
+	token.Wait()
+	return token.Error()
 }
 
 func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) error {
