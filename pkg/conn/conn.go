@@ -171,7 +171,7 @@ func (b *broker) registerBuiltins() {
 	b.handlers[devices] = func(ctx context.Context, pack senml.Pack) error {
 		uuid, cmdStr := extractCmd(pack)
 		log.Info("Devices command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-		if err := svc.DeviceManager(uuid, cmdStr); err != nil {
+		if err := svc.DeviceManager(ctx, uuid, cmdStr); err != nil {
 			if payload, encErr := encoder.EncodeSenML(uuid, devices, err.Error()); encErr == nil {
 				if pubErr := svc.Publish("control", string(payload)); pubErr != nil {
 					log.Warn("Failed to publish DeviceManager error response", slog.Any("error", pubErr))
