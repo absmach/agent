@@ -84,7 +84,12 @@ func NewBroker(svc agent.Service, client mqtt.Client, chann, domainID string, lo
 }
 
 // RegisterHandler registers a CommandHandler for name, replacing any existing one.
+// A nil handler is rejected to avoid panics when a matching command arrives later.
 func (b *broker) RegisterHandler(name string, h CommandHandler) {
+	if h == nil {
+		b.logger.Warn("RegisterHandler called with nil handler", slog.String("name", name))
+		return
+	}
 	b.mu.Lock()
 	b.handlers[name] = h
 	b.mu.Unlock()
@@ -108,13 +113,17 @@ func (b *broker) registerBuiltins() {
 		return err
 	}
 
-	configHandler := func(ctx context.Context, pack senml.Pack) error {
+	b.handlers[config] = func(ctx context.Context, pack senml.Pack) error {
 		uuid, cmdStr := extractCmd(pack)
 		log.Info("Config command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		return svc.ServiceConfig(ctx, uuid, cmdStr)
 	}
-	b.handlers[config] = configHandler
-	b.handlers[service] = configHandler
+
+	b.handlers[service] = func(ctx context.Context, pack senml.Pack) error {
+		uuid, cmdStr := extractCmd(pack)
+		log.Info("Services view command", slog.String("uuid", uuid), slog.String("command", cmdStr))
+		return svc.ServiceConfig(ctx, uuid, cmdStr)
+	}
 
 	b.handlers[term] = func(ctx context.Context, pack senml.Pack) error {
 		uuid, cmdStr := extractCmd(pack)
@@ -123,8 +132,8 @@ func (b *broker) registerBuiltins() {
 	}
 
 	b.handlers[nred] = func(ctx context.Context, pack senml.Pack) error {
-		_, cmdStr := extractCmd(pack)
-		log.Info("NodeRed command", slog.String("command", cmdStr))
+		uuid, cmdStr := extractCmd(pack)
+		log.Info("NodeRed command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		_, err := svc.NodeRed(cmdStr)
 		return err
 	}
@@ -140,7 +149,6 @@ func (b *broker) registerBuiltins() {
 		svc.Shutdown()
 		if err := syscall.Exec(os.Args[0], os.Args, os.Environ()); err != nil {
 			log.Error("Reset failed", slog.Any("error", err))
-			return err
 		}
 		return nil
 	}
