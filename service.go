@@ -61,11 +61,14 @@ const (
 	keyMqttURL                = "mqtt_url"
 	keyMqttUsername           = "mqtt_username"
 	keyMqttPassword           = "mqtt_password"
+	keyMQTTPassword           = "mqtt_password"
+	keyProvisionToken         = "provision_token"
 
 	notConfigured = "not_configured"
 	notFound      = "not_found"
 
 	senmlNameUptime = "uptime"
+	notAllowed      = "not_allowed"
 )
 
 var (
@@ -406,34 +409,35 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
 			return errInvalidCommand
 		}
-		if !settableKeys[cmdArgs[1]] {
-			return errInvalidCommand
-		}
-		if a.store == nil {
-			resp = notConfigured
-		} else if val, ok := a.store.Get(cmdArgs[1]); ok {
-			if cmdArgs[1] == keyCommandSecret {
-				resp = "REDACTED"
-			} else {
-				resp = val
-			}
-		} else {
+		key := cmdArgs[1]
+		switch {
+		case credentialKeys[key]:
+			resp = notAllowed
+		case !settableKeys[key]:
 			resp = notFound
+		case a.store == nil:
+			resp = notConfigured
+		default:
+			if val, ok := a.store.Get(key); ok {
+				resp = val
+			} else {
+				resp = notFound
+			}
 		}
 	case "set":
 		if len(cmdArgs) < 3 || cmdArgs[1] == "" || cmdArgs[2] == "" {
 			return errInvalidCommand
 		}
 		key, val := cmdArgs[1], cmdArgs[2]
-		if !settableKeys[key] {
-			return errInvalidCommand
-		}
-		if err := validateSettableValue(key, val); err != nil {
-			return err
-		}
-		if a.store == nil {
+		switch {
+		case !settableKeys[key]:
+			resp = notFound
+		case a.store == nil:
 			resp = notConfigured
-		} else {
+		default:
+			if err := validateSettableValue(key, val); err != nil {
+				return err
+			}
 			if err := a.store.Set(key, val); err != nil {
 				return err
 			}
@@ -448,12 +452,12 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 			return errInvalidCommand
 		}
 		key := cmdArgs[1]
-		if !settableKeys[key] {
-			return errInvalidCommand
-		}
-		if a.store == nil {
+		switch {
+		case !settableKeys[key]:
+			resp = notFound
+		case a.store == nil:
 			resp = notConfigured
-		} else {
+		default:
 			if err := a.store.Remove(key); err != nil {
 				return err
 			}
@@ -1174,9 +1178,8 @@ func (a *agent) Shutdown() {
 	a.logger.Info("graceful shutdown complete")
 }
 
-// settableKeys is the allowlist of config keys readable/writable via MQTT
-// get/set. Only these keys are accepted; unknown keys are rejected to prevent
-// arbitrary storage growth.
+// settableKeys is the allowlist of keys that can be remotely get/set via MQTT.
+// Unknown keys are rejected to prevent arbitrary storage growth.
 var settableKeys = map[string]bool{
 	keyLogLevel:               true,
 	keyHeartbeatInterval:      true,
@@ -1184,6 +1187,15 @@ var settableKeys = map[string]bool{
 	keyTerminalSessionTimeout: true,
 	keyCommandSecret:          true,
 	keyBsValid:                true,
+	keyMQTTPassword:           true,
+	keyProvisionToken:         true,
+}
+
+// credentialKeys holds keys that can be written but never read back remotely.
+// A get on any credential key returns not_allowed instead of the stored value.
+var credentialKeys = map[string]bool{
+	keyMQTTPassword:   true,
+	keyProvisionToken: true,
 }
 
 // validateSettableValue returns errInvalidCommand if val is not a valid value for key.
@@ -1209,10 +1221,12 @@ func validateSettableValue(key, val string) error {
 		if err != nil || d <= 0 {
 			return errInvalidCommand
 		}
-	case keyCommandSecret:
-		// Any non-empty string is valid; empty value clears the secret.
 	case keyBsValid:
 		if val != "0" && val != "1" {
+			return errInvalidCommand
+		}
+	case keyMQTTPassword, keyProvisionToken:
+		if val == "" {
 			return errInvalidCommand
 		}
 	default:
@@ -1242,6 +1256,10 @@ func (a *agent) revertToStartup(key string) {
 	case keyCommandSecret:
 		a.config.CommandSecret = a.startupConfig.CommandSecret
 		liveVal = a.config.CommandSecret
+	case keyMQTTPassword:
+		a.config.MQTT.Password = a.startupConfig.MQTT.Password
+	case keyProvisionToken:
+		a.config.Provision.Token = a.startupConfig.Provision.Token
 	}
 	a.cfgMu.Unlock()
 	if liveVal != "" {
@@ -1285,6 +1303,8 @@ func ApplyConfigEntry(cfg *Config, key, val string) {
 		cfg.MQTT.Username = val
 	case keyMqttPassword:
 		cfg.MQTT.Password = val
+	case keyProvisionToken:
+		cfg.Provision.Token = val
 	}
 }
 

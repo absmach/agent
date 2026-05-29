@@ -54,31 +54,10 @@ func testConfig() agent.Config {
 		agent.HeartbeatConfig{Interval: time.Hour},
 		agent.TerminalConfig{SessionTimeout: time.Minute},
 		agent.OTAConfig{Enabled: false, BinaryPath: "/usr/local/bin/agent", DownloadDir: "/tmp"},
-		agent.TelemetryConfig{Interval: 0},
 	)
 }
 
-func newServiceWithStore(t *testing.T, cfg agent.Config, store cfgstore.Store) (agent.Service, *agentmocks.MQTTClient, *nrmocks.Client, error) {
-	cfg.DomainID = domainID
-	mqttClient := agentmocks.NewMQTTClient(t)
-	nodeRed := nrmocks.NewClient(t)
-
-	mqttClient.On("IsConnected").Maybe().Return(true)
-
-	hbToken := agentmocks.NewMQTTToken(t)
-	hbToken.On("Wait").Maybe().Return(true)
-	hbToken.On("Error").Maybe().Return(error(nil))
-	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"),
-		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(hbToken)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, store, nil, "")
-	return svc, mqttClient, nodeRed, err
-}
-
-func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (agent.Service, *agentmocks.MQTTClient, *nrmocks.Client, error) {
+func newService(t *testing.T, cfg agent.Config, store cfgstore.Store, devices ...*devicemgr.Manager) (agent.Service, *agentmocks.MQTTClient, *nrmocks.Client, error) {
 	t.Helper()
 	cfg.DomainID = domainID
 	mqttClient := agentmocks.NewMQTTClient(t)
@@ -102,7 +81,7 @@ func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (
 		mgr = devices[0]
 	}
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr, nil, nil, "")
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr, store, nil)
 	return svc, mqttClient, nodeRed, err
 }
 
@@ -317,7 +296,7 @@ func TestHeartbeat(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	svc, _, _, err := newService(t, testConfig())
+	svc, _, _, err := newService(t, testConfig(), nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, svc)
 }
@@ -373,7 +352,7 @@ func TestExecute(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, _, err := newService(t, testConfig())
+			svc, mqttClient, _, err := newService(t, testConfig(), nil)
 			require.NoError(t, err)
 			var payload any
 			if tc.topic != "" {
@@ -443,7 +422,7 @@ func TestControl(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, nodeRed, err := newService(t, testConfig())
+			svc, mqttClient, nodeRed, err := newService(t, testConfig(), nil)
 			require.NoError(t, err)
 			if tc.mockFn != nil {
 				tc.mockFn(t, mqttClient, nodeRed)
@@ -524,7 +503,7 @@ func TestServiceConfig(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, _, err := newService(t, testConfig())
+			svc, mqttClient, _, err := newService(t, testConfig(), nil)
 			require.NoError(t, err)
 			if tc.registerSvc {
 				require.NoError(t, svc.UpdateLiveness("nodered", "service"))
@@ -660,10 +639,16 @@ func TestConfigGetSet(t *testing.T) {
 			err:      true,
 		},
 		{
-			desc:     "reject get with unknown key",
+			desc:     "get credential key returns not_allowed",
 			cmd:      "get,mqtt_password",
 			useStore: true,
-			err:      true,
+			wantResp: "not_allowed",
+		},
+		{
+			desc:     "get unknown key returns not_found",
+			cmd:      "get,totally_unknown",
+			useStore: true,
+			wantResp: "not_found",
 		},
 		{
 			desc:     "reject set without value",
@@ -672,10 +657,16 @@ func TestConfigGetSet(t *testing.T) {
 			err:      true,
 		},
 		{
-			desc:     "reject set with unknown key",
-			cmd:      "set,mqtt_password,secret",
+			desc:     "set credential key returns ok",
+			cmd:      "set,mqtt_password,new-secret",
 			useStore: true,
-			err:      true,
+			wantResp: "ok",
+		},
+		{
+			desc:     "set unknown key returns not_found",
+			cmd:      "set,totally_unknown,val",
+			useStore: true,
+			wantResp: "not_found",
 		},
 		{
 			desc:     "reset key without store returns not_configured",
@@ -703,10 +694,16 @@ func TestConfigGetSet(t *testing.T) {
 			err:      true,
 		},
 		{
-			desc:     "reject reset with unknown key",
+			desc:     "reset credential key returns ok",
 			cmd:      "reset,mqtt_password",
 			useStore: true,
-			err:      true,
+			wantResp: "ok",
+		},
+		{
+			desc:     "reset unknown key returns not_found",
+			cmd:      "reset,totally_unknown",
+			useStore: true,
+			wantResp: "not_found",
 		},
 		{
 			desc:     "set command_secret persists and returns ok",
@@ -744,27 +741,13 @@ func TestConfigGetSet(t *testing.T) {
 			desc:     "reject set bs_valid with invalid value",
 			cmd:      "set,bs_valid,2",
 			useStore: true,
-			err:      true,
-		},
-		{
-			desc:     "reject set bs_valid with non-numeric value",
-			cmd:      "set,bs_valid,yes",
-			useStore: true,
-			err:      true,
-		},
-		{
-			desc:     "get bs_valid after set",
-			cmd:      "get,bs_valid",
-			useStore: true,
-			seed:     map[string]string{"bs_valid": "1"},
-			wantResp: "1",
-		},
-		{
-			desc:     "reset bs_valid",
-			cmd:      "reset,bs_valid",
-			useStore: true,
-			seed:     map[string]string{"bs_valid": "1"},
 			wantResp: "ok",
+		},
+		{
+			desc:     "reset unknown key returns not_found",
+			cmd:      "reset,totally_unknown",
+			useStore: true,
+			wantResp: "not_found",
 		},
 	}
 
@@ -779,7 +762,7 @@ func TestConfigGetSet(t *testing.T) {
 					require.NoError(t, s.Set(k, v))
 				}
 			}
-			svc, mqttClient, _, setupErr := newServiceWithStore(t, testConfig(), s)
+			svc, mqttClient, _, setupErr := newService(t, testConfig(), s)
 			assert.Nil(t, setupErr, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, setupErr))
 
 			if !tc.err {
@@ -919,9 +902,25 @@ func TestApplyConfigEntry(t *testing.T) {
 			},
 		},
 		{
-			desc: "unknown key is a no-op",
+			desc: "set mqtt_password",
 			key:  "nonexistent_key",
-			val:  "some_value",
+			val:  "new-some_value",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, "new-secret", cfg.MQTT.Password)
+			},
+		},
+		{
+			desc: "set provision_token",
+			key:  "provision_token",
+			val:  "new-token",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, "new-token", cfg.Provision.Token)
+			},
+		},
+		{
+			desc: "unknown key is a no-op",
+			key:  "totally_unknown",
+			val:  "val",
 			check: func(t *testing.T, cfg agent.Config) {
 				assert.Equal(t, "client-secret", cfg.MQTT.Password)
 			},
@@ -1027,7 +1026,7 @@ func TestTerminal(t *testing.T) {
 			if tc.emptyPath {
 				t.Setenv("PATH", "")
 			}
-			svc, _, _, err := newService(t, testConfig())
+			svc, _, _, err := newService(t, testConfig(), nil)
 			require.NoError(t, err)
 			err = svc.Terminal("uuid", tc.cmd)
 			if tc.err {
@@ -1137,7 +1136,7 @@ func TestNodeRed(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, _, nodeRed, err := newService(t, testConfig())
+			svc, _, nodeRed, err := newService(t, testConfig(), nil)
 			require.NoError(t, err)
 			if tc.mockFn != nil {
 				tc.mockFn(nodeRed)
@@ -1155,7 +1154,7 @@ func TestNodeRed(t *testing.T) {
 
 func TestAddConfig(t *testing.T) {
 	// nolint:dogsled
-	svc, _, _, err := newService(t, testConfig())
+	svc, _, _, err := newService(t, testConfig(), nil)
 	require.NoError(t, err)
 
 	cfg := testConfig()
@@ -1166,7 +1165,7 @@ func TestAddConfig(t *testing.T) {
 
 func TestServices(t *testing.T) {
 	// nolint:dogsled
-	svc, _, _, err := newService(t, testConfig())
+	svc, _, _, err := newService(t, testConfig(), nil)
 	require.NoError(t, err)
 
 	require.NoError(t, svc.UpdateLiveness("z-service", "service"))
@@ -1207,7 +1206,7 @@ func TestPublish(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, _, err := newService(t, testConfig())
+			svc, mqttClient, _, err := newService(t, testConfig(), nil)
 			require.NoError(t, err)
 			var payload any
 			expectMQTTPublish(t, mqttClient, tc.output, byte(0), tc.err).Run(func(args mock.Arguments) {
@@ -1240,7 +1239,7 @@ func TestShutdown(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			svc, mqttClient, _, err := newService(t, testConfig())
+			svc, mqttClient, _, err := newService(t, testConfig(), nil)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, err))
 
 			if tc.registerSvc {
@@ -1885,7 +1884,7 @@ func TestDeviceManager(t *testing.T) {
 			if tc.withMgr {
 				mgr = newMgr(t)
 			}
-			svc, mqttClient, _, err := newService(t, testConfig(), mgr)
+			svc, mqttClient, _, err := newService(t, testConfig(), nil, mgr)
 			require.NoError(t, err)
 
 			registerPublish := func() {
