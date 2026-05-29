@@ -227,8 +227,8 @@ func validateRuntimeConfig(cfg agent.Config) error {
 	if cfg.DomainID == "" {
 		missing = append(missing, "domain_id")
 	}
-	if cfg.Channels.CtrlChan() == "" || cfg.Channels.DataChan() == "" {
-		missing = append(missing, "channels.id (or channels.ctrl_id + channels.data_id)")
+	if err := cfg.Channels.Validate(); err != nil {
+		missing = append(missing, err.Error())
 	}
 	if cfg.MQTT.URL == "" {
 		missing = append(missing, "mqtt.url")

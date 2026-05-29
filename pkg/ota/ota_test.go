@@ -11,12 +11,28 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/absmach/senml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func sha256hex(data []byte) string {
+	h := sha256.Sum256(data)
+	return fmt.Sprintf("%x", h[:])
+}
+
+func writeTempFile(t *testing.T, content []byte) string {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "ota-verify-*")
+	require.NoError(t, err)
+	_, err = f.Write(content)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	return f.Name()
+}
 
 func TestState_String(t *testing.T) {
 	cases := []struct {
@@ -112,313 +128,368 @@ func TestTriggerFromRecords(t *testing.T) {
 			url: urlVal,
 		},
 	}
+
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			tr, err := TriggerFromRecords(tc.records)
 			if tc.wantErr {
-				assert.Error(t, err)
+				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
 				return
 			}
-			require.NoError(t, err)
-			assert.Equal(t, tc.url, tr.URL)
-			assert.Equal(t, tc.sha256hex, tr.SHA256Hex)
-			assert.Equal(t, tc.size, tr.Size)
+			require.NoError(t, err, fmt.Sprintf("%s: unexpected error", tc.desc))
+			assert.Equal(t, tc.url, tr.URL, fmt.Sprintf("%s: unexpected URL", tc.desc))
+			assert.Equal(t, tc.sha256hex, tr.SHA256Hex, fmt.Sprintf("%s: unexpected SHA256", tc.desc))
+			assert.Equal(t, tc.size, tr.Size, fmt.Sprintf("%s: unexpected size", tc.desc))
 		})
 	}
 }
 
-func TestDownload_Success(t *testing.T) {
+func TestDownload(t *testing.T) {
 	content := []byte("fake agent binary content")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write(content)
-		assert.NoError(t, err)
-	}))
-	defer srv.Close()
 
-	dir := t.TempDir()
-	var progressCalls []float64
-	path, err := download(context.Background(), srv.URL, dir, 0, func(pct float64) {
-		progressCalls = append(progressCalls, pct)
+	cases := []struct {
+		desc            string
+		handler         http.HandlerFunc
+		url             string
+		sizeLimit       uint64
+		cancelCtx       bool
+		wantErr         bool
+		wantErrContains string
+	}{
+		{
+			desc: "success",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+				_, _ = w.Write(content)
+			},
+		},
+		{
+			desc: "size exceeded",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+				_, _ = w.Write(content)
+			},
+			sizeLimit:       4,
+			wantErr:         true,
+			wantErrContains: "exceeded expected size",
+		},
+		{
+			desc:            "bad scheme file",
+			url:             "file:///etc/passwd",
+			wantErr:         true,
+			wantErrContains: "unsupported URL scheme",
+		},
+		{
+			desc:            "bad scheme ftp",
+			url:             "ftp://example.com/agent.bin",
+			wantErr:         true,
+			wantErrContains: "unsupported URL scheme",
+		},
+		{
+			desc: "server error",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			},
+			wantErr:         true,
+			wantErrContains: "500",
+		},
+		{
+			desc: "not found",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			},
+			wantErr: true,
+		},
+		{
+			desc: "context cancelled",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				<-r.Context().Done()
+			},
+			cancelCtx: true,
+			wantErr:   true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			ctx := context.Background()
+			url := tc.url
+
+			if tc.handler != nil {
+				srv := httptest.NewServer(tc.handler)
+				defer srv.Close()
+				url = srv.URL
+			}
+			if tc.cancelCtx {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+
+			var progress []float64
+			path, err := download(ctx, url, t.TempDir(), tc.sizeLimit, func(pct float64) {
+				progress = append(progress, pct)
+			})
+			if tc.wantErr {
+				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				if tc.wantErrContains != "" {
+					assert.ErrorContains(t, err, tc.wantErrContains, fmt.Sprintf("%s: wrong error", tc.desc))
+				}
+				return
+			}
+			require.NoError(t, err, fmt.Sprintf("%s: unexpected error", tc.desc))
+			defer func() { _ = os.Remove(path) }()
+
+			got, err := os.ReadFile(path)
+			require.NoError(t, err)
+			assert.Equal(t, content, got, fmt.Sprintf("%s: unexpected content", tc.desc))
+			assert.Contains(t, progress, float64(0), fmt.Sprintf("%s: 0%% should be reported", tc.desc))
+			assert.Contains(t, progress, float64(100), fmt.Sprintf("%s: 100%% should be reported", tc.desc))
+		})
+	}
+
+	t.Run("progress reported every 5 percent", func(t *testing.T) {
+		const size = 1000
+		body := make([]byte, size)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
+			_, _ = w.Write(body)
+		}))
+		defer srv.Close()
+
+		var calls []float64
+		path, err := download(context.Background(), srv.URL, t.TempDir(), 0, func(pct float64) {
+			calls = append(calls, pct)
+		})
+		require.NoError(t, err)
+		_ = os.Remove(path)
+
+		for i := 1; i < len(calls)-1; i++ {
+			assert.GreaterOrEqual(t, calls[i]-calls[i-1], 5.0,
+				"progress jumps should be >=5%% (got %.1f -> %.1f)", calls[i-1], calls[i])
+		}
 	})
-	require.NoError(t, err)
-	defer func() { _ = os.Remove(path) }()
-
-	got, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assert.Equal(t, content, got)
-	assert.Contains(t, progressCalls, float64(0), "0%% should be reported immediately")
-	assert.Contains(t, progressCalls, float64(100), "100%% should always be reported")
 }
 
-func TestDownload_SizeExceeded(t *testing.T) {
-	content := []byte("this binary is larger than expected")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write(content)
-		assert.NoError(t, err)
-	}))
-	defer srv.Close()
+func TestVerify(t *testing.T) {
+	content := []byte("agent binary")
 
-	_, err := download(context.Background(), srv.URL, t.TempDir(), 4, func(float64) {})
-	assert.ErrorContains(t, err, "exceeded expected size")
-}
+	closedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	closedSrv.Close()
+	closedURL := closedSrv.URL + "/agent.bin"
 
-func TestDownload_BadScheme(t *testing.T) {
-	_, err := download(context.Background(), "file:///etc/passwd", t.TempDir(), 0, func(float64) {})
-	assert.ErrorContains(t, err, "unsupported URL scheme")
+	cases := []struct {
+		desc            string
+		sha256hex       string
+		handler         http.HandlerFunc
+		url             string
+		wantErr         bool
+		wantErrContains string
+	}{
+		{
+			desc:      "inline hash match",
+			sha256hex: sha256hex(content),
+		},
+		{
+			desc:            "inline hash mismatch",
+			sha256hex:       "deadbeef",
+			wantErr:         true,
+			wantErrContains: "sha256 mismatch",
+		},
+		{
+			desc: "sidecar match",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				_, _ = fmt.Fprintf(w, "%s  agent.bin\n", sha256hex(content))
+			},
+		},
+		{
+			desc: "sidecar mismatch",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				_, _ = fmt.Fprintf(w, "deadbeef  agent.bin\n")
+			},
+			wantErr:         true,
+			wantErrContains: "sha256 mismatch",
+		},
+		{
+			desc: "sidecar not found skipped",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			},
+		},
+		{
+			desc:    "network error fails closed",
+			url:     closedURL,
+			wantErr: true,
+		},
+		{
+			desc: "inline hash takes precedence over sidecar",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				_, _ = fmt.Fprintf(w, "deadbeef  agent.bin\n")
+			},
+			sha256hex: sha256hex(content),
+		},
+	}
 
-	_, err = download(context.Background(), "ftp://example.com/agent.bin", t.TempDir(), 0, func(float64) {})
-	assert.ErrorContains(t, err, "unsupported URL scheme")
-}
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			path := writeTempFile(t, content)
+			url := tc.url
 
-func TestDownload_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer srv.Close()
+			if tc.handler != nil {
+				srv := httptest.NewServer(tc.handler)
+				defer srv.Close()
+				url = srv.URL + "/agent.bin"
+			}
+			if url == "" {
+				url = "http://unused"
+			}
 
-	_, err := download(context.Background(), srv.URL, t.TempDir(), 0, func(float64) {})
-	assert.ErrorContains(t, err, "500")
-}
-
-func TestDownload_NotFound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
-
-	_, err := download(context.Background(), srv.URL, t.TempDir(), 0, func(float64) {})
-	assert.Error(t, err)
-}
-
-func TestDownload_ContextCancelled(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// block until client disconnects
-		<-r.Context().Done()
-	}))
-	defer srv.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err := download(ctx, srv.URL, t.TempDir(), 0, func(float64) {})
-	assert.Error(t, err)
-}
-
-func TestDownload_ProgressReportedEvery5Percent(t *testing.T) {
-	const size = 1000
-	content := make([]byte, size)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write(content)
-		assert.NoError(t, err)
-	}))
-	defer srv.Close()
-
-	var calls []float64
-	path, err := download(context.Background(), srv.URL, t.TempDir(), 0, func(pct float64) {
-		calls = append(calls, pct)
-	})
-	require.NoError(t, err)
-	_ = os.Remove(path)
-
-	// consecutive reported values should differ by at least 5%, except the final 100%
-	for i := 1; i < len(calls)-1; i++ {
-		assert.GreaterOrEqual(t, calls[i]-calls[i-1], 5.0,
-			"progress jumps should be >=5%% (got %.1f -> %.1f)", calls[i-1], calls[i])
+			_, err := verify(context.Background(), url, path, tc.sha256hex)
+			if tc.wantErr {
+				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				if tc.wantErrContains != "" {
+					assert.ErrorContains(t, err, tc.wantErrContains, fmt.Sprintf("%s: wrong error", tc.desc))
+				}
+				return
+			}
+			require.NoError(t, err, fmt.Sprintf("%s: unexpected error", tc.desc))
+		})
 	}
 }
 
-func sha256hex(data []byte) string {
-	h := sha256.Sum256(data)
-	return fmt.Sprintf("%x", h[:])
+func TestReplace(t *testing.T) {
+	cases := []struct {
+		desc    string
+		hasSrc  bool
+		wantErr bool
+	}{
+		{
+			desc:   "same filesystem",
+			hasSrc: true,
+		},
+		{
+			desc:    "missing source",
+			hasSrc:  false,
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			dir := t.TempDir()
+			dst := filepath.Join(dir, "agent")
+			require.NoError(t, os.WriteFile(dst, []byte("old binary"), 0o755))
+
+			src := filepath.Join(dir, "new-agent")
+			if tc.hasSrc {
+				require.NoError(t, os.WriteFile(src, []byte("new binary"), 0o644))
+			}
+
+			err := replace(src, dst)
+			if tc.wantErr {
+				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				return
+			}
+			require.NoError(t, err, fmt.Sprintf("%s: unexpected error", tc.desc))
+
+			got, err := os.ReadFile(dst)
+			require.NoError(t, err)
+			assert.Equal(t, []byte("new binary"), got, fmt.Sprintf("%s: unexpected content", tc.desc))
+
+			info, err := os.Stat(dst)
+			require.NoError(t, err)
+			assert.Equal(t, os.FileMode(0o755), info.Mode().Perm(), fmt.Sprintf("%s: binary should be executable", tc.desc))
+
+			_, err = os.Stat(src)
+			assert.True(t, os.IsNotExist(err), fmt.Sprintf("%s: src temp file should be consumed", tc.desc))
+		})
+	}
 }
 
-func writeTempFile(t *testing.T, content []byte) string {
-	t.Helper()
-	f, err := os.CreateTemp(t.TempDir(), "ota-verify-*")
-	require.NoError(t, err)
-	_, err = f.Write(content)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-	return f.Name()
-}
-
-func TestVerify_InlineHash_Match(t *testing.T) {
-	content := []byte("agent binary")
-	path := writeTempFile(t, content)
-	_, err := verify(context.Background(), "http://unused", path, sha256hex(content))
-	assert.NoError(t, err)
-}
-
-func TestVerify_InlineHash_Mismatch(t *testing.T) {
-	path := writeTempFile(t, []byte("agent binary"))
-	_, err := verify(context.Background(), "http://unused", path, "deadbeef")
-	assert.ErrorContains(t, err, "sha256 mismatch")
-}
-
-func TestVerify_Sidecar_Match(t *testing.T) {
-	content := []byte("agent binary")
-	path := writeTempFile(t, content)
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprintf(w, "%s  agent.bin\n", sha256hex(content))
-	}))
-	defer srv.Close()
-
-	_, err := verify(context.Background(), srv.URL+"/agent.bin", path, "")
-	assert.NoError(t, err)
-}
-
-func TestVerify_Sidecar_Mismatch(t *testing.T) {
-	path := writeTempFile(t, []byte("agent binary"))
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprintf(w, "deadbeef  agent.bin\n")
-	}))
-	defer srv.Close()
-
-	_, err := verify(context.Background(), srv.URL+"/agent.bin", path, "")
-	assert.ErrorContains(t, err, "sha256 mismatch")
-}
-
-func TestVerify_Sidecar_NotFound_Skipped(t *testing.T) {
-	path := writeTempFile(t, []byte("agent binary"))
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
-
-	_, err := verify(context.Background(), srv.URL+"/agent.bin", path, "")
-	assert.NoError(t, err, "missing sidecar should be silently skipped")
-}
-
-func TestVerify_NoHashNoSidecar_Skipped(t *testing.T) {
-	path := writeTempFile(t, []byte("agent binary"))
-	// immediately-closed server simulates connection refused — network error should be skipped
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	srv.Close()
-	_, err := verify(context.Background(), srv.URL+"/agent.bin", path, "")
-	assert.NoError(t, err, "unreachable sidecar host should be silently skipped")
-}
-
-func TestVerify_InlineTakesPrecedenceOverSidecar(t *testing.T) {
-	content := []byte("agent binary")
-	path := writeTempFile(t, content)
-
-	// sidecar serves wrong hash — inline hash is correct, should pass
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprintf(w, "deadbeef  agent.bin\n")
-	}))
-	defer srv.Close()
-
-	_, err := verify(context.Background(), srv.URL+"/agent.bin", path, sha256hex(content))
-	assert.NoError(t, err, "inline hash should take precedence over sidecar")
-}
-
-func TestReplace_SameFilesystem(t *testing.T) {
-	dir := t.TempDir()
-	src := filepath.Join(dir, "new-agent")
-	dst := filepath.Join(dir, "agent")
-
-	require.NoError(t, os.WriteFile(src, []byte("new binary"), 0o644))
-	require.NoError(t, os.WriteFile(dst, []byte("old binary"), 0o755))
-
-	require.NoError(t, replace(src, dst))
-
-	got, err := os.ReadFile(dst)
-	require.NoError(t, err)
-	assert.Equal(t, []byte("new binary"), got)
-
-	info, err := os.Stat(dst)
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm(), "binary should be executable")
-
-	_, err = os.Stat(src)
-	assert.True(t, os.IsNotExist(err), "src temp file should be consumed")
-}
-
-func TestReplace_MissingSource(t *testing.T) {
-	dir := t.TempDir()
-	err := replace(filepath.Join(dir, "nonexistent"), filepath.Join(dir, "dst"))
-	assert.Error(t, err)
-}
-
-func TestRun_DownloadFails_BadURL(t *testing.T) {
-	// immediately-closed server gives connection refused without a timeout
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	srv.Close()
-
-	cfg := Config{BinaryPath: "/tmp/agent", DownloadDir: t.TempDir()}
-	var states []State
-	err := Run(context.Background(), cfg, srv.URL, "", 0, func(s State, _ float64) {
-		states = append(states, s)
-	})
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "ota download")
-	assert.Equal(t, []State{StateTriggered, StateDownloading}, states,
-		"should report TRIGGERED then DOWNLOADING before failing")
-}
-
-func TestRun_DownloadFails_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-	}))
-	defer srv.Close()
-
-	cfg := Config{BinaryPath: "/tmp/agent", DownloadDir: t.TempDir()}
-	err := Run(context.Background(), cfg, srv.URL, "", 0, func(State, float64) {})
-	assert.ErrorContains(t, err, "ota download")
-}
-
-func TestRun_VerifyFails_HashMismatch(t *testing.T) {
+func TestRun(t *testing.T) {
 	content := []byte("fake binary content")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write(content)
-		assert.NoError(t, err)
-	}))
-	defer srv.Close()
 
-	dir := t.TempDir()
-	cfg := Config{BinaryPath: filepath.Join(dir, "agent"), DownloadDir: dir}
-
-	var states []State
-	err := Run(context.Background(), cfg, srv.URL, "deadbeef", 0, func(s State, _ float64) {
-		states = append(states, s)
-	})
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "ota verify")
-	assert.Contains(t, states, StateVerifying)
-
-	// temp file should be cleaned up after verify failure
-	entries, _ := os.ReadDir(dir)
-	for _, e := range entries {
-		assert.False(t, e.Name() != filepath.Base(cfg.BinaryPath) &&
-			len(e.Name()) > 9 && e.Name()[:9] == "agent-ota",
-			"temp file %q should have been removed", e.Name())
+	cases := []struct {
+		desc            string
+		handler         http.HandlerFunc
+		sha256hex       string
+		closedServer    bool
+		wantErrContains string
+		wantStates      []State
+		checkCleanup    bool
+	}{
+		{
+			desc:            "connection refused",
+			closedServer:    true,
+			wantErrContains: "ota download",
+			wantStates:      []State{StateTriggered, StateDownloading},
+		},
+		{
+			desc: "server error",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			},
+			wantErrContains: "ota download",
+			wantStates:      []State{StateTriggered, StateDownloading},
+		},
+		{
+			desc: "hash mismatch",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+				_, _ = w.Write(content)
+			},
+			sha256hex:       "deadbeef",
+			wantErrContains: "ota verify",
+			checkCleanup:    true,
+		},
+		{
+			desc: "no hash and no sidecar",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, ".sha256") {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+				_, _ = w.Write(content)
+			},
+			wantErrContains: "ota verify",
+			checkCleanup:    true,
+		},
 	}
-}
 
-func TestRun_StateProgression_OnDownloadFailure(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer srv.Close()
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			var url string
+			if tc.closedServer {
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+				srv.Close()
+				url = srv.URL
+			} else {
+				srv := httptest.NewServer(tc.handler)
+				defer srv.Close()
+				url = srv.URL
+			}
 
-	cfg := Config{BinaryPath: "/tmp/agent", DownloadDir: t.TempDir()}
-	var states []State
-	err := Run(context.Background(), cfg, srv.URL, "", 0, func(s State, _ float64) {
-		states = append(states, s)
-	})
-	require.Error(t, err)
+			dir := t.TempDir()
+			cfg := Config{BinaryPath: filepath.Join(dir, "agent"), DownloadDir: dir}
+			var states []State
+			err := Run(context.Background(), cfg, url, tc.sha256hex, 0, func(s State, _ float64) {
+				states = append(states, s)
+			})
 
-	assert.Equal(t, StateTriggered, states[0], "first state must be TRIGGERED")
-	assert.Equal(t, StateDownloading, states[1], "second state must be DOWNLOADING")
-	assert.Len(t, states, 2, "should not progress past DOWNLOADING on server error")
+			require.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+			assert.ErrorContains(t, err, tc.wantErrContains, fmt.Sprintf("%s: wrong error", tc.desc))
+			if len(tc.wantStates) > 0 {
+				assert.Equal(t, tc.wantStates, states, fmt.Sprintf("%s: unexpected state sequence", tc.desc))
+			}
+			if tc.checkCleanup {
+				entries, _ := os.ReadDir(dir)
+				for _, e := range entries {
+					assert.False(t,
+						e.Name() != filepath.Base(cfg.BinaryPath) && strings.HasPrefix(e.Name(), "agent-ota"),
+						fmt.Sprintf("%s: temp file %q should be removed", tc.desc, e.Name()))
+				}
+			}
+		})
+	}
 }

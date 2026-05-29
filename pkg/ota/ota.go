@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	neturl "net/url"
 	"os"
@@ -105,8 +104,9 @@ func TriggerFromRecords(records []senml.Record) (Trigger, error) {
 // Run executes the full OTA cycle: download → verify → replace → restart.
 // sha256hex is the expected SHA-256 hex digest; if empty the sidecar at url+".sha256" is tried.
 // size is the expected byte count; if non-zero the downloaded file is checked against it.
-// On success it never returns (the process is replaced via syscall.Exec).
-// On any failure it returns a descriptive error; the running binary is untouched.
+// Verification is mandatory: if neither sha256hex nor a reachable sidecar is available the
+// update is aborted and the running binary is left untouched.
+// On success it never returns (the process is replaced in-place).
 func Run(ctx context.Context, cfg Config, url, sha256hex string, size uint64, progressFn ProgressFn) error {
 	if progressFn == nil {
 		progressFn = func(State, float64) {}
@@ -128,7 +128,8 @@ func Run(ctx context.Context, cfg Config, url, sha256hex string, size uint64, pr
 		return fmt.Errorf("ota verify: %w", err)
 	}
 	if !verified {
-		slog.Default().Warn("OTA binary installed without integrity verification; no hash provided and no sidecar found")
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("ota verify: no hash provided and sidecar not found at %s.sha256; refusing unverified install", url)
 	}
 
 	progressFn(StateReady, 100)
@@ -233,7 +234,6 @@ func download(ctx context.Context, url, dir string, size uint64, pctFn func(floa
 func verify(ctx context.Context, url, tmpPath, sha256hex string) (bool, error) {
 	expected := sha256hex
 	if expected == "" {
-		// fall back to sidecar
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url+".sha256", nil)
 		if err != nil {
 			return false, nil
@@ -241,11 +241,14 @@ func verify(ctx context.Context, url, tmpPath, sha256hex string) (bool, error) {
 		client := &http.Client{Timeout: 30 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
-			return false, nil // network error — skip
+			return false, fmt.Errorf("fetch sidecar: %w", err)
 		}
 		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode == http.StatusNotFound {
+			return false, nil
+		}
 		if resp.StatusCode != http.StatusOK {
-			return false, nil // no sidecar — skip
+			return false, fmt.Errorf("fetch sidecar: unexpected HTTP %d", resp.StatusCode)
 		}
 		raw, err := io.ReadAll(io.LimitReader(resp.Body, 128))
 		if err != nil {
@@ -284,7 +287,6 @@ func replace(src, dst string) error {
 	if err := os.Rename(src, dst); err == nil {
 		return nil
 	}
-	// Cross-device fallback: write a temp file next to dst then rename.
 	dir := filepath.Dir(dst)
 	tmp, err := os.CreateTemp(dir, ".agent-ota-*")
 	if err != nil {
