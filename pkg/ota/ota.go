@@ -108,6 +108,9 @@ func TriggerFromRecords(records []senml.Record) (Trigger, error) {
 // On success it never returns (the process is replaced via syscall.Exec).
 // On any failure it returns a descriptive error; the running binary is untouched.
 func Run(ctx context.Context, cfg Config, url, sha256hex string, size uint64, progressFn ProgressFn) error {
+	if progressFn == nil {
+		progressFn = func(State, float64) {}
+	}
 	progressFn(StateTriggered, 0)
 
 	progressFn(StateDownloading, 0)
@@ -245,10 +248,14 @@ func verify(ctx context.Context, url, tmpPath, sha256hex string) (bool, error) {
 			return false, nil // no sidecar — skip
 		}
 		raw, err := io.ReadAll(io.LimitReader(resp.Body, 128))
-		if err != nil || len(raw) == 0 {
+		if err != nil {
 			return false, nil
 		}
-		expected = strings.TrimSpace(strings.Fields(string(raw))[0])
+		fields := strings.Fields(string(raw))
+		if len(fields) == 0 {
+			return false, nil
+		}
+		expected = fields[0]
 	}
 
 	f, err := os.Open(tmpPath)

@@ -58,6 +58,10 @@ const (
 
 var startTime = time.Now()
 
+// Version is the agent binary version, injected at build time via
+// -ldflags "-X github.com/absmach/agent.Version=x.y.z".
+var Version = "0.0.0"
+
 // execAllowlist is the set of command names permitted via the exec MQTT command.
 var execAllowlist = map[string]bool{
 	"cat": true, "cd": true, "curl": true, "date": true, "df": true,
@@ -157,7 +161,8 @@ type Service interface {
 	// Publish message.
 	Publish(topic, payload string) error
 
-	// Ping publishes an immediate heartbeat SenML record to the control channel.
+	// Ping publishes an immediate heartbeat SenML record to the data channel
+	// under the gateway/heartbeat topic, matching the periodic self-heartbeat format.
 	Ping() error
 
 	// NodeRed manages Node-RED flow operations.
@@ -194,7 +199,9 @@ type agent struct {
 	noderedClient       nodered.Client
 	logger              *slog.Logger
 	svcs                map[string]Heartbeat
+	svcsMu              sync.RWMutex
 	terminals           map[string]terminal.Session
+	termMu              sync.Mutex
 	devices             *devicemgr.Manager
 	sched               *Scheduler
 	workDir             string
@@ -448,6 +455,8 @@ func (a *agent) Terminal(uuid, cmdStr string) error {
 }
 
 func (a *agent) terminalOpen(uuid string, timeout time.Duration) error {
+	a.termMu.Lock()
+	defer a.termMu.Unlock()
 	if _, ok := a.terminals[uuid]; !ok {
 		term, err := terminal.NewSession(uuid, timeout, a.Publish, a.logger)
 		if err != nil {
@@ -456,8 +465,9 @@ func (a *agent) terminalOpen(uuid string, timeout time.Duration) error {
 		a.terminals[uuid] = term
 		go func() {
 			for range term.IsDone() {
-				_ = a.terminalClose(uuid)
+				a.termMu.Lock()
 				delete(a.terminals, uuid)
+				a.termMu.Unlock()
 				return
 			}
 		}()
@@ -466,6 +476,8 @@ func (a *agent) terminalOpen(uuid string, timeout time.Duration) error {
 }
 
 func (a *agent) terminalClose(uuid string) error {
+	a.termMu.Lock()
+	defer a.termMu.Unlock()
 	if _, ok := a.terminals[uuid]; ok {
 		delete(a.terminals, uuid)
 		return nil
@@ -477,9 +489,10 @@ func (a *agent) terminalWrite(uuid, cmd string) error {
 	if err := a.terminalOpen(uuid, a.Config().Terminal.SessionTimeout); err != nil {
 		return err
 	}
+	a.termMu.Lock()
 	term := a.terminals[uuid]
-	p := []byte(cmd)
-	return term.Send(p)
+	a.termMu.Unlock()
+	return term.Send([]byte(cmd))
 }
 
 func (a *agent) NodeRed(cmdStr string) (string, error) {
@@ -763,6 +776,8 @@ func (a *agent) Config() Config {
 }
 
 func (a *agent) Services() []Info {
+	a.svcsMu.RLock()
+	defer a.svcsMu.RUnlock()
 	svcInfos := []Info{}
 	keys := []string{}
 	for k := range a.svcs {
@@ -789,17 +804,12 @@ func (a *agent) Publish(t, payload string) error {
 }
 
 func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.Duration, qos byte) {
-	svcType := "agent"
-	pack := senml.Pack{Records: []senml.Record{
-		{BaseName: "agent:", Name: "service_type", StringValue: &svcType},
-	}}
-	payload, err := senml.Encode(pack, senml.JSON)
-	if err != nil {
-		a.logger.Error("failed to encode self-heartbeat", slog.Any("error", err))
-		return
-	}
-
 	publish := func() {
+		payload, err := a.heartbeatPayload()
+		if err != nil {
+			a.logger.Error("failed to encode self-heartbeat", slog.Any("error", err))
+			return
+		}
 		token := a.mqttClient.Publish(topic, qos, false, payload)
 		token.Wait()
 		if err := token.Error(); err != nil {
@@ -821,7 +831,37 @@ func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.D
 	}
 }
 
+// heartbeatPayload builds an Aeolus-compatible SenML heartbeat pack.
+func (a *agent) heartbeatPayload() ([]byte, error) {
+	hb := true
+	connected := true
+	uptime := time.Since(startTime).Seconds()
+	records := []senml.Record{
+		{Name: "heartbeat", BaseTime: float64(time.Now().Unix()), BoolValue: &hb},
+		{Name: "fw_version", StringValue: &Version},
+		{Name: "uptime", Unit: "s", Value: &uptime},
+		{Name: "connected", BoolValue: &connected},
+	}
+	if a.devices != nil {
+		devs, err := a.devices.List()
+		if err != nil {
+			return nil, err
+		}
+		active := 0
+		for _, d := range devs {
+			if d.Active {
+				active++
+			}
+		}
+		activeFloat := float64(active)
+		records = append(records, senml.Record{Name: "devices", Unit: "count", Value: &activeFloat})
+	}
+	return senml.Encode(senml.Pack{Records: records}, senml.JSON)
+}
+
 func (a *agent) UpdateLiveness(svcname, svctype string) error {
+	a.svcsMu.Lock()
+	defer a.svcsMu.Unlock()
 	if _, ok := a.svcs[svcname]; !ok {
 		svc := NewHeartbeat(svcname, svctype, a.Config().Heartbeat.Interval)
 		a.svcs[svcname] = svc
@@ -831,18 +871,18 @@ func (a *agent) UpdateLiveness(svcname, svctype string) error {
 }
 
 func (a *agent) Ping() error {
-	now := float64(time.Now().UnixNano())
-	vb := true
-	uptime := time.Since(startTime).Seconds()
-	pack := senml.Pack{Records: []senml.Record{
-		{BaseName: "gw:", BaseTime: now, Name: "heartbeat", BoolValue: &vb},
-		{Name: "uptime", Unit: "s", Value: &uptime},
-	}}
-	b, err := senml.Encode(pack, senml.JSON)
+	cfg := a.Config()
+	if cfg.DomainID == "" || cfg.Channels.DataChan() == "" {
+		return errors.New("ping: domain ID or data channel not configured")
+	}
+	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat", cfg.DomainID, cfg.Channels.DataChan())
+	payload, err := a.heartbeatPayload()
 	if err != nil {
 		return err
 	}
-	return a.Publish(control, string(b))
+	token := a.mqttClient.Publish(topic, cfg.MQTT.QoS, false, payload)
+	token.Wait()
+	return token.Error()
 }
 
 func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) error {
@@ -951,10 +991,12 @@ func (a *agent) MarkDeviceSeen(id string) error {
 
 func (a *agent) Shutdown() {
 	a.logger.Debug("shutting down service heartbeats")
+	a.svcsMu.RLock()
 	for name, svc := range a.svcs {
 		svc.Stop()
 		a.logger.Debug("stopped service heartbeat", slog.String("service", name))
 	}
+	a.svcsMu.RUnlock()
 
 	if a.sched != nil {
 		a.sched.Stop()

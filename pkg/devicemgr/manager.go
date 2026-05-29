@@ -17,7 +17,7 @@ import (
 type Manager struct {
 	store      *Store
 	provision  *provisionClient
-	mu         sync.Mutex
+	mu         sync.RWMutex
 	interfaces map[string]iface.Interface
 	ifaceCfg   iface.Config
 }
@@ -109,9 +109,9 @@ func (m *Manager) FindByAddr(ifaceType iface.InterfaceType, addr string) (Device
 
 // OpenIface opens the physical interface for a registered device.
 func (m *Manager) OpenIface(id string) error {
-	m.mu.Lock()
+	m.mu.RLock()
 	_, alreadyOpen := m.interfaces[id]
-	m.mu.Unlock()
+	m.mu.RUnlock()
 	if alreadyOpen {
 		return nil
 	}
@@ -129,6 +129,12 @@ func (m *Manager) OpenIface(id string) error {
 		return fmt.Errorf("open interface for device %s: %w", id, err)
 	}
 	m.mu.Lock()
+	if _, alreadyOpen := m.interfaces[id]; alreadyOpen {
+		// Another goroutine opened it while we were initialising; discard ours.
+		m.mu.Unlock()
+		_ = ifc.Close()
+		return nil
+	}
 	m.interfaces[id] = ifc
 	m.mu.Unlock()
 	_ = m.store.MarkActive(id)
@@ -155,14 +161,15 @@ func (m *Manager) CloseIface(id string) error {
 
 // ReadIface reads n bytes from the open interface of the given device.
 func (m *Manager) ReadIface(id string, n int) ([]byte, error) {
-	m.mu.Lock()
+	m.mu.RLock()
 	ifc, ok := m.interfaces[id]
-	m.mu.Unlock()
 	if !ok {
+		m.mu.RUnlock()
 		return nil, fmt.Errorf("device %s: interface not open", id)
 	}
 	buf := make([]byte, n)
 	read, err := ifc.Read(buf)
+	m.mu.RUnlock()
 	if err != nil {
 		return nil, fmt.Errorf("read from device %s: %w", id, err)
 	}
@@ -171,17 +178,18 @@ func (m *Manager) ReadIface(id string, n int) ([]byte, error) {
 
 // WriteIface sends hex-encoded data to the open interface of the given device.
 func (m *Manager) WriteIface(id, hexData string) (int, error) {
-	m.mu.Lock()
-	ifc, ok := m.interfaces[id]
-	m.mu.Unlock()
-	if !ok {
-		return 0, fmt.Errorf("device %s: interface not open", id)
-	}
 	data, err := hex.DecodeString(hexData)
 	if err != nil {
 		return 0, fmt.Errorf("decode hex for device %s: %w", id, err)
 	}
+	m.mu.RLock()
+	ifc, ok := m.interfaces[id]
+	if !ok {
+		m.mu.RUnlock()
+		return 0, fmt.Errorf("device %s: interface not open", id)
+	}
 	n, err := ifc.Write(data)
+	m.mu.RUnlock()
 	if err != nil {
 		return n, fmt.Errorf("write to device %s: %w", id, err)
 	}
