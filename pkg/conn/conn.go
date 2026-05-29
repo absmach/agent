@@ -100,60 +100,61 @@ func (b *broker) registerBuiltins() {
 	svc := b.svc
 	log := b.logger
 
-	b.handlers[control] = func(ctx context.Context, pack senml.Pack) error {
+	b.RegisterHandler(control, func(ctx context.Context, pack senml.Pack) error {
 		uuid, cmdStr := extractCmd(pack)
 		log.Info("Control command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		return svc.Control(uuid, cmdStr)
-	}
+	})
 
-	b.handlers[exec] = func(ctx context.Context, pack senml.Pack) error {
+	b.RegisterHandler(exec, func(ctx context.Context, pack senml.Pack) error {
 		uuid, cmdStr := extractCmd(pack)
 		log.Info("Execute command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		_, err := svc.Execute(uuid, cmdStr)
 		return err
-	}
+	})
 
-	b.handlers[config] = func(ctx context.Context, pack senml.Pack) error {
+	b.RegisterHandler(config, func(ctx context.Context, pack senml.Pack) error {
 		uuid, cmdStr := extractCmd(pack)
 		log.Info("Config command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		return svc.ServiceConfig(ctx, uuid, cmdStr)
-	}
+	})
 
-	b.handlers[service] = func(ctx context.Context, pack senml.Pack) error {
+	b.RegisterHandler(service, func(ctx context.Context, pack senml.Pack) error {
 		uuid, cmdStr := extractCmd(pack)
 		log.Info("Services view command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		return svc.ServiceConfig(ctx, uuid, cmdStr)
-	}
+	})
 
-	b.handlers[term] = func(ctx context.Context, pack senml.Pack) error {
+	b.RegisterHandler(term, func(ctx context.Context, pack senml.Pack) error {
 		uuid, cmdStr := extractCmd(pack)
 		log.Info("Term command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		return svc.Terminal(uuid, cmdStr)
-	}
+	})
 
-	b.handlers[nred] = func(ctx context.Context, pack senml.Pack) error {
+	b.RegisterHandler(nred, func(ctx context.Context, pack senml.Pack) error {
 		uuid, cmdStr := extractCmd(pack)
 		log.Info("NodeRed command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		_, err := svc.NodeRed(cmdStr)
 		return err
-	}
+	})
 
-	b.handlers[ping] = func(ctx context.Context, pack senml.Pack) error {
+	b.RegisterHandler(ping, func(ctx context.Context, pack senml.Pack) error {
 		log.Info("Ping command")
 		return svc.Ping()
-	}
+	})
 
-	b.handlers[reset] = func(ctx context.Context, pack senml.Pack) error {
+	b.RegisterHandler(reset, func(ctx context.Context, pack senml.Pack) error {
 		uuid, _ := extractCmd(pack)
 		log.Info("Reset command received, performing graceful shutdown", slog.String("uuid", uuid))
 		svc.Shutdown()
 		if err := syscall.Exec(os.Args[0], os.Args, os.Environ()); err != nil {
 			log.Error("Reset failed", slog.Any("error", err))
+			return err
 		}
 		return nil
-	}
+	})
 
-	b.handlers[otaCmd] = func(ctx context.Context, pack senml.Pack) error {
+	b.RegisterHandler(otaCmd, func(ctx context.Context, pack senml.Pack) error {
 		uuid, _ := extractCmd(pack)
 		trigger, err := ota.TriggerFromRecords(pack.Records[1:])
 		if err != nil {
@@ -161,12 +162,12 @@ func (b *broker) registerBuiltins() {
 		}
 		log.Info("OTA command", slog.String("uuid", uuid), slog.String("url", trigger.URL))
 		go func() {
-			if err := svc.OTA(ctx, trigger.URL, trigger.SHA256Hex, trigger.Size); err != nil {
+			if err := svc.OTA(context.WithoutCancel(ctx), trigger.URL, trigger.SHA256Hex, trigger.Size); err != nil {
 				log.Warn("OTA operation failed", slog.Any("error", err))
 			}
 		}()
 		return nil
-	}
+	})
 
 	b.handlers[devices] = func(ctx context.Context, pack senml.Pack) error {
 		uuid, cmdStr := extractCmd(pack)
