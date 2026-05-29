@@ -781,13 +781,14 @@ func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.D
 
 // heartbeatPayload builds an Aeolus-compatible SenML heartbeat pack.
 func (a *agent) heartbeatPayload() ([]byte, error) {
-	vb := true
+	hb := true
+	connected := true
 	uptime := time.Since(startTime).Seconds()
 	records := []senml.Record{
-		{Name: "heartbeat", BoolValue: &vb},
+		{Name: "heartbeat", BaseTime: float64(time.Now().Unix()), BoolValue: &hb},
 		{Name: "fw_version", StringValue: &Version},
 		{Name: "uptime", Unit: "s", Value: &uptime},
-		{Name: "connected", BoolValue: &vb},
+		{Name: "connected", BoolValue: &connected},
 	}
 	if a.devices != nil {
 		devs, err := a.devices.List()
@@ -817,12 +818,15 @@ func (a *agent) UpdateLiveness(svcname, svctype string) error {
 
 func (a *agent) Ping() error {
 	cfg := a.Config()
+	if cfg.DomainID == "" || cfg.Channels.DataChan() == "" {
+		return errors.New("ping: domain ID or data channel not configured")
+	}
 	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat", cfg.DomainID, cfg.Channels.DataChan())
 	payload, err := a.heartbeatPayload()
 	if err != nil {
 		return err
 	}
-	token := a.mqttClient.Publish(topic, cfg.MQTT.QoS, cfg.MQTT.Retain, payload)
+	token := a.mqttClient.Publish(topic, cfg.MQTT.QoS, false, payload)
 	token.Wait()
 	return token.Error()
 }
