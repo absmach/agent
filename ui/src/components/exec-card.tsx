@@ -48,6 +48,7 @@ export function ExecCard() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (history.length === 0) return;
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [history, loading]);
 
@@ -127,7 +128,7 @@ export function ExecCard() {
 
       {/* Terminal body */}
       <div
-        className="min-h-72 max-h-[28rem] overflow-y-auto bg-zinc-900 p-4 font-mono text-sm"
+        className="min-h-[32rem] max-h-[calc(100vh-16rem)] overflow-y-auto bg-zinc-900 p-4 font-mono text-sm"
         onClick={() => inputRef.current?.focus()}
       >
         {history.length === 0 && !loading && (
@@ -166,30 +167,21 @@ export function ExecCard() {
           </div>
         ))}
 
-        {loading && (
-          <div className="flex items-center gap-2 text-zinc-400">
-            <span className="text-green-400 select-none">$</span>
-            <span className="animate-pulse text-xs">Running…</span>
-          </div>
-        )}
-
-        {!loading && (
-          <div className="flex items-center gap-2">
-            <span className="text-green-400 select-none shrink-0">$</span>
-            <input
-              ref={inputRef}
-              type="text"
-              value={cmd}
-              onInput={(e) => setCmd((e.target as HTMLInputElement).value)}
-              onKeyDown={handleKeyDown}
-              className="min-w-0 flex-1 bg-transparent text-zinc-100 outline-none caret-green-400 placeholder:text-zinc-600"
-              placeholder="enter command…"
-              autofocus
-              spellcheck={false}
-              autocomplete="off"
-            />
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <span className="text-green-400 select-none shrink-0">$</span>
+          <input
+            ref={inputRef}
+            type="text"
+            value={cmd}
+            onInput={(e) => setCmd((e.target as HTMLInputElement).value)}
+            onKeyDown={handleKeyDown}
+            className={`min-w-0 flex-1 bg-transparent outline-none caret-green-400 placeholder:text-zinc-600 ${loading ? "animate-pulse text-zinc-500" : "text-zinc-100"}`}
+            placeholder={loading ? "Running…" : "enter command…"}
+            autofocus
+            spellcheck={false}
+            autocomplete="off"
+          />
+        </div>
 
         <div ref={bottomRef} />
       </div>

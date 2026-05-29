@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/absmach/agent/pkg/iface"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -86,7 +87,59 @@ func (s *Store) List() ([]Device, error) {
 	return devices, err
 }
 
-// MarkSeen sets LastSeen = now and Active = true for the given device ID.
+// errAddrFound is a sentinel returned from ForEach to stop iteration early.
+var errAddrFound = fmt.Errorf("found")
+
+// FindByAddr returns the first active device matching the given interface type
+// and address. Returns an error if no match is found.
+func (s *Store) FindByAddr(ifaceType iface.InterfaceType, addr string) (Device, error) {
+	var found Device
+	err := s.db.View(func(tx *bolt.Tx) error {
+		return tx.Bucket(devicesBucket).ForEach(func(_, v []byte) error {
+			var d Device
+			if err := json.Unmarshal(v, &d); err != nil {
+				return err
+			}
+			if d.Active && d.InterfaceType == ifaceType && d.InterfaceAddr == addr {
+				found = d
+				return errAddrFound
+			}
+			return nil
+		})
+	})
+	if err == errAddrFound {
+		return found, nil
+	}
+	if err != nil {
+		return Device{}, err
+	}
+	return Device{}, fmt.Errorf("no device with interface type %v addr %s", ifaceType, addr)
+}
+
+// MarkInactive sets Active = false for the given device ID.
+func (s *Store) MarkInactive(id string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bkt := tx.Bucket(devicesBucket)
+		v := bkt.Get([]byte(id))
+		if v == nil {
+			return fmt.Errorf("device %s not found", id)
+		}
+		var d Device
+		if err := json.Unmarshal(v, &d); err != nil {
+			return err
+		}
+		d.Active = false
+		b, err := json.Marshal(d)
+		if err != nil {
+			return err
+		}
+		return bkt.Put([]byte(id), b)
+	})
+}
+
+// MarkSeen sets LastSeen = now for the given device ID without changing Active.
+// Use this when the device sends data while the interface is already open,
+// or for manual pings from the UI.
 func (s *Store) MarkSeen(id string) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(devicesBucket)
@@ -99,7 +152,29 @@ func (s *Store) MarkSeen(id string) error {
 			return err
 		}
 		d.LastSeen = time.Now().UTC()
+		b, err := json.Marshal(d)
+		if err != nil {
+			return err
+		}
+		return bkt.Put([]byte(id), b)
+	})
+}
+
+// MarkActive sets Active = true and LastSeen = now for the given device ID.
+// Called only when the physical interface is successfully opened.
+func (s *Store) MarkActive(id string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bkt := tx.Bucket(devicesBucket)
+		v := bkt.Get([]byte(id))
+		if v == nil {
+			return fmt.Errorf("device %s not found", id)
+		}
+		var d Device
+		if err := json.Unmarshal(v, &d); err != nil {
+			return err
+		}
 		d.Active = true
+		d.LastSeen = time.Now().UTC()
 		b, err := json.Marshal(d)
 		if err != nil {
 			return err

@@ -209,7 +209,7 @@ func (b *broker) handleMsg(msg mqtt.Message) {
 		}()
 	case devices:
 		b.logger.Info("Devices command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-		if err := b.svc.DeviceManager(uuid, cmdStr); err != nil {
+		if err := b.svc.DeviceManager(b.ctx, uuid, cmdStr); err != nil {
 			b.logger.Warn("DeviceManager operation failed", slog.Any("error", err))
 			if payload, encErr := encoder.EncodeSenML(uuid, devices, err.Error()); encErr == nil {
 				if pubErr := b.svc.Publish("control", string(payload)); pubErr != nil {

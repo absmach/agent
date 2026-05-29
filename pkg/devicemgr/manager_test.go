@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/absmach/agent/pkg/devicemgr"
@@ -18,39 +19,77 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// provisionServer returns an httptest.Server that simulates the Magistrala
-// Provision API. handler is called for each request; pass nil for a default
-// 201 response that returns one client + one channel.
-func provisionServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
+// magistralaServer returns a combined httptest.Server that handles the three
+// SDK endpoints used during provisioning:
+//
+//	POST /{domainID}/clients          → create client
+//	POST /{domainID}/channels         → create channel
+//	POST /{domainID}/channels/connect → connect
+//	DELETE /{domainID}/clients/{id}   → rollback client
+//	DELETE /{domainID}/channels/{id}  → rollback channel
+//
+// Pass overrides to intercept specific paths; nil falls back to the default
+// 201 responses.
+func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *httptest.Server {
 	t.Helper()
-	if handler == nil {
-		handler = func(w http.ResponseWriter, r *http.Request) {
+
+	callCount := 0
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if fn, ok := overrides[r.URL.Path]; ok {
+			fn(w, r)
+			return
+		}
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/clients") && r.Method == http.MethodPost:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			resp := map[string]any{
-				"clients": []map[string]any{
-					{"id": "device-uuid", "secret": "device-secret", "name": "my-device"},
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":   "device-uuid",
+				"name": "my-device",
+				"credentials": map[string]any{
+					"identity": "ext-id",
+					"secret":   "device-secret",
 				},
-				"channels": []map[string]any{
-					{"id": "channel-uuid"},
-				},
-			}
-			b, err := json.Marshal(resp)
-			assert.NoError(t, err)
-			_, err = w.Write(b)
-			assert.NoError(t, err)
+			})
+
+		case strings.HasSuffix(r.URL.Path, "/channels") && r.Method == http.MethodPost:
+			callCount++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":   fmt.Sprintf("channel-uuid-%d", callCount),
+				"name": fmt.Sprintf("channel-%d", callCount),
+			})
+
+		case strings.HasSuffix(r.URL.Path, "/connect") && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+
+		case strings.Contains(r.URL.Path, "/clients/") && r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+
+		case strings.Contains(r.URL.Path, "/channels/") && r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+
+		default:
+			http.Error(w, "unexpected request: "+r.Method+" "+r.URL.Path, http.StatusNotFound)
 		}
-	}
-	srv := httptest.NewServer(handler)
+	}))
+
 	t.Cleanup(srv.Close)
 	return srv
 }
 
-func newTestManager(t *testing.T, provisionURL string) *devicemgr.Manager {
+func newTestManager(t *testing.T, clientsURL, channelsURL string) *devicemgr.Manager {
 	t.Helper()
 	m, err := devicemgr.New(
 		filepath.Join(t.TempDir(), "devices.db"),
-		devicemgr.ProvisionConfig{URL: provisionURL, Token: "test-token", DomainID: "test-domain"},
+		devicemgr.ProvisionConfig{
+			ClientsURL:  clientsURL,
+			ChannelsURL: channelsURL,
+			Token:       "test-token",
+			DomainID:    "test-domain",
+		},
 		iface.Config{},
 	)
 	require.NoError(t, err)
@@ -79,138 +118,219 @@ func TestNew(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			m, err := devicemgr.New(tc.dbPath, devicemgr.ProvisionConfig{}, iface.Config{})
 			if tc.wantErr {
-				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				assert.Error(t, err)
 				return
 			}
-			require.NoError(t, err, fmt.Sprintf("%s: unexpected error", tc.desc))
+			require.NoError(t, err)
 			m.Close()
 		})
 	}
 }
 
 func TestManager_Add(t *testing.T) {
-	srv := provisionServer(t, nil)
+	srv := magistralaServer(t, nil)
 
-	errorSrv := provisionServer(t, func(w http.ResponseWriter, r *http.Request) {
+	errorSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
-	})
-
-	noClientsSrv := provisionServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_, err := w.Write([]byte(`{"clients":[],"channels":[]}`))
-		assert.NoError(t, err)
-	})
+	}))
+	t.Cleanup(errorSrv.Close)
 
 	closedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	closedSrv.Close()
 
 	cases := []struct {
-		desc         string
-		provisionURL string
-		ifaceType    iface.InterfaceType
-		ifaceAddr    string
-		wantID       string
-		wantKey      string
-		wantChannel  string
-		wantErr      bool
+		desc        string
+		clientsURL  string
+		channelsURL string
+		ifaceType   iface.InterfaceType
+		ifaceAddr   string
+		wantID      string
+		wantKey     string
+		wantErr     bool
 	}{
 		{
-			desc:         "provision and save device successfully",
-			provisionURL: srv.URL,
-			ifaceType:    iface.InterfaceBLE,
-			ifaceAddr:    "AA:BB:CC:DD:EE:FF",
-			wantID:       "device-uuid",
-			wantKey:      "device-secret",
-			wantChannel:  "channel-uuid",
+			desc:        "provision and save device successfully",
+			clientsURL:  srv.URL,
+			channelsURL: srv.URL,
+			ifaceType:   iface.InterfaceBLE,
+			ifaceAddr:   "AA:BB:CC:DD:EE:FF",
+			wantID:      "device-uuid",
+			wantKey:     "device-secret",
 		},
 		{
-			desc:         "fail when provision URL is empty",
-			provisionURL: "",
-			wantErr:      true,
+			desc:        "fail when provision clients URL is empty",
+			clientsURL:  "",
+			channelsURL: srv.URL,
+			wantErr:     true,
 		},
 		{
-			desc:         "fail when provision API returns error",
-			provisionURL: errorSrv.URL,
-			wantErr:      true,
+			desc:        "fail when clients API returns error",
+			clientsURL:  errorSrv.URL,
+			channelsURL: srv.URL,
+			wantErr:     true,
 		},
 		{
-			desc:         "fail when provision response has no clients",
-			provisionURL: noClientsSrv.URL,
-			wantErr:      true,
-		},
-		{
-			desc:         "fail when provision server is unreachable",
-			provisionURL: closedSrv.URL,
-			wantErr:      true,
+			desc:        "fail when provision server is unreachable",
+			clientsURL:  closedSrv.URL,
+			channelsURL: closedSrv.URL,
+			wantErr:     true,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			m := newTestManager(t, tc.provisionURL)
+			m := newTestManager(t, tc.clientsURL, tc.channelsURL)
 			d, err := m.Add(context.Background(), "my-device", "ext-id", "ext-key", tc.ifaceType, tc.ifaceAddr)
 			if tc.wantErr {
-				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				assert.Error(t, err)
 				return
 			}
-			require.NoError(t, err, fmt.Sprintf("%s: unexpected error", tc.desc))
-			assert.Equal(t, tc.wantID, d.ID, fmt.Sprintf("%s: unexpected ID", tc.desc))
-			assert.Equal(t, tc.wantKey, d.Key, fmt.Sprintf("%s: unexpected Key", tc.desc))
-			assert.Equal(t, tc.wantChannel, d.ChannelID, fmt.Sprintf("%s: unexpected ChannelID", tc.desc))
-			assert.Equal(t, tc.ifaceType, d.InterfaceType, fmt.Sprintf("%s: unexpected InterfaceType", tc.desc))
-			assert.Equal(t, tc.ifaceAddr, d.InterfaceAddr, fmt.Sprintf("%s: unexpected InterfaceAddr", tc.desc))
-			assert.True(t, d.Active, fmt.Sprintf("%s: device should be active", tc.desc))
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantID, d.ID)
+			assert.Equal(t, tc.wantKey, d.Key)
+			assert.NotEmpty(t, d.ChannelID)
+			assert.Equal(t, tc.ifaceType, d.InterfaceType)
+			assert.Equal(t, tc.ifaceAddr, d.InterfaceAddr)
+			assert.False(t, d.Active)
 		})
 	}
 }
 
 func TestManager_Add_AuthHeader(t *testing.T) {
 	var gotAuth string
-	srv := provisionServer(t, func(w http.ResponseWriter, r *http.Request) {
-		gotAuth = r.Header.Get("Authorization")
+	srv := magistralaServer(t, map[string]http.HandlerFunc{
+		"/test-domain/clients": func(w http.ResponseWriter, r *http.Request) {
+			gotAuth = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":          "d1",
+				"name":        "n",
+				"credentials": map[string]any{"secret": "k1"},
+			})
+		},
+	})
+
+	cases := []struct {
+		desc     string
+		token    string
+		wantAuth string
+	}{
+		{
+			desc:     "uses Bearer token when token is configured",
+			token:    "my-pat-token",
+			wantAuth: "Bearer my-pat-token",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			m, err := devicemgr.New(
+				filepath.Join(t.TempDir(), "devices.db"),
+				devicemgr.ProvisionConfig{
+					ClientsURL:  srv.URL,
+					ChannelsURL: srv.URL,
+					Token:       tc.token,
+					DomainID:    "test-domain",
+				},
+				iface.Config{},
+			)
+			require.NoError(t, err)
+			defer m.Close()
+			_, err = m.Add(context.Background(), "dev", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantAuth, gotAuth)
+		})
+	}
+}
+
+func TestManager_Add_WithRules(t *testing.T) {
+	srv := magistralaServer(t, nil)
+
+	var rulePayload map[string]any
+	rulesSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "Bearer pat-token", r.Header.Get("Authorization"))
+		if err := json.NewDecoder(r.Body).Decode(&rulePayload); err != nil {
+			http.Error(w, "bad body", http.StatusBadRequest)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		resp := map[string]any{
-			"clients":  []map[string]any{{"id": "d1", "secret": "k1", "name": "n"}},
-			"channels": []map[string]any{{"id": "c1"}},
-		}
-		b, err := json.Marshal(resp)
-		assert.NoError(t, err)
-		_, err = w.Write(b)
-		assert.NoError(t, err)
-	})
+		_ = json.NewEncoder(w).Encode(rulePayload)
+	}))
+	t.Cleanup(rulesSrv.Close)
 
-	t.Run("uses Bearer token when token is configured", func(t *testing.T) {
-		m, err := devicemgr.New(
-			filepath.Join(t.TempDir(), "devices.db"),
-			devicemgr.ProvisionConfig{URL: srv.URL, Token: "my-pat-token", DomainID: "dom"},
-			iface.Config{},
-		)
-		require.NoError(t, err)
-		defer m.Close()
-		_, err = m.Add(context.Background(), "dev", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
-		require.NoError(t, err)
-		assert.Equal(t, "Bearer my-pat-token", gotAuth)
-	})
+	failRulesSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}))
+	t.Cleanup(failRulesSrv.Close)
 
-	t.Run("returns error when no token configured", func(t *testing.T) {
-		m, err := devicemgr.New(
-			filepath.Join(t.TempDir(), "devices.db"),
-			devicemgr.ProvisionConfig{URL: srv.URL, DomainID: "dom"},
-			iface.Config{},
-		)
-		require.NoError(t, err)
-		defer m.Close()
-		_, err = m.Add(context.Background(), "dev", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "token not configured")
-	})
+	cases := []struct {
+		desc           string
+		rulesEngineURL string
+		wantErr        bool
+		errContains    string
+		checkRule      bool
+	}{
+		{
+			desc:           "creates save_senml rule after provisioning",
+			rulesEngineURL: rulesSrv.URL,
+			checkRule:      true,
+		},
+		{
+			desc:           "returns error when rules API fails",
+			rulesEngineURL: failRulesSrv.URL,
+			wantErr:        true,
+			errContains:    "rule",
+		},
+		{
+			desc:           "skips rule creation when RulesEngineURL is empty",
+			rulesEngineURL: "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			rulePayload = nil
+			m, err := devicemgr.New(
+				filepath.Join(t.TempDir(), "devices.db"),
+				devicemgr.ProvisionConfig{
+					ClientsURL:     srv.URL,
+					ChannelsURL:    srv.URL,
+					RulesEngineURL: tc.rulesEngineURL,
+					Token:          "pat-token",
+					DomainID:       "dom",
+				},
+				iface.Config{},
+			)
+			require.NoError(t, err)
+			defer m.Close()
+
+			d, err := m.Add(context.Background(), "sensor", "ext-id", "ext-key", iface.InterfaceBLE, "AA:BB:CC:DD:EE:FF")
+			if tc.wantErr {
+				assert.Error(t, err)
+				if tc.errContains != "" {
+					assert.Contains(t, err.Error(), tc.errContains)
+				}
+				return
+			}
+			require.NoError(t, err)
+			if tc.checkRule {
+				assert.NotEmpty(t, d.ChannelID)
+				assert.Equal(t, d.ChannelID, rulePayload["input_channel"])
+				outputs, _ := rulePayload["outputs"].([]any)
+				require.Len(t, outputs, 1)
+				out, _ := outputs[0].(map[string]any)
+				assert.Equal(t, "save_senml", out["type"])
+			}
+		})
+	}
 }
 
 func TestManager_Remove(t *testing.T) {
-	srv := provisionServer(t, nil)
-	m := newTestManager(t, srv.URL)
+	srv := magistralaServer(t, nil)
+	m := newTestManager(t, srv.URL, srv.URL)
 	d, err := m.Add(context.Background(), "my-device", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
 	require.NoError(t, err)
 
@@ -224,8 +344,7 @@ func TestManager_Remove(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			err := m.Remove(tc.id)
-			assert.NoError(t, err, fmt.Sprintf("%s: unexpected error", tc.desc))
+			assert.NoError(t, m.Remove(tc.id))
 		})
 	}
 
@@ -234,8 +353,8 @@ func TestManager_Remove(t *testing.T) {
 }
 
 func TestManager_Get(t *testing.T) {
-	srv := provisionServer(t, nil)
-	m := newTestManager(t, srv.URL)
+	srv := magistralaServer(t, nil)
+	m := newTestManager(t, srv.URL, srv.URL)
 	d, err := m.Add(context.Background(), "my-device", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
 	require.NoError(t, err)
 
@@ -252,52 +371,71 @@ func TestManager_Get(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			got, err := m.Get(tc.id)
 			if tc.wantErr {
-				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				assert.Error(t, err)
 				return
 			}
-			require.NoError(t, err, fmt.Sprintf("%s: unexpected error", tc.desc))
-			assert.Equal(t, d.ID, got.ID, fmt.Sprintf("%s: unexpected ID", tc.desc))
+			require.NoError(t, err)
+			assert.Equal(t, d.ID, got.ID)
 		})
 	}
 }
 
 func TestManager_List(t *testing.T) {
-	t.Run("empty manager returns empty slice", func(t *testing.T) {
-		m := newTestManager(t, "")
-		devs, err := m.List()
-		require.NoError(t, err)
-		assert.Empty(t, devs)
-	})
-
-	t.Run("list returns all provisioned devices", func(t *testing.T) {
-		callCount := 0
-		srv := provisionServer(t, func(w http.ResponseWriter, r *http.Request) {
+	callCount := 0
+	multiSrv := magistralaServer(t, map[string]http.HandlerFunc{
+		"/test-domain/clients": func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
 			callCount++
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			resp := map[string]any{
-				"clients":  []map[string]any{{"id": fmt.Sprintf("dev-%d", callCount), "secret": "k", "name": "n"}},
-				"channels": []map[string]any{{"id": "ch"}},
-			}
-			b, err := json.Marshal(resp)
-			assert.NoError(t, err)
-			_, err = w.Write(b)
-			assert.NoError(t, err)
-		})
-		m := newTestManager(t, srv.URL)
-		_, err := m.Add(context.Background(), "d1", "e1", "k1", iface.InterfaceBLE, "addr1")
-		require.NoError(t, err)
-		_, err = m.Add(context.Background(), "d2", "e2", "k2", iface.InterfaceSerial, "addr2")
-		require.NoError(t, err)
-		devs, err := m.List()
-		require.NoError(t, err)
-		assert.Len(t, devs, 2)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":          fmt.Sprintf("dev-%d", callCount),
+				"name":        fmt.Sprintf("device-%d", callCount),
+				"credentials": map[string]any{"secret": "k"},
+			})
+		},
 	})
+
+	cases := []struct {
+		desc        string
+		clientsURL  string
+		channelsURL string
+		seedNames   []string
+		wantCount   int
+	}{
+		{
+			desc:      "empty manager returns empty slice",
+			wantCount: 0,
+		},
+		{
+			desc:        "list returns all provisioned devices",
+			clientsURL:  multiSrv.URL,
+			channelsURL: multiSrv.URL,
+			seedNames:   []string{"d1", "d2"},
+			wantCount:   2,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			m := newTestManager(t, tc.clientsURL, tc.channelsURL)
+			for i, name := range tc.seedNames {
+				_, err := m.Add(context.Background(), name, fmt.Sprintf("e%d", i), fmt.Sprintf("k%d", i), iface.InterfaceBLE, fmt.Sprintf("addr%d", i))
+				require.NoError(t, err)
+			}
+			devs, err := m.List()
+			require.NoError(t, err)
+			assert.Len(t, devs, tc.wantCount)
+		})
+	}
 }
 
 func TestManager_MarkSeen(t *testing.T) {
-	srv := provisionServer(t, nil)
-	m := newTestManager(t, srv.URL)
+	srv := magistralaServer(t, nil)
+	m := newTestManager(t, srv.URL, srv.URL)
 	d, err := m.Add(context.Background(), "my-device", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
 	require.NoError(t, err)
 
@@ -314,72 +452,125 @@ func TestManager_MarkSeen(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			err := m.MarkSeen(tc.id)
 			if tc.wantErr {
-				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err, fmt.Sprintf("%s: unexpected error", tc.desc))
+			assert.NoError(t, err)
 		})
 	}
 }
 
 func TestManager_OpenIface(t *testing.T) {
-	t.Run("error on unknown device", func(t *testing.T) {
-		m := newTestManager(t, "")
-		err := m.OpenIface("nonexistent-id")
-		assert.Error(t, err)
-	})
+	srv := magistralaServer(t, nil)
+	m := newTestManager(t, srv.URL, srv.URL)
+	d, err := m.Add(context.Background(), "dev", "eid", "ekey", iface.InterfaceBLE, "AA:BB:CC:DD:EE:FF")
+	require.NoError(t, err)
 
-	t.Run("error when interface type is unsupported (BLE)", func(t *testing.T) {
-		srv := provisionServer(t, nil)
-		m := newTestManager(t, srv.URL)
-		d, err := m.Add(context.Background(), "dev", "eid", "ekey", iface.InterfaceBLE, "AA:BB:CC:DD:EE:FF")
-		require.NoError(t, err)
-		err = m.OpenIface(d.ID)
-		assert.Error(t, err)
-	})
+	cases := []struct {
+		desc    string
+		id      string
+		wantErr bool
+	}{
+		{
+			desc:    "error on unknown device",
+			id:      "nonexistent-id",
+			wantErr: true,
+		},
+		{
+			desc:    "error when interface type is unsupported (BLE)",
+			id:      d.ID,
+			wantErr: true,
+		},
+	}
 
-	t.Run("idempotent: second open on already-open interface returns nil", func(t *testing.T) {
-		// Use a serial path that the factory accepts without opening hardware.
-		// The factory returns a *serial.Serial without opening; Open() itself
-		// would fail but we only test the idempotency guard here by ensuring
-		// OpenIface returns an error on first attempt (hardware absent) and
-		// we can't easily reach the idempotency branch in unit tests.
-		// This test at least confirms the guard path compiles and runs.
-		m := newTestManager(t, "")
-		err := m.OpenIface("no-such-device")
-		assert.Error(t, err)
-	})
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			err := m.OpenIface(tc.id)
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestManager_CloseIface(t *testing.T) {
-	t.Run("error when interface not open", func(t *testing.T) {
-		m := newTestManager(t, "")
-		err := m.CloseIface("any-device-id")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "not open")
-	})
+	cases := []struct {
+		desc        string
+		id          string
+		errContains string
+	}{
+		{
+			desc:        "error when interface not open",
+			id:          "any-device-id",
+			errContains: "not open",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			m := newTestManager(t, "", "")
+			err := m.CloseIface(tc.id)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tc.errContains)
+		})
+	}
 }
 
 func TestManager_ReadIface(t *testing.T) {
-	t.Run("error when interface not open", func(t *testing.T) {
-		m := newTestManager(t, "")
-		_, err := m.ReadIface("any-device-id", 4)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "not open")
-	})
+	cases := []struct {
+		desc        string
+		id          string
+		n           int
+		errContains string
+	}{
+		{
+			desc:        "error when interface not open",
+			id:          "any-device-id",
+			n:           4,
+			errContains: "not open",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			m := newTestManager(t, "", "")
+			_, err := m.ReadIface(tc.id, tc.n)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tc.errContains)
+		})
+	}
 }
 
 func TestManager_WriteIface(t *testing.T) {
-	t.Run("error when interface not open", func(t *testing.T) {
-		m := newTestManager(t, "")
-		_, err := m.WriteIface("any-device-id", "deadbeef")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "not open")
-	})
+	cases := []struct {
+		desc        string
+		id          string
+		hexData     string
+		errContains string
+	}{
+		{
+			desc:        "error when interface not open",
+			id:          "any-device-id",
+			hexData:     "deadbeef",
+			errContains: "not open",
+		},
+		{
+			desc:    "error on invalid hex data",
+			id:      "any-device-id",
+			hexData: "zzzz",
+		},
+	}
 
-	t.Run("error on invalid hex when interface not open", func(t *testing.T) {
-		m := newTestManager(t, "")
-		_, err := m.WriteIface("any-device-id", "zzzz")
-		assert.Error(t, err)
-	})
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			m := newTestManager(t, "", "")
+			_, err := m.WriteIface(tc.id, tc.hexData)
+			assert.Error(t, err)
+			if tc.errContains != "" {
+				assert.Contains(t, err.Error(), tc.errContains)
+			}
+		})
+	}
 }

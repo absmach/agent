@@ -33,7 +33,7 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 	r := chi.NewRouter()
 	r.Use(mgapi.RequestIDMiddleware(idp))
 	r.Use(middleware.SetHeader("Access-Control-Allow-Origin", "*"))
-	r.Use(middleware.SetHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS"))
+	r.Use(middleware.SetHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"))
 	r.Use(middleware.SetHeader("Access-Control-Allow-Headers", "Content-Type"))
 	r.MethodFunc(http.MethodOptions, "/*", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -77,6 +77,49 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 	r.Post("/nodered", kithttp.NewServer(
 		nodeRedEndpoint(svc),
 		decodeNodeRedRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+
+	r.Get("/devices", kithttp.NewServer(
+		listDevicesEndpoint(svc),
+		decodeRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Post("/devices", kithttp.NewServer(
+		addDeviceEndpoint(svc),
+		decodeAddDeviceRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Get("/devices/{id}", kithttp.NewServer(
+		getDeviceEndpoint(svc),
+		decodeIDFromPath,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Delete("/devices/{id}", kithttp.NewServer(
+		removeDeviceEndpoint(svc),
+		decodeIDFromPath,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Post("/devices/{id}/seen", kithttp.NewServer(
+		markDeviceSeenEndpoint(svc),
+		decodeIDFromPath,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Post("/ota", kithttp.NewServer(
+		otaTriggerEndpoint(svc),
+		decodeOTATriggerRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Get("/ota/status", kithttp.NewServer(
+		otaStatusEndpoint(svc),
+		decodeRequest,
 		EncodeResponse,
 		opts...,
 	).ServeHTTP)
@@ -135,5 +178,21 @@ func decodeNodeRedRequest(_ context.Context, r *http.Request) (any, error) {
 		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
 	}
 
+	return req, nil
+}
+
+func decodeAddDeviceRequest(_ context.Context, r *http.Request) (any, error) {
+	req := addDeviceReq{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
+	}
+	return req, nil
+}
+
+func decodeOTATriggerRequest(_ context.Context, r *http.Request) (any, error) {
+	req := otaTriggerReq{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
+	}
 	return req, nil
 }

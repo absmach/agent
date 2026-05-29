@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/absmach/agent/pkg/iface"
 )
@@ -54,7 +53,7 @@ func (m *Manager) Close() error {
 	return errors.Join(append(errs, m.store.Close())...)
 }
 
-// Add provisions a new downstream device via the Magistrala Provision API,
+// Add provisions a new downstream device via the Magistrala SDK,
 // saves it to the local registry, and returns it.
 func (m *Manager) Add(ctx context.Context, name, externalID, externalKey string, ifaceType iface.InterfaceType, ifaceAddr string) (Device, error) {
 	d, err := m.provision.Provision(ctx, name, externalID, externalKey)
@@ -63,8 +62,7 @@ func (m *Manager) Add(ctx context.Context, name, externalID, externalKey string,
 	}
 	d.InterfaceType = ifaceType
 	d.InterfaceAddr = ifaceAddr
-	d.Active = true
-	d.LastSeen = time.Now().UTC()
+	d.Active = false
 	if err := m.store.Save(d); err != nil {
 		return d, fmt.Errorf("save device %s: %w", d.ID, err)
 	}
@@ -102,6 +100,13 @@ func (m *Manager) MarkSeen(id string) error {
 	return m.store.MarkSeen(id)
 }
 
+// FindByAddr returns the first active device matching the given interface type
+// and address. Used to route inbound data (e.g. a BLE notification) to the
+// correct device without knowing its ID in advance.
+func (m *Manager) FindByAddr(ifaceType iface.InterfaceType, addr string) (Device, error) {
+	return m.store.FindByAddr(ifaceType, addr)
+}
+
 // OpenIface opens the physical interface for a registered device.
 func (m *Manager) OpenIface(id string) error {
 	m.mu.Lock()
@@ -116,14 +121,17 @@ func (m *Manager) OpenIface(id string) error {
 	}
 	ifc, err := iface.New(d.InterfaceType, d.InterfaceAddr, m.ifaceCfg)
 	if err != nil {
+		_ = m.store.MarkInactive(id)
 		return fmt.Errorf("create interface for device %s: %w", id, err)
 	}
 	if err := ifc.Open(); err != nil {
+		_ = m.store.MarkInactive(id)
 		return fmt.Errorf("open interface for device %s: %w", id, err)
 	}
 	m.mu.Lock()
 	m.interfaces[id] = ifc
 	m.mu.Unlock()
+	_ = m.store.MarkActive(id)
 	return nil
 }
 
@@ -141,6 +149,7 @@ func (m *Manager) CloseIface(id string) error {
 	if err := ifc.Close(); err != nil {
 		return fmt.Errorf("close interface for device %s: %w", id, err)
 	}
+	_ = m.store.MarkInactive(id)
 	return nil
 }
 

@@ -109,6 +109,28 @@ var (
 	errDeviceManagerDisabled = errors.New("device manager not configured")
 )
 
+// DeviceService groups the downstream-device management methods of Service.
+// Handlers or components that only manage devices can depend on this narrower interface.
+type DeviceService interface {
+	// DeviceManager handles downstream device registration and provisioning commands.
+	DeviceManager(ctx context.Context, uuid, cmdStr string) error
+
+	// ListDevices returns all registered downstream devices.
+	ListDevices() ([]devicemgr.Device, error)
+
+	// GetDevice returns a single downstream device by ID.
+	GetDevice(id string) (devicemgr.Device, error)
+
+	// AddDevice provisions and registers a new downstream device.
+	AddDevice(ctx context.Context, name, extID, extKey, ifaceType, ifaceAddr string) (devicemgr.Device, error)
+
+	// RemoveDevice removes a downstream device by ID.
+	RemoveDevice(id string) error
+
+	// MarkDeviceSeen records a live heartbeat for a downstream device.
+	MarkDeviceSeen(id string) error
+}
+
 // Service specifies API for publishing messages and subscribing to topics.
 type Service interface {
 	// Execute command.
@@ -147,12 +169,21 @@ type Service interface {
 
 	// OTA triggers an over-the-air binary update by downloading from url.
 	OTA(ctx context.Context, url, sha256hex string, size uint64) error
+
 	// Shutdown performs a graceful shutdown: stops all service heartbeat
 	// tickers and disconnects the MQTT client.
 	Shutdown()
 
-	// DeviceManager handles downstream device registration and provisioning commands.
-	DeviceManager(uuid, cmdStr string) error
+	// OTAStatus returns whether an OTA operation is currently in progress and the last error message, if any.
+	OTAStatus() OTAStatusInfo
+
+	DeviceService
+}
+
+// OTAStatusInfo reports the current state of the OTA subsystem.
+type OTAStatusInfo struct {
+	Busy      bool   `json:"busy"`
+	LastError string `json:"last_error,omitempty"`
 }
 
 var _ Service = (*agent)(nil)
@@ -165,6 +196,7 @@ type agent struct {
 	svcs                map[string]Heartbeat
 	terminals           map[string]terminal.Session
 	devices             *devicemgr.Manager
+	sched               *Scheduler
 	workDir             string
 	otaBusy             atomic.Bool
 	store               cfgstore.Store
@@ -172,6 +204,8 @@ type agent struct {
 	logLevel            *slog.LevelVar
 	cfgMu               sync.RWMutex
 	startupConfig       Config
+	otaMu               sync.Mutex
+	otaLastErr          string
 }
 
 // New returns agent service implementation.
@@ -189,6 +223,14 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		heartbeatIntervalCh: make(chan time.Duration, 1),
 		logLevel:            levelVar,
 		startupConfig:       *cfg,
+	}
+
+	if devices != nil {
+		sched := newScheduler(devices, cfg.MQTT, cfg.DomainID, logger)
+		if err := sched.Start(ctx); err != nil {
+			logger.Warn("Failed to start device scheduler", slog.Any("error", err))
+		}
+		ag.sched = sched
 	}
 
 	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat",
@@ -211,7 +253,7 @@ func (a *agent) changeDir(cmdArr []string) (string, error) {
 		return "sh: cd: " + target + ": No such file or directory", nil
 	}
 	a.workDir = target
-	return "(no output)", nil
+	return "", nil
 }
 
 func (a *agent) Execute(uuid, cmd string) (string, error) {
@@ -235,7 +277,12 @@ func (a *agent) Execute(uuid, cmd string) (string, error) {
 		return "", errors.Wrap(errFailedExecute, err)
 	}
 
-	payload, err := encoder.EncodeSenML(uuid, strings.Join(cmdArr, " "), string(out))
+	result := string(out)
+	if result == "" {
+		result = "(no output)"
+	}
+
+	payload, err := encoder.EncodeSenML(uuid, strings.Join(cmdArr, " "), result)
 	if err != nil {
 		return "", errors.Wrap(errFailedEncode, err)
 	}
@@ -244,12 +291,7 @@ func (a *agent) Execute(uuid, cmd string) (string, error) {
 		return "", errors.Wrap(errFailedToPublish, err)
 	}
 
-	output := string(out)
-	if output == "" {
-		output = "(no output)"
-	}
-
-	return output, nil
+	return result, nil
 }
 
 func (a *agent) Control(uuid, cmdStr string) error {
@@ -810,7 +852,12 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	if !a.otaBusy.CompareAndSwap(false, true) {
 		return errors.New("OTA already in progress")
 	}
-	defer a.otaBusy.Store(false)
+	defer func() {
+		a.otaBusy.Store(false)
+	}()
+	a.otaMu.Lock()
+	a.otaLastErr = ""
+	a.otaMu.Unlock()
 
 	otaCfg := ota.Config{
 		BinaryPath:  a.config.OTA.BinaryPath,
@@ -838,7 +885,68 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 		token.Wait()
 	}
 
-	return ota.Run(ctx, otaCfg, url, sha256hex, size, progressFn)
+	runErr := ota.Run(ctx, otaCfg, url, sha256hex, size, progressFn)
+	if runErr != nil {
+		a.otaMu.Lock()
+		a.otaLastErr = runErr.Error()
+		a.otaMu.Unlock()
+	}
+	return runErr
+}
+
+func (a *agent) OTAStatus() OTAStatusInfo {
+	a.otaMu.Lock()
+	lastErr := a.otaLastErr
+	a.otaMu.Unlock()
+	return OTAStatusInfo{
+		Busy:      a.otaBusy.Load(),
+		LastError: lastErr,
+	}
+}
+
+func (a *agent) ListDevices() ([]devicemgr.Device, error) {
+	if a.devices == nil {
+		return []devicemgr.Device{}, nil
+	}
+	return a.devices.List()
+}
+
+func (a *agent) GetDevice(id string) (devicemgr.Device, error) {
+	if a.devices == nil {
+		return devicemgr.Device{}, errDeviceManagerDisabled
+	}
+	return a.devices.Get(id)
+}
+
+func (a *agent) AddDevice(ctx context.Context, name, extID, extKey, ifaceType, ifaceAddr string) (devicemgr.Device, error) {
+	if a.devices == nil {
+		return devicemgr.Device{}, errDeviceManagerDisabled
+	}
+	d, err := a.devices.Add(ctx, name, extID, extKey, iface.ParseInterfaceType(ifaceType), ifaceAddr)
+	if err != nil {
+		return d, err
+	}
+	if a.sched != nil {
+		a.sched.StartDevice(context.WithoutCancel(ctx), d)
+	}
+	return d, nil
+}
+
+func (a *agent) RemoveDevice(id string) error {
+	if a.devices == nil {
+		return errDeviceManagerDisabled
+	}
+	if a.sched != nil {
+		a.sched.StopDevice(id)
+	}
+	return a.devices.Remove(id)
+}
+
+func (a *agent) MarkDeviceSeen(id string) error {
+	if a.devices == nil {
+		return errDeviceManagerDisabled
+	}
+	return a.devices.MarkSeen(id)
 }
 
 func (a *agent) Shutdown() {
@@ -846,6 +954,10 @@ func (a *agent) Shutdown() {
 	for name, svc := range a.svcs {
 		svc.Stop()
 		a.logger.Debug("stopped service heartbeat", slog.String("service", name))
+	}
+
+	if a.sched != nil {
+		a.sched.Stop()
 	}
 
 	a.logger.Debug("disconnecting MQTT client")
@@ -972,7 +1084,7 @@ func (a *agent) getTopic(topic string) (t string) {
 //	close,<device_id>                            → close physical interface
 //	read,<device_id>,<n_bytes>                   → read n bytes, reply as hex
 //	write,<device_id>,<hex_data>                 → write hex bytes to interface
-func (a *agent) DeviceManager(uuid, cmdStr string) error {
+func (a *agent) DeviceManager(ctx context.Context, uuid, cmdStr string) error {
 	if a.devices == nil {
 		return errDeviceManagerDisabled
 	}
@@ -1019,7 +1131,7 @@ func (a *agent) DeviceManager(uuid, cmdStr string) error {
 			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
 		}
 		ifaceType := iface.ParseInterfaceType(addReq.IfaceType)
-		d, aerr := a.devices.Add(context.Background(), addReq.Name, addReq.ExternalID, addReq.ExternalKey, ifaceType, addReq.IfaceAddr)
+		d, aerr := a.devices.Add(ctx, addReq.Name, addReq.ExternalID, addReq.ExternalKey, ifaceType, addReq.IfaceAddr)
 		if aerr != nil {
 			return errors.Wrap(errDeviceManagerFailed, aerr)
 		}

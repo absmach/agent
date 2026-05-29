@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/devicemgr"
 	"github.com/go-kit/kit/metrics"
 )
 
@@ -143,11 +144,55 @@ func (ms *metricsMiddleware) Shutdown() {
 	ms.svc.Shutdown()
 }
 
-func (ms *metricsMiddleware) DeviceManager(uuid, cmdStr string) error {
+func (ms *metricsMiddleware) DeviceManager(ctx context.Context, uuid, cmdStr string) error {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "device_manager").Add(1)
 		ms.latency.With("method", "device_manager").Observe(time.Since(begin).Seconds())
 	}(time.Now())
 
-	return ms.svc.DeviceManager(uuid, cmdStr)
+	return ms.svc.DeviceManager(ctx, uuid, cmdStr)
+}
+
+func (ms *metricsMiddleware) OTAStatus() agent.OTAStatusInfo {
+	return ms.svc.OTAStatus()
+}
+
+func (ms *metricsMiddleware) ListDevices() ([]devicemgr.Device, error) {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "list_devices").Add(1)
+		ms.latency.With("method", "list_devices").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+	return ms.svc.ListDevices()
+}
+
+func (ms *metricsMiddleware) GetDevice(id string) (devicemgr.Device, error) {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "get_device").Add(1)
+		ms.latency.With("method", "get_device").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+	return ms.svc.GetDevice(id)
+}
+
+func (ms *metricsMiddleware) AddDevice(ctx context.Context, name, extID, extKey, ifaceType, ifaceAddr string) (devicemgr.Device, error) {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "add_device").Add(1)
+		ms.latency.With("method", "add_device").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+	return ms.svc.AddDevice(ctx, name, extID, extKey, ifaceType, ifaceAddr)
+}
+
+func (ms *metricsMiddleware) RemoveDevice(id string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "remove_device").Add(1)
+		ms.latency.With("method", "remove_device").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+	return ms.svc.RemoveDevice(id)
+}
+
+func (ms *metricsMiddleware) MarkDeviceSeen(id string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "mark_device_seen").Add(1)
+		ms.latency.With("method", "mark_device_seen").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+	return ms.svc.MarkDeviceSeen(id)
 }

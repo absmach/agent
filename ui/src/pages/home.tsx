@@ -4,99 +4,14 @@
 import {
   Activity,
   ArrowRight,
-  MessageSquare,
+  Cpu,
+  Download,
   Network,
   Settings,
   Terminal,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "preact/hooks";
 import { AgentStatus } from "@/components/agent-status";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UI_BASE } from "@/routes";
-
-const PREVIEW_LINES = 6;
-
-type Level = "DEBUG" | "INFO" | "WARN" | "ERROR" | "unknown";
-
-function parseLevel(line: string): Level {
-  if (line.includes(" DEBUG ")) return "DEBUG";
-  if (line.includes(" INFO ")) return "INFO";
-  if (line.includes(" WARN ")) return "WARN";
-  if (line.includes(" ERROR ")) return "ERROR";
-  return "unknown";
-}
-
-function levelClass(level: Level): string {
-  switch (level) {
-    case "DEBUG": return "text-zinc-500";
-    case "INFO":  return "text-emerald-400";
-    case "WARN":  return "text-yellow-400";
-    case "ERROR": return "text-red-400";
-    default:      return "text-zinc-300";
-  }
-}
-
-function AgentLogPreview() {
-  const [lines, setLines] = useState<string[]>([]);
-  const [connected, setConnected] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const es = new EventSource("/logs");
-    es.onopen = () => setConnected(true);
-    es.onmessage = (e) => {
-      setLines((prev) => [...prev.slice(-(PREVIEW_LINES - 1)), e.data as string]);
-    };
-    es.onerror = () => setConnected(false);
-    return () => es.close();
-  }, []);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [lines]);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <MessageSquare className="h-4 w-4" />
-          Agent Log
-          <a
-            href={`${UI_BASE}/logs`}
-            className="ml-auto text-[0.7rem] font-normal text-muted-foreground underline-offset-2 hover:underline"
-          >
-            View full log →
-          </a>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="rounded-lg border bg-zinc-950 p-3 font-mono text-xs leading-relaxed">
-          <div className="mb-1.5 flex items-center gap-1.5">
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-emerald-400" : "bg-red-400"}`}
-            />
-            <span className="text-[0.65rem] text-zinc-500">
-              {connected ? "Streaming" : "Connecting…"}
-            </span>
-          </div>
-          {lines.length === 0 ? (
-            <p className="text-zinc-600">Waiting for log entries…</p>
-          ) : (
-            lines.map((line, i) => {
-              const level = parseLevel(line);
-              return (
-                <div key={i} className={`whitespace-pre-wrap break-all ${levelClass(level)}`}>
-                  {line}
-                </div>
-              );
-            })
-          )}
-          <div ref={bottomRef} />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 const stats = [
   { label: "Agent Status", value: "Live", sub: "HTTP API reachable" },
@@ -112,6 +27,13 @@ const features = [
     href: `${UI_BASE}/config`,
     icon: Settings,
     foot: "Runtime settings",
+  },
+  {
+    title: "Devices",
+    description: "Register, monitor, and manage downstream BLE, serial, and I2C devices.",
+    href: `${UI_BASE}/devices`,
+    icon: Cpu,
+    foot: "Device registry",
   },
   {
     title: "Node-RED",
@@ -133,6 +55,13 @@ const features = [
     href: `${UI_BASE}/exec`,
     icon: Terminal,
     foot: "Remote operations",
+  },
+  {
+    title: "OTA Update",
+    description: "Trigger an over-the-air binary update and track its progress.",
+    href: `${UI_BASE}/ota`,
+    icon: Download,
+    foot: "Remote update",
   },
 ];
 
@@ -191,7 +120,6 @@ export function HomePage() {
         ))}
       </section>
 
-      <AgentLogPreview />
     </div>
   );
 }

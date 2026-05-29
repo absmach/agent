@@ -23,6 +23,9 @@
 #   MG_CHANNELS_API  - Channels service API base URL (default: http://localhost:9005)
 #   MG_RULES_API     - Rules service API base URL (default: http://localhost:9008)
 #   MG_BOOTSTRAP_API - Bootstrap service API base URL (default: http://localhost:9013)
+#   MG_PROVISION_API - Provision service API base URL (default: http://localhost:9016)
+#                      Embedded in the bootstrap profile so the agent can register
+#                      downstream devices without any extra env vars on the device.
 #   MG_DOMAIN_ID     - Domain ID (required)
 #   MG_PAT           - Personal Access Token (required)
 #   MG_AGENT_BOOTSTRAP_EXTERNAL_ID  - External bootstrap ID for the device (required)
@@ -50,16 +53,29 @@ set -euo pipefail
 
 # Check if a unified API base URL is provided
 if [ -n "${MG_API:-}" ]; then
+  # Cloud / remote deployment: script API calls and agent-facing URLs are the same.
   MG_CLIENTS_API="${MG_CLIENTS_API:-${MG_API}}"
   MG_CHANNELS_API="${MG_CHANNELS_API:-${MG_API}}"
   MG_RULES_API="${MG_RULES_API:-${MG_API}}"
   MG_BOOTSTRAP_API="${MG_BOOTSTRAP_API:-${MG_API}}"
+  MG_PROVISION_API="${MG_PROVISION_API:-${MG_API}}"
+  # Agent-facing URLs default to the same remote base when MG_API is set.
+  MG_AGENT_CLIENTS_URL="${MG_AGENT_CLIENTS_URL:-${MG_CLIENTS_API}}"
+  MG_AGENT_CHANNELS_URL="${MG_AGENT_CHANNELS_URL:-${MG_CHANNELS_API}}"
+  MG_AGENT_RULES_URL="${MG_AGENT_RULES_URL:-${MG_RULES_API}}"
   DEFAULT_MQTT_URL="ssl://messaging.magistrala.absmach.eu:8883"
 else
+  # Local deployment: script runs on the host (localhost works), but the agent
+  # runs inside Docker and uses the service-name aliases defined in extra_hosts.
   MG_CLIENTS_API="${MG_CLIENTS_API:-http://localhost:9006}"
   MG_CHANNELS_API="${MG_CHANNELS_API:-http://localhost:9005}"
   MG_RULES_API="${MG_RULES_API:-http://localhost:9008}"
   MG_BOOTSTRAP_API="${MG_BOOTSTRAP_API:-http://localhost:9013}"
+  MG_PROVISION_API="${MG_PROVISION_API:-http://localhost:9016}"
+  # Agent-facing URLs use Docker extra_hosts aliases so they resolve inside the container.
+  MG_AGENT_CLIENTS_URL="${MG_AGENT_CLIENTS_URL:-http://clients:9006}"
+  MG_AGENT_CHANNELS_URL="${MG_AGENT_CHANNELS_URL:-http://channels:9005}"
+  MG_AGENT_RULES_URL="${MG_AGENT_RULES_URL:-http://rules:9008}"
   DEFAULT_MQTT_URL="ssl://host.docker.internal:8883"
 fi
 
@@ -91,11 +107,14 @@ if [ -z "${MG_PAT:-}" ]; then
 fi
 
 echo "=== Magistrala Mock Device Provisioning ==="
-echo "Clients API:   ${MG_CLIENTS_API}"
-echo "Channels API:  ${MG_CHANNELS_API}"
-echo "Rules API:     ${MG_RULES_API}"
-echo "Bootstrap API: ${MG_BOOTSTRAP_API}"
-echo "Domain ID:     ${DOMAIN_ID}"
+echo "Clients API (script):  ${MG_CLIENTS_API}"
+echo "Channels API (script): ${MG_CHANNELS_API}"
+echo "Rules API (script):    ${MG_RULES_API}"
+echo "Bootstrap API:         ${MG_BOOTSTRAP_API}"
+echo "Agent clients URL:     ${MG_AGENT_CLIENTS_URL}"
+echo "Agent channels URL:    ${MG_AGENT_CHANNELS_URL}"
+echo "Agent rules URL:       ${MG_AGENT_RULES_URL}"
+echo "Domain ID:             ${DOMAIN_ID}"
 echo ""
 
 TOKEN="${MG_PAT}"
@@ -233,6 +252,12 @@ template = """{
   },
   "commands": {
     "channel_id": "{{ (index .Bindings "commands").ID }}"
+  },
+  "provision": {
+    "clients_url": "{{ index .Vars "clients_url" }}",
+    "channels_url": "{{ index .Vars "channels_url" }}",
+    "rules_engine_url": "{{ index .Vars "rules_engine_url" }}",
+    "token": "{{ index .Vars "provision_token" }}"
   }
 }"""
 
@@ -272,6 +297,10 @@ build_enrollment_payload() {
   MG_AGENT_BOOTSTRAP_EXTERNAL_ID="${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}" \
   MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY}" \
   MG_AGENT_MQTT_URL="${MG_AGENT_MQTT_URL}" \
+  MG_AGENT_CLIENTS_URL="${MG_AGENT_CLIENTS_URL}" \
+  MG_AGENT_CHANNELS_URL="${MG_AGENT_CHANNELS_URL}" \
+  MG_PAT="${MG_PAT}" \
+  MG_AGENT_RULES_URL="${MG_AGENT_RULES_URL}" \
   MG_AGENT_BOOTSTRAP_CLIENT_CERT="${MG_AGENT_BOOTSTRAP_CLIENT_CERT}" \
   MG_AGENT_BOOTSTRAP_CLIENT_KEY="${MG_AGENT_BOOTSTRAP_CLIENT_KEY}" \
   MG_AGENT_BOOTSTRAP_CA_CERT="${MG_AGENT_BOOTSTRAP_CA_CERT}" \
@@ -285,8 +314,19 @@ payload = {
     "name": "agent-mock-device-config",
     "profile_id": os.environ["PROFILE_ID"],
     "status": "enabled",
+    # SECURITY NOTE: provision_token (MG_PAT) is an operator-level Personal
+    # Access Token that is persisted inside Magistrala's bootstrap config for
+    # every gateway that runs this script. A compromised gateway therefore
+    # exposes full operator authority over the Magistrala deployment. Before
+    # using this in production, replace MG_PAT with a narrowly-scoped token
+    # that only has permission to create clients/channels/rules within the
+    # target domain.
     "render_context": {
-        "mqtt_url": os.environ["MG_AGENT_MQTT_URL"],
+        "mqtt_url":          os.environ["MG_AGENT_MQTT_URL"],
+        "clients_url":       os.environ["MG_AGENT_CLIENTS_URL"],
+        "channels_url":      os.environ["MG_AGENT_CHANNELS_URL"],
+        "provision_token":   os.environ["MG_PAT"],
+        "rules_engine_url":  os.environ["MG_AGENT_RULES_URL"],
     },
     "client_cert": os.environ["MG_AGENT_BOOTSTRAP_CLIENT_CERT"],
     "client_key":  os.environ["MG_AGENT_BOOTSTRAP_CLIENT_KEY"],

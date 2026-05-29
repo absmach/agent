@@ -69,10 +69,12 @@ type OTAConfig struct {
 }
 
 type ProvisionConfig struct {
-	URL      string `json:"url"`
-	Token    string `json:"token"`
-	DBPath   string `json:"db_path"`
-	DomainID string `json:"domain_id"`
+	ClientsURL     string `json:"clients_url"`
+	ChannelsURL    string `json:"channels_url"`
+	RulesEngineURL string `json:"rules_engine_url"`
+	Token          string `json:"token"`
+	DBPath         string `json:"db_path"`
+	DomainID       string `json:"domain_id"`
 }
 
 type Config struct {

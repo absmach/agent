@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/devicemgr"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
@@ -220,7 +221,7 @@ func (lm *loggingMiddleware) Shutdown() {
 	lm.logger.Info("Shutdown completed")
 }
 
-func (lm *loggingMiddleware) DeviceManager(uuid, cmdStr string) (err error) {
+func (lm *loggingMiddleware) DeviceManager(ctx context.Context, uuid, cmdStr string) (err error) {
 	defer func(begin time.Time) {
 		args := []any{
 			slog.String("duration", time.Since(begin).String()),
@@ -235,5 +236,74 @@ func (lm *loggingMiddleware) DeviceManager(uuid, cmdStr string) (err error) {
 		lm.logger.Info("DeviceManager command completed successfully.", args...)
 	}(time.Now())
 
-	return lm.svc.DeviceManager(uuid, cmdStr)
+	return lm.svc.DeviceManager(ctx, uuid, cmdStr)
+}
+
+func (lm *loggingMiddleware) OTAStatus() agent.OTAStatusInfo {
+	return lm.svc.OTAStatus()
+}
+
+func (lm *loggingMiddleware) ListDevices() (devs []devicemgr.Device, err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String())}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("ListDevices failed.", args...)
+			return
+		}
+		lm.logger.Info("ListDevices completed.", args...)
+	}(time.Now())
+	return lm.svc.ListDevices()
+}
+
+func (lm *loggingMiddleware) GetDevice(id string) (d devicemgr.Device, err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("id", id)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("GetDevice failed.", args...)
+			return
+		}
+		lm.logger.Info("GetDevice completed.", args...)
+	}(time.Now())
+	return lm.svc.GetDevice(id)
+}
+
+func (lm *loggingMiddleware) AddDevice(ctx context.Context, name, extID, extKey, ifaceType, ifaceAddr string) (d devicemgr.Device, err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("name", name)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("AddDevice failed.", args...)
+			return
+		}
+		lm.logger.Info("AddDevice completed.", args...)
+	}(time.Now())
+	return lm.svc.AddDevice(ctx, name, extID, extKey, ifaceType, ifaceAddr)
+}
+
+func (lm *loggingMiddleware) RemoveDevice(id string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("id", id)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("RemoveDevice failed.", args...)
+			return
+		}
+		lm.logger.Info("RemoveDevice completed.", args...)
+	}(time.Now())
+	return lm.svc.RemoveDevice(id)
+}
+
+func (lm *loggingMiddleware) MarkDeviceSeen(id string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("id", id)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("MarkDeviceSeen failed.", args...)
+			return
+		}
+		lm.logger.Info("MarkDeviceSeen completed.", args...)
+	}(time.Now())
+	return lm.svc.MarkDeviceSeen(id)
 }

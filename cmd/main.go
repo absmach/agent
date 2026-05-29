@@ -59,6 +59,10 @@ type config struct {
 	BootstrapRetries     string `env:"MG_AGENT_BOOTSTRAP_RETRIES" envDefault:"5"`
 	BootstrapRetryDelay  string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
 	BootstrapSkipTLS     string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS" envDefault:"false"`
+	ClientsURL           string `env:"MG_AGENT_CLIENTS_URL" envDefault:""`
+	ChannelsURL          string `env:"MG_AGENT_CHANNELS_URL" envDefault:""`
+	RulesEngineURL       string `env:"MG_AGENT_RULES_ENGINE_URL" envDefault:""`
+	ProvisionToken       string `env:"MG_PAT" envDefault:""`
 	DeviceDBPath         string `env:"MG_AGENT_DEVICE_DB_PATH" envDefault:"/var/lib/agent/devices.db"`
 	ConfigPath           string `env:"MG_AGENT_CONFIG_PATH" envDefault:"agent-config.json"`
 }
@@ -145,17 +149,42 @@ func main() {
 	}
 	noderedClient := nodered.NewClient(cfg.NodeRed.URL, logger)
 
+	// Bootstrap-based deployments receive all provision fields via the profile
+	// template (clients_url, channels_url, rules_engine_url, token).
+	// The env-var fallbacks below are only used in non-bootstrap setups.
+	clientsURL := cfg.Provision.ClientsURL
+	if clientsURL == "" {
+		clientsURL = c.ClientsURL
+	}
+	channelsURL := cfg.Provision.ChannelsURL
+	if channelsURL == "" {
+		channelsURL = c.ChannelsURL
+	}
+	rulesEngineURL := cfg.Provision.RulesEngineURL
+	if rulesEngineURL == "" {
+		rulesEngineURL = c.RulesEngineURL
+	}
+	provisionToken := cfg.Provision.Token
+	if provisionToken == "" {
+		provisionToken = c.ProvisionToken
+	}
 	devices, err := devicemgr.New(c.DeviceDBPath, devicemgr.ProvisionConfig{
-		URL:      cfg.Provision.URL,
-		Token:    cfg.Provision.Token,
-		DomainID: cfg.DomainID,
+		ClientsURL:     clientsURL,
+		ChannelsURL:    channelsURL,
+		RulesEngineURL: rulesEngineURL,
+		Token:          provisionToken,
+		DomainID:       cfg.DomainID,
 	}, iface.Config{})
 	if err != nil {
 		logger.Error("Failed to open device store", slog.Any("error", err))
 		exitCode = 1
 		return
 	}
-	defer devices.Close()
+	defer func() {
+		if err := devices.Close(); err != nil {
+			logger.Error("Failed to close device store", slog.Any("error", err))
+		}
+	}()
 
 	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger, devices, store, levelVar)
 	if err != nil {
