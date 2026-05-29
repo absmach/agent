@@ -168,7 +168,9 @@ type agent struct {
 	noderedClient       nodered.Client
 	logger              *slog.Logger
 	svcs                map[string]Heartbeat
+	svcsMu              sync.RWMutex
 	terminals           map[string]terminal.Session
+	termMu              sync.Mutex
 	devices             *devicemgr.Manager
 	workDir             string
 	otaBusy             atomic.Bool
@@ -411,6 +413,8 @@ func (a *agent) Terminal(uuid, cmdStr string) error {
 }
 
 func (a *agent) terminalOpen(uuid string, timeout time.Duration) error {
+	a.termMu.Lock()
+	defer a.termMu.Unlock()
 	if _, ok := a.terminals[uuid]; !ok {
 		term, err := terminal.NewSession(uuid, timeout, a.Publish, a.logger)
 		if err != nil {
@@ -419,8 +423,9 @@ func (a *agent) terminalOpen(uuid string, timeout time.Duration) error {
 		a.terminals[uuid] = term
 		go func() {
 			for range term.IsDone() {
-				_ = a.terminalClose(uuid)
+				a.termMu.Lock()
 				delete(a.terminals, uuid)
+				a.termMu.Unlock()
 				return
 			}
 		}()
@@ -429,6 +434,8 @@ func (a *agent) terminalOpen(uuid string, timeout time.Duration) error {
 }
 
 func (a *agent) terminalClose(uuid string) error {
+	a.termMu.Lock()
+	defer a.termMu.Unlock()
 	if _, ok := a.terminals[uuid]; ok {
 		delete(a.terminals, uuid)
 		return nil
@@ -440,9 +447,10 @@ func (a *agent) terminalWrite(uuid, cmd string) error {
 	if err := a.terminalOpen(uuid, a.Config().Terminal.SessionTimeout); err != nil {
 		return err
 	}
+	a.termMu.Lock()
 	term := a.terminals[uuid]
-	p := []byte(cmd)
-	return term.Send(p)
+	a.termMu.Unlock()
+	return term.Send([]byte(cmd))
 }
 
 func (a *agent) NodeRed(cmdStr string) (string, error) {
@@ -726,6 +734,8 @@ func (a *agent) Config() Config {
 }
 
 func (a *agent) Services() []Info {
+	a.svcsMu.RLock()
+	defer a.svcsMu.RUnlock()
 	svcInfos := []Info{}
 	keys := []string{}
 	for k := range a.svcs {
@@ -808,6 +818,8 @@ func (a *agent) heartbeatPayload() ([]byte, error) {
 }
 
 func (a *agent) UpdateLiveness(svcname, svctype string) error {
+	a.svcsMu.Lock()
+	defer a.svcsMu.Unlock()
 	if _, ok := a.svcs[svcname]; !ok {
 		svc := NewHeartbeat(svcname, svctype, a.Config().Heartbeat.Interval)
 		a.svcs[svcname] = svc
@@ -871,10 +883,12 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 
 func (a *agent) Shutdown() {
 	a.logger.Debug("shutting down service heartbeats")
+	a.svcsMu.RLock()
 	for name, svc := range a.svcs {
 		svc.Stop()
 		a.logger.Debug("stopped service heartbeat", slog.String("service", name))
 	}
+	a.svcsMu.RUnlock()
 
 	a.logger.Debug("disconnecting MQTT client")
 	a.mqttClient.Disconnect(1000)
