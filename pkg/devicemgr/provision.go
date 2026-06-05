@@ -122,7 +122,6 @@ func (p *provisionClient) Provision(ctx context.Context, name, externalID, exter
 			return Device{}, fmt.Errorf("create rule for %q: %s", name, sdkErr)
 		}
 	}
-	}
 
 	if client.Credentials.Secret == "" {
 		return Device{}, fmt.Errorf("provision %q: Magistrala returned no client secret", name)
