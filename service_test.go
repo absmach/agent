@@ -61,6 +61,8 @@ func newServiceWithStore(t *testing.T, cfg agent.Config, store cfgstore.Store) (
 	mqttClient := agentmocks.NewMQTTClient(t)
 	nodeRed := nrmocks.NewClient(t)
 
+	mqttClient.On("IsConnected").Maybe().Return(true)
+
 	hbToken := agentmocks.NewMQTTToken(t)
 	hbToken.On("Wait").Maybe().Return(true)
 	hbToken.On("Error").Maybe().Return(error(nil))
