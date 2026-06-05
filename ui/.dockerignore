@@ -1,3 +1,6 @@
+# Copyright (c) Abstract Machines
+# SPDX-License-Identifier: Apache-2.0
+
 # Never send these to the Docker build context
 
 # Dependencies — Docker installs these fresh inside the image
