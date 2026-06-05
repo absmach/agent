@@ -26,7 +26,6 @@ interface ServiceInfo {
   endpoint?: string;
 }
 
-
 export function ServicesCard() {
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,7 +46,9 @@ export function ServicesCard() {
     }
   }
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    refresh();
+  }, []);
 
   return (
     <Card>
@@ -99,8 +100,10 @@ export function ServicesCard() {
 // Returns the agent UI path for services that have a dedicated page.
 function serviceUIPath(type: string): string | null {
   switch (type.toLowerCase()) {
-    case "nodered": return `${UI_BASE}/nodered`;
-    default: return null;
+    case "nodered":
+      return `${UI_BASE}/nodered`;
+    default:
+      return null;
   }
 }
 
@@ -147,7 +150,11 @@ function ServiceRow({ service }: { service: ServiceInfo }) {
           className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[0.75rem] font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground"
           title={`${service.name} details`}
         >
-          {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          {open ? (
+            <ChevronUp className="h-3 w-3" />
+          ) : (
+            <ChevronDown className="h-3 w-3" />
+          )}
           Details
         </button>
       </div>
@@ -159,10 +166,17 @@ function ServiceRow({ service }: { service: ServiceInfo }) {
           <DetailField label="Status" value={service.status} />
           <DetailField
             label="Last seen"
-            value={service.last_seen ? new Date(service.last_seen).toLocaleString() : "—"}
+            value={
+              service.last_seen
+                ? new Date(service.last_seen).toLocaleString()
+                : "—"
+            }
           />
           {service.terminal !== undefined && service.terminal > 0 && (
-            <DetailField label="Terminal sessions" value={String(service.terminal)} />
+            <DetailField
+              label="Terminal sessions"
+              value={String(service.terminal)}
+            />
           )}
         </div>
       )}

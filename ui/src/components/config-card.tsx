@@ -146,7 +146,10 @@ export function ConfigCard() {
     try {
       const body = {
         server: { port: config.httpPort },
-        channels: { ctrl_id: config.ctrlChannelID, data_id: config.dataChannelID },
+        channels: {
+          ctrl_id: config.ctrlChannelID,
+          data_id: config.dataChannelID,
+        },
         mqtt: {
           url: config.mqttURL,
           username: config.clientID,
@@ -205,7 +208,11 @@ export function ConfigCard() {
       <CardContent>
         <div className="grid gap-4 sm:grid-cols-2">
           {field("httpPort", "HTTP Port", "Agent HTTP API port")}
-          {field("clientID", "Client ID", "Magistrala client ID (MQTT username)")}
+          {field(
+            "clientID",
+            "Client ID",
+            "Magistrala client ID (MQTT username)",
+          )}
           <SecretField
             id="clientKey"
             label="Client Key"
@@ -218,8 +225,16 @@ export function ConfigCard() {
               }))
             }
           />
-          {field("ctrlChannelID", "Control Channel ID", "Magistrala control channel ID")}
-          {field("dataChannelID", "Data Channel ID", "Magistrala data channel ID")}
+          {field(
+            "ctrlChannelID",
+            "Control Channel ID",
+            "Magistrala control channel ID",
+          )}
+          {field(
+            "dataChannelID",
+            "Data Channel ID",
+            "Magistrala data channel ID",
+          )}
           {field("mqttURL", "MQTT URL", "Magistrala MQTT broker URL")}
           {field("nodeRedURL", "Node-RED URL", "Node-RED API URL")}
           <div className="space-y-1.5">

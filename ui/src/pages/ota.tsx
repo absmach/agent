@@ -1,7 +1,16 @@
 // Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
-import { AlertCircle, CheckCircle2, Download, Loader2, RefreshCw, Sparkles, WifiOff, Zap } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Download,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  WifiOff,
+  Zap,
+} from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,22 +37,45 @@ interface ReleaseCheck {
   error?: string;
 }
 
-function statusBadge(status: OTAStatus, submitted: boolean): { label: string; className: string; state: BadgeState } {
+function statusBadge(
+  status: OTAStatus,
+  submitted: boolean,
+): { label: string; className: string; state: BadgeState } {
   if (status.busy) {
-    return { label: "Running", className: "bg-blue-500/15 text-blue-300", state: "running" };
+    return {
+      label: "Running",
+      className: "bg-blue-500/15 text-blue-300",
+      state: "running",
+    };
   }
   if (status.last_error) {
-    return { label: "Failed", className: "bg-red-500/15 text-red-300", state: "error" };
+    return {
+      label: "Failed",
+      className: "bg-red-500/15 text-red-300",
+      state: "error",
+    };
   }
   if (submitted) {
-    return { label: "Triggered", className: "bg-emerald-500/15 text-emerald-300", state: "done" };
+    return {
+      label: "Triggered",
+      className: "bg-emerald-500/15 text-emerald-300",
+      state: "done",
+    };
   }
-  return { label: "Idle", className: "bg-zinc-500/15 text-zinc-300", state: "idle" };
+  return {
+    label: "Idle",
+    className: "bg-zinc-500/15 text-zinc-300",
+    state: "idle",
+  };
 }
 
 // Compare two semver strings (strips leading "v"). Returns true if b > a.
 function isNewer(current: string, latest: string): boolean {
-  const parse = (v: string) => v.replace(/^v/, "").split(".").map((n) => parseInt(n, 10) || 0);
+  const parse = (v: string) =>
+    v
+      .replace(/^v/, "")
+      .split(".")
+      .map((n) => parseInt(n, 10) || 0);
   const [ca, cb, cc] = parse(current);
   const [la, lb, lc] = parse(latest);
   if (la !== ca) return la > ca;
@@ -104,7 +136,11 @@ export function OTAPage() {
       ]);
 
       if (releaseRes.status === 404) {
-        setRelease({ state: "up-to-date", currentVersion: "unknown", latestVersion: "none" });
+        setRelease({
+          state: "up-to-date",
+          currentVersion: "unknown",
+          latestVersion: "none",
+        });
         return;
       }
       if (!releaseRes.ok) {
@@ -116,11 +152,12 @@ export function OTAPage() {
 
       const currentVersion: string = health.version ?? "unknown";
       const latestVersion: string = releaseData.tag_name ?? "";
-      const assets: ReleaseAsset[] = (releaseData.assets ?? []).filter((a: ReleaseAsset) =>
-        isBinaryAsset(a.name),
+      const assets: ReleaseAsset[] = (releaseData.assets ?? []).filter(
+        (a: ReleaseAsset) => isBinaryAsset(a.name),
       );
 
-      const newer = currentVersion !== "unknown" &&
+      const newer =
+        currentVersion !== "unknown" &&
         currentVersion !== "0.0.0" &&
         isNewer(currentVersion, latestVersion);
 
@@ -173,7 +210,9 @@ export function OTAPage() {
   return (
     <div className="space-y-[22px]">
       <div>
-        <h1 className="text-[1.35rem] font-bold leading-tight tracking-tight">OTA Update</h1>
+        <h1 className="text-[1.35rem] font-bold leading-tight tracking-tight">
+          OTA Update
+        </h1>
         <p className="mt-1 text-[0.825rem] text-muted-foreground">
           Trigger an over-the-air binary update for this gateway agent.
         </p>
@@ -188,10 +227,14 @@ export function OTAPage() {
             <span
               className={`ml-auto flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-semibold ${badge.className}`}
             >
-              {badge.state === "running" && <Loader2 className="h-3 w-3 animate-spin" />}
+              {badge.state === "running" && (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              )}
               {badge.state === "error" && <AlertCircle className="h-3 w-3" />}
               {badge.state === "done" && <CheckCircle2 className="h-3 w-3" />}
-              {badge.state === "idle" && <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+              {badge.state === "idle" && (
+                <span className="h-1.5 w-1.5 rounded-full bg-current" />
+              )}
               {badge.label}
             </span>
             <button
@@ -215,7 +258,8 @@ export function OTAPage() {
           <CardContent>
             <div className="flex items-center gap-2 text-[0.825rem] text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
-              OTA update in progress — the agent will restart automatically when ready.
+              OTA update in progress — the agent will restart automatically when
+              ready.
             </div>
           </CardContent>
         )}
@@ -240,7 +284,8 @@ export function OTAPage() {
         <CardContent className="space-y-3">
           {release.state === "idle" && (
             <p className="text-[0.825rem] text-muted-foreground">
-              Check GitHub for the latest published release and pick a binary to pre-fill the update form.
+              Check GitHub for the latest published release and pick a binary to
+              pre-fill the update form.
             </p>
           )}
 
@@ -254,10 +299,18 @@ export function OTAPage() {
           {release.state === "up-to-date" && (
             <div className="flex items-center gap-2 text-[0.825rem] text-emerald-500">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
-              {release.latestVersion === "none"
-                ? "No releases have been published yet."
-                : <>Running <span className="font-mono font-semibold">{release.currentVersion}</span> — already on the latest release{" "}(<span className="font-mono">{release.latestVersion}</span>).</>
-              }
+              {release.latestVersion === "none" ? (
+                "No releases have been published yet."
+              ) : (
+                <>
+                  Running{" "}
+                  <span className="font-mono font-semibold">
+                    {release.currentVersion}
+                  </span>{" "}
+                  — already on the latest release (
+                  <span className="font-mono">{release.latestVersion}</span>).
+                </>
+              )}
             </div>
           )}
 
@@ -266,13 +319,18 @@ export function OTAPage() {
               <div className="flex items-center gap-2 text-[0.825rem] text-amber-500">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>
-                  <span className="font-mono font-semibold">{release.latestVersion}</span> is available
-                  {" "}(running <span className="font-mono">{release.currentVersion}</span>).
+                  <span className="font-mono font-semibold">
+                    {release.latestVersion}
+                  </span>{" "}
+                  is available (running{" "}
+                  <span className="font-mono">{release.currentVersion}</span>).
                 </span>
               </div>
               {release.assets && release.assets.length > 0 && (
                 <div className="space-y-1.5">
-                  <p className="text-[0.75rem] text-muted-foreground">Select a binary to pre-fill the URL below:</p>
+                  <p className="text-[0.75rem] text-muted-foreground">
+                    Select a binary to pre-fill the URL below:
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {release.assets.map((asset) => (
                       <button
@@ -298,11 +356,7 @@ export function OTAPage() {
           )}
 
           {release.state !== "checking" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={checkForUpdates}
-            >
+            <Button variant="outline" size="sm" onClick={checkForUpdates}>
               <RefreshCw className="h-3 w-3" />
               {release.state === "idle" ? "Check for updates" : "Check again"}
             </Button>
@@ -331,7 +385,8 @@ export function OTAPage() {
                 required
               />
               <p className="text-[0.75rem] text-muted-foreground">
-                Direct download URL for the new agent binary. Must be reachable from this gateway.
+                Direct download URL for the new agent binary. Must be reachable
+                from this gateway.
               </p>
             </div>
             <div className="space-y-1.5">
@@ -346,7 +401,8 @@ export function OTAPage() {
                 onInput={(e) => setSha256((e.target as HTMLInputElement).value)}
               />
               <p className="text-[0.75rem] text-muted-foreground">
-                Hex-encoded SHA-256 of the binary. The agent will abort if the digest does not match.
+                Hex-encoded SHA-256 of the binary. The agent will abort if the
+                digest does not match.
               </p>
             </div>
             {triggerError && (
@@ -362,7 +418,8 @@ export function OTAPage() {
             </Button>
             {status.busy && (
               <p className="text-[0.775rem] text-muted-foreground">
-                Another OTA update is already running. Wait for it to complete before triggering a new one.
+                Another OTA update is already running. Wait for it to complete
+                before triggering a new one.
               </p>
             )}
           </form>

@@ -30,7 +30,8 @@ const features = [
   },
   {
     title: "Devices",
-    description: "Register, monitor, and manage downstream BLE, serial, and I2C devices.",
+    description:
+      "Register, monitor, and manage downstream BLE, serial, and I2C devices.",
     href: `${UI_BASE}/devices`,
     icon: Cpu,
     foot: "Device registry",
@@ -58,7 +59,8 @@ const features = [
   },
   {
     title: "OTA Update",
-    description: "Trigger an over-the-air binary update and track its progress.",
+    description:
+      "Trigger an over-the-air binary update and track its progress.",
     href: `${UI_BASE}/ota`,
     icon: Download,
     foot: "Remote update",
@@ -119,7 +121,6 @@ export function HomePage() {
           </a>
         ))}
       </section>
-
     </div>
   );
 }

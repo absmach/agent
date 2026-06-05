@@ -151,7 +151,9 @@ export function Topbar() {
                 status === "checking" && "animate-pulse",
               )}
             />
-            <span className="hidden xs:inline">{isOnline ? "Connected" : "Disconnected"}</span>
+            <span className="hidden xs:inline">
+              {isOnline ? "Connected" : "Disconnected"}
+            </span>
           </div>
 
           <button
@@ -161,7 +163,11 @@ export function Topbar() {
             title="Toggle theme"
             aria-label="Toggle theme"
           >
-            {dark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            {dark ? (
+              <Sun className="h-3.5 w-3.5" />
+            ) : (
+              <Moon className="h-3.5 w-3.5" />
+            )}
           </button>
 
           {/* Hamburger — visible below lg */}
@@ -171,7 +177,11 @@ export function Topbar() {
             className="flex h-[30px] w-[30px] items-center justify-center rounded-md bg-white/10 text-white/65 transition-colors hover:bg-white/15 hover:text-white lg:hidden"
             aria-label="Toggle menu"
           >
-            {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            {menuOpen ? (
+              <X className="h-4 w-4" />
+            ) : (
+              <Menu className="h-4 w-4" />
+            )}
           </button>
         </div>
       </nav>
