@@ -15,7 +15,7 @@ import (
 	"github.com/absmach/agent"
 	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/ota"
-	"github.com/absmach/senml"
+	"github.com/absmach/agent/pkg/senml"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"robpike.io/filter"
 )
@@ -122,11 +122,11 @@ func extractHeartbeat(mqttTopic string, payload []byte) (svcname, svctype string
 // parseSvcType extracts the service_type field from a SenML heartbeat payload,
 // defaulting to "service" if the payload cannot be parsed.
 func parseSvcType(payload []byte) string {
-	sm, err := senml.Decode(payload, senml.JSON)
+	records, err := senml.Decode(payload)
 	if err != nil {
 		return "service"
 	}
-	for _, r := range sm.Records {
+	for _, r := range records {
 		if r.Name == "service_type" && r.StringValue != nil {
 			return *r.StringValue
 		}
@@ -136,22 +136,23 @@ func parseSvcType(payload []byte) string {
 
 // handleMsg triggered when new message is received on MQTT broker.
 func (b *broker) handleMsg(msg mqtt.Message) {
-	sm, err := senml.Decode(msg.Payload(), senml.JSON)
+	records, err := senml.Decode(msg.Payload())
 	if err != nil {
 		b.logger.Warn("SenML decode failed", slog.Any("error", err))
 		return
 	}
 
-	if len(sm.Records) == 0 {
+	if len(records) == 0 {
 		b.logger.Error("SenML payload empty", slog.Any("payload", msg.Payload()))
 		return
 	}
-	cmdType := sm.Records[0].Name
+
+	cmdType := records[0].Name
 	var cmdStr string
-	if sv := sm.Records[0].StringValue; sv != nil {
+	if sv := records[0].StringValue; sv != nil {
 		cmdStr = *sv
 	}
-	uuid := strings.TrimSuffix(sm.Records[0].BaseName, ":")
+	uuid := strings.TrimSuffix(records[0].BaseName, ":")
 
 	switch cmdType {
 	case control:
@@ -196,7 +197,7 @@ func (b *broker) handleMsg(msg mqtt.Message) {
 			b.logger.Error("Reset failed", slog.Any("error", err))
 		}
 	case otaCmd:
-		trigger, err := ota.TriggerFromRecords(sm.Records[1:])
+		trigger, err := ota.TriggerFromRecords(records[1:])
 		if err != nil {
 			b.logger.Warn("OTA trigger parse failed", slog.Any("error", err))
 			return
