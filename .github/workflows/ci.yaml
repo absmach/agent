@@ -49,6 +49,11 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
 
+      - name: Install UI dependencies
+        run: |
+          cd ui
+          npm install
+
       - name: Check for changes in specific paths
         uses: dorny/paths-filter@v4
         id: changes
