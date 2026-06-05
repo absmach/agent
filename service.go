@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"runtime/metrics"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,11 +57,17 @@ const (
 	notFound      = "not_found"
 )
 
-var startTime = time.Now()
+var (
+	startTime = time.Now()
 
-// Version is the agent binary version, injected at build time via
-// -ldflags "-X github.com/absmach/agent.Version=x.y.z".
-var Version = "0.0.0"
+	// Version is the agent binary version, injected at build time via
+	// -ldflags "-X github.com/absmach/agent.Version=x.y.z".
+	Version   = "0.0.0"
+	Commit    = "unknown"
+	BuildTime = "unknown"
+
+	heapSamples = []metrics.Sample{{Name: "/memory/classes/heap/free:bytes"}}
+)
 
 // execAllowlist is the set of command names permitted via the exec MQTT command.
 var execAllowlist = map[string]bool{
@@ -805,7 +812,7 @@ func (a *agent) Publish(t, payload string) error {
 
 func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.Duration, qos byte) {
 	publish := func() {
-		payload, err := a.heartbeatPayload()
+		payload, err := a.selfHeartbeatPayload()
 		if err != nil {
 			a.logger.Error("failed to encode self-heartbeat", slog.Any("error", err))
 			return
@@ -831,32 +838,42 @@ func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.D
 	}
 }
 
-// heartbeatPayload builds an Aeolus-compatible SenML heartbeat pack.
-func (a *agent) heartbeatPayload() ([]byte, error) {
-	hb := true
-	connected := true
-	uptime := time.Since(startTime).Seconds()
-	records := []senml.Record{
-		{Name: "heartbeat", BaseTime: float64(time.Now().Unix()), BoolValue: &hb},
-		{Name: "fw_version", StringValue: &Version},
-		{Name: "uptime", Unit: "s", Value: &uptime},
-		{Name: "connected", BoolValue: &connected},
+func (a *agent) selfHeartbeatPayload() ([]byte, error) {
+	metrics.Read(heapSamples)
+
+	heapFree := uint64(0)
+	if len(heapSamples) > 0 {
+		heapFree = heapSamples[0].Value.Uint64()
 	}
+
+	deviceCount := 0
 	if a.devices != nil {
-		devs, err := a.devices.List()
+		n, err := a.devices.Count()
 		if err != nil {
-			return nil, err
+			a.logger.Warn("failed to count devices for self-heartbeat", slog.Any("error", err))
+		} else {
+			deviceCount = n
 		}
-		active := 0
-		for _, d := range devs {
-			if d.Active {
-				active++
-			}
-		}
-		activeFloat := float64(active)
-		records = append(records, senml.Record{Name: "devices", Unit: "count", Value: &activeFloat})
 	}
-	return senml.Encode(senml.Pack{Records: records}, senml.JSON)
+
+	svcType := "agent"
+	heartbeat := true
+	fwVersion := Version
+	uptime := time.Since(startTime).Seconds()
+	heapFreeValue := float64(heapFree)
+	deviceCountValue := float64(deviceCount)
+	connected := a.mqttClient.IsConnected()
+
+	pack := senml.Pack{Records: []senml.Record{
+		{BaseName: "agent:", Name: "service_type", StringValue: &svcType},
+		{Name: "heartbeat", BoolValue: &heartbeat},
+		{Name: "fw_version", StringValue: &fwVersion},
+		{Name: "uptime", Unit: "s", Value: &uptime},
+		{Name: "heap_free", Unit: "By", Value: &heapFreeValue},
+		{Name: "devices", Unit: "count", Value: &deviceCountValue},
+		{Name: "connected", BoolValue: &connected},
+	}}
+	return senml.Encode(pack, senml.JSON)
 }
 
 func (a *agent) UpdateLiveness(svcname, svctype string) error {
@@ -876,7 +893,7 @@ func (a *agent) Ping() error {
 		return errors.New("ping: domain ID or data channel not configured")
 	}
 	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat", cfg.DomainID, cfg.Channels.DataChan())
-	payload, err := a.heartbeatPayload()
+	payload, err := a.selfHeartbeatPayload()
 	if err != nil {
 		return err
 	}

@@ -24,6 +24,7 @@ import (
 	"github.com/absmach/agent/pkg/devicemgr"
 	"github.com/absmach/agent/pkg/iface"
 	nrmocks "github.com/absmach/agent/pkg/nodered/mocks"
+	senml "github.com/absmach/senml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -60,6 +61,8 @@ func newServiceWithStore(t *testing.T, cfg agent.Config, store cfgstore.Store) (
 	mqttClient := agentmocks.NewMQTTClient(t)
 	nodeRed := nrmocks.NewClient(t)
 
+	mqttClient.On("IsConnected").Maybe().Return(true)
+
 	hbToken := agentmocks.NewMQTTToken(t)
 	hbToken.On("Wait").Maybe().Return(true)
 	hbToken.On("Error").Maybe().Return(error(nil))
@@ -85,6 +88,7 @@ func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (
 	hbToken := agentmocks.NewMQTTToken(t)
 	hbToken.On("Wait").Maybe().Return(true)
 	hbToken.On("Error").Maybe().Return(error(nil))
+	mqttClient.On("IsConnected").Maybe().Return(true)
 	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"),
 		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(hbToken)
 
@@ -105,6 +109,77 @@ func expectMQTTPublish(t *testing.T, mqttClient *agentmocks.MQTTClient, topic st
 	token.On("Wait").Return(true).Once()
 	token.On("Error").Return(err).Once()
 	return mqttClient.On("Publish", topic, byte(1), true, mock.Anything).Return(token).Once()
+}
+
+func TestSelfHeartbeatPublishesRichPayload(t *testing.T) {
+	cfg := testConfig()
+	cfg.DomainID = domainID
+	mqttClient := agentmocks.NewMQTTClient(t)
+	nodeRed := nrmocks.NewClient(t)
+
+	mqttClient.On("IsConnected").Return(true).Maybe()
+
+	published := make(chan struct{})
+	token := agentmocks.NewMQTTToken(t)
+	token.On("Wait").Return(true).Once()
+	token.On("Error").Run(func(_ mock.Arguments) {
+		close(published)
+	}).Return(error(nil)).Once()
+
+	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"), cfg.MQTT.QoS, false, mock.MatchedBy(func(payload interface{}) bool {
+		return richHeartbeatPayload(t, payload)
+	})).Return(token).Once()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	_, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+	require.NoError(t, err)
+
+	select {
+	case <-published:
+	case <-time.After(time.Second):
+		t.Fatal("self-heartbeat was not published")
+	}
+}
+
+func richHeartbeatPayload(t *testing.T, payload interface{}) bool {
+	t.Helper()
+
+	var b []byte
+	switch p := payload.(type) {
+	case []byte:
+		b = p
+	case string:
+		b = []byte(p)
+	default:
+		return false
+	}
+
+	pack, err := senml.Decode(b, senml.JSON)
+	if err != nil {
+		return false
+	}
+
+	records := make(map[string]senml.Record, len(pack.Records))
+	for _, record := range pack.Records {
+		records[record.Name] = record
+	}
+
+	return records["service_type"].StringValue != nil &&
+		*records["service_type"].StringValue == "agent" &&
+		records["heartbeat"].BoolValue != nil &&
+		*records["heartbeat"].BoolValue &&
+		records["fw_version"].StringValue != nil &&
+		*records["fw_version"].StringValue == agent.Version &&
+		records["uptime"].Value != nil &&
+		records["uptime"].Unit == "s" &&
+		records["heap_free"].Value != nil &&
+		records["heap_free"].Unit == "By" &&
+		records["devices"].Value != nil &&
+		records["devices"].Unit == "count" &&
+		records["connected"].BoolValue != nil &&
+		*records["connected"].BoolValue
 }
 
 func TestChannelConfig(t *testing.T) {

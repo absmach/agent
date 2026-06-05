@@ -95,6 +95,11 @@ func (m *Manager) List() ([]Device, error) {
 	return m.store.List()
 }
 
+// Count returns the number of registered devices without loading the records.
+func (m *Manager) Count() (int, error) {
+	return m.store.Count()
+}
+
 // MarkSeen updates LastSeen and Active for a device (called when a device sends data).
 func (m *Manager) MarkSeen(id string) error {
 	return m.store.MarkSeen(id)

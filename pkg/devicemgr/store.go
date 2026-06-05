@@ -71,6 +71,20 @@ func (s *Store) Get(id string) (Device, error) {
 	return d, err
 }
 
+// Count returns the number of stored devices without loading the records.
+func (s *Store) Count() (int, error) {
+	var n int
+	err := s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(devicesBucket)
+		if b == nil {
+			return fmt.Errorf("bucket %q not found", devicesBucket)
+		}
+		n = b.Stats().KeyN
+		return nil
+	})
+	return n, err
+}
+
 // List returns all stored devices.
 func (s *Store) List() ([]Device, error) {
 	var devices []Device
