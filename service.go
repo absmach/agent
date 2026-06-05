@@ -60,17 +60,14 @@ const (
 var (
 	startTime = time.Now()
 
-	// These values are injected by release builds via ldflags.
-	Version   = "unknown"
+	// Version is the agent binary version, injected at build time via
+	// -ldflags "-X github.com/absmach/agent.Version=x.y.z".
+	Version   = "0.0.0"
 	Commit    = "unknown"
 	BuildTime = "unknown"
 
 	heapSamples = []metrics.Sample{{Name: "/memory/classes/heap/free:bytes"}}
 )
-
-// Version is the agent binary version, injected at build time via
-// -ldflags "-X github.com/absmach/agent.Version=x.y.z".
-var Version = "0.0.0"
 
 // execAllowlist is the set of command names permitted via the exec MQTT command.
 var execAllowlist = map[string]bool{
@@ -896,7 +893,7 @@ func (a *agent) Ping() error {
 		return errors.New("ping: domain ID or data channel not configured")
 	}
 	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat", cfg.DomainID, cfg.Channels.DataChan())
-	payload, err := a.heartbeatPayload()
+	payload, err := a.selfHeartbeatPayload()
 	if err != nil {
 		return err
 	}
