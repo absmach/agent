@@ -111,12 +111,43 @@ func expectMQTTPublish(t *testing.T, mqttClient *agentmocks.MQTTClient, topic st
 	return mqttClient.On("Publish", topic, byte(1), true, mock.Anything).Return(token).Once()
 }
 
-func TestSelfHeartbeatPublishesRichPayload(t *testing.T) {
+func TestPeriodicTelemetryPublishesPayload(t *testing.T) {
+	cfg := testConfig()
+	cfg.DomainID = domainID
+	cfg.Telemetry = agent.TelemetryConfig{Enabled: true, Interval: time.Hour}
+
+	mqttClient := agentmocks.NewMQTTClient(t)
+	nodeRed := nrmocks.NewClient(t)
+
+	mqttClient.On("IsConnected").Maybe().Return(true)
+
+	selfHbToken := agentmocks.NewMQTTToken(t)
+	selfHbToken.On("Wait").Maybe().Return(true)
+	selfHbToken.On("Error").Maybe().Return(error(nil))
+	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"),
+		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(selfHbToken)
+
+	hbToken := agentmocks.NewMQTTToken(t)
+	hbToken.On("Wait").Maybe().Return(true)
+	hbToken.On("Error").Maybe().Return(error(nil))
+	mqttClient.On("Publish", mqttTopic("ctrl-channel", "services/agent/heartbeat"),
+		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(hbToken)
+
+	published := make(chan struct{})
+	telemetryToken := agentmocks.NewMQTTToken(t)
+	telemetryToken.On("Wait").Return(true).Once()
+	telemetryToken.On("Error").Run(func(_ mock.Arguments) {
+		close(published)
+	}).Return(error(nil)).Once()
+
+	mqttClient.On("Publish", mqttTopic("data-channel", "msg"), byte(1), false, mock.MatchedBy(func(payload interface{}) bool {
+		return telemetryPayload(t, payload)
+	})).Return(telemetryToken).Once()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	_, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
 	require.NoError(t, err)
 
 	select {
