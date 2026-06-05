@@ -28,6 +28,16 @@ func (c ChanConfig) DataChan() string {
 	return c.DataID
 }
 
+func (c ChanConfig) Validate() error {
+	if c.CtrlID == "" {
+		return errors.New("channels.ctrl_id is required")
+	}
+	if c.DataID == "" {
+		return errors.New("channels.data_id is required")
+	}
+	return nil
+}
+
 type NodeRedConfig struct {
 	URL string `json:"url"`
 }

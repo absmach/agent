@@ -212,6 +212,7 @@ type agent struct {
 	devices             *devicemgr.Manager
 	sched               *Scheduler
 	workDir             string
+	workDirMu           sync.Mutex
 	otaBusy             atomic.Bool
 	store               cfgstore.Store
 	heartbeatIntervalCh chan time.Duration
@@ -255,6 +256,8 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 }
 
 func (a *agent) changeDir(cmdArr []string) (string, error) {
+	a.workDirMu.Lock()
+	defer a.workDirMu.Unlock()
 	var target string
 	if len(cmdArr) < 2 || cmdArr[1] == "~" {
 		target = "/root"
@@ -284,8 +287,10 @@ func (a *agent) Execute(uuid, cmd string) (string, error) {
 		return "", errInvalidCommand
 	}
 
+	a.workDirMu.Lock()
 	execCmd := exec.Command(cmdArr[0], cmdArr[1:]...)
 	execCmd.Dir = a.workDir
+	a.workDirMu.Unlock()
 	out, err := execCmd.CombinedOutput()
 	if err != nil && len(out) == 0 {
 		return "", errors.Wrap(errFailedExecute, err)
@@ -903,7 +908,8 @@ func (a *agent) Ping() error {
 }
 
 func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) error {
-	if !a.config.OTA.Enabled {
+	cfg := a.Config()
+	if !cfg.OTA.Enabled {
 		return errors.New("OTA is disabled")
 	}
 	if !a.otaBusy.CompareAndSwap(false, true) {
@@ -917,13 +923,13 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	a.otaMu.Unlock()
 
 	otaCfg := ota.Config{
-		BinaryPath:  a.config.OTA.BinaryPath,
-		DownloadDir: a.config.OTA.DownloadDir,
+		BinaryPath:  cfg.OTA.BinaryPath,
+		DownloadDir: cfg.OTA.DownloadDir,
 	}
 
-	domainID := a.config.DomainID
-	ctrlChan := a.config.Channels.CtrlChan()
-	qos := a.config.MQTT.QoS
+	domainID := cfg.DomainID
+	ctrlChan := cfg.Channels.CtrlChan()
+	qos := cfg.MQTT.QoS
 	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
 
 	progressFn := func(state ota.State, progress float64) {

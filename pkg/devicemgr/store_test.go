@@ -106,6 +106,7 @@ func TestStore_SaveAndGet(t *testing.T) {
 			assert.Equal(t, tc.save.InterfaceAddr, got.InterfaceAddr, fmt.Sprintf("%s: unexpected InterfaceAddr", tc.desc))
 			assert.Equal(t, tc.save.Name, got.Name, fmt.Sprintf("%s: unexpected Name", tc.desc))
 			assert.Equal(t, tc.save.Active, got.Active, fmt.Sprintf("%s: unexpected Active", tc.desc))
+			assert.Equal(t, tc.save.LastSeen, got.LastSeen, fmt.Sprintf("%s: unexpected LastSeen", tc.desc))
 		})
 	}
 }
