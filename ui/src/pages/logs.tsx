@@ -64,7 +64,9 @@ export function LogsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold">Agent Logs</h1>
-          <p className="text-sm text-[var(--muted)]">Live log stream from the agent process</p>
+          <p className="text-sm text-[var(--muted)]">
+            Live log stream from the agent process
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <span
@@ -110,13 +112,18 @@ export function LogsPage() {
         <div className="h-[calc(100vh-260px)] overflow-y-auto bg-zinc-900 p-4 font-mono text-xs leading-relaxed">
           {lines.length === 0 ? (
             <p className="text-zinc-500">
-              {connected ? "Waiting for log entries…" : "Connecting to log stream…"}
+              {connected
+                ? "Waiting for log entries…"
+                : "Connecting to log stream…"}
             </p>
           ) : (
             lines.map((line, i) => {
               const level = parseLevel(line);
               return (
-                <div key={i} className={`whitespace-pre-wrap break-all ${levelClass(level)}`}>
+                <div
+                  key={i}
+                  className={`whitespace-pre-wrap break-all ${levelClass(level)}`}
+                >
                   {line}
                 </div>
               );

@@ -126,10 +126,18 @@ export function ExecCard() {
         )}
       </div>
 
-      {/* Terminal body */}
+      {/* biome-ignore lint/a11y/useSemanticElements: <button> can't wrap <input> per HTML spec */}
       <div
-        className="min-h-[32rem] max-h-[calc(100vh-16rem)] overflow-y-auto bg-zinc-900 p-4 font-mono text-sm"
+        role="button"
+        tabIndex={0}
+        className="min-h-72 max-h-112 w-full overflow-y-auto bg-zinc-900 p-4 font-mono text-sm text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-zinc-500"
         onClick={() => inputRef.current?.focus()}
+        onKeyDown={(e: KeyboardEvent) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.focus();
+          }
+        }}
       >
         {history.length === 0 && !loading && (
           <p className="text-zinc-500 text-xs">

@@ -1,7 +1,15 @@
 // Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
-import { Check, CheckCircle, Copy, Eye, EyeOff, Settings, XCircle } from "lucide-react";
+import {
+  Check,
+  CheckCircle,
+  Copy,
+  Eye,
+  EyeOff,
+  Settings,
+  XCircle,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,7 +82,11 @@ function SecretField({
             className="rounded p-1.5 text-muted-foreground transition-colors hover:text-foreground"
             title={visible ? "Hide" : "Show"}
           >
-            {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            {visible ? (
+              <EyeOff className="h-3.5 w-3.5" />
+            ) : (
+              <Eye className="h-3.5 w-3.5" />
+            )}
           </button>
           <button
             type="button"
@@ -82,7 +94,11 @@ function SecretField({
             className="rounded p-1.5 text-muted-foreground transition-colors hover:text-foreground"
             title="Copy to clipboard"
           >
-            {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-emerald-400" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
           </button>
         </div>
       </div>
@@ -130,7 +146,10 @@ export function ConfigCard() {
     try {
       const body = {
         server: { port: config.httpPort },
-        channels: { ctrl_id: config.ctrlChannelID, data_id: config.dataChannelID },
+        channels: {
+          ctrl_id: config.ctrlChannelID,
+          data_id: config.dataChannelID,
+        },
         mqtt: {
           url: config.mqttURL,
           username: config.clientID,
@@ -189,7 +208,11 @@ export function ConfigCard() {
       <CardContent>
         <div className="grid gap-4 sm:grid-cols-2">
           {field("httpPort", "HTTP Port", "Agent HTTP API port")}
-          {field("clientID", "Client ID", "Magistrala client ID (MQTT username)")}
+          {field(
+            "clientID",
+            "Client ID",
+            "Magistrala client ID (MQTT username)",
+          )}
           <SecretField
             id="clientKey"
             label="Client Key"
@@ -202,8 +225,16 @@ export function ConfigCard() {
               }))
             }
           />
-          {field("ctrlChannelID", "Control Channel ID", "Magistrala control channel ID")}
-          {field("dataChannelID", "Data Channel ID", "Magistrala data channel ID")}
+          {field(
+            "ctrlChannelID",
+            "Control Channel ID",
+            "Magistrala control channel ID",
+          )}
+          {field(
+            "dataChannelID",
+            "Data Channel ID",
+            "Magistrala data channel ID",
+          )}
           {field("mqttURL", "MQTT URL", "Magistrala MQTT broker URL")}
           {field("nodeRedURL", "Node-RED URL", "Node-RED API URL")}
           <div className="space-y-1.5">
