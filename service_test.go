@@ -751,6 +751,7 @@ func TestBsValidCacheInvalidation(t *testing.T) {
 	hbToken.On("Error").Maybe().Return(error(nil))
 	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"),
 		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(hbToken)
+	mqttClient.On("IsConnected").Maybe().Return(true)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
