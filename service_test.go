@@ -133,7 +133,7 @@ func TestSelfHeartbeatPublishesRichPayload(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+	_, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, "")
 	require.NoError(t, err)
 
 	select {
