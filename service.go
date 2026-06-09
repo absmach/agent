@@ -58,6 +58,8 @@ const (
 
 	notConfigured = "not_configured"
 	notFound      = "not_found"
+
+	senmlNameUptime = "uptime"
 )
 
 var (
@@ -906,7 +908,7 @@ func (a *agent) selfHeartbeatPayload() ([]byte, error) {
 		{BaseName: "agent:", Name: "service_type", StringValue: &svcType},
 		{Name: "heartbeat", BoolValue: &heartbeat},
 		{Name: "fw_version", StringValue: &fwVersion},
-		{Name: "uptime", Unit: "s", Value: &uptime},
+		{Name: senmlNameUptime, Unit: "s", Value: &uptime},
 		{Name: "heap_free", Unit: "By", Value: &heapFreeValue},
 		{Name: "devices", Unit: "count", Value: &deviceCountValue},
 		{Name: "connected", BoolValue: &connected},
@@ -919,7 +921,7 @@ func (a *agent) selfTelemetry(ctx context.Context, topic string, interval time.D
 		now := float64(time.Now().UnixNano()) / float64(time.Second)
 		uptime := time.Since(startTime).Seconds()
 		pack := []senml.Record{
-			{BaseName: "gw:", BaseTime: now, Name: "uptime", Unit: "s", Value: &uptime},
+			{BaseName: "gw:", BaseTime: now, Name: senmlNameUptime, Unit: "s", Value: &uptime},
 		}
 		b, err := senml.EncodeRecords(pack)
 		if err != nil {
