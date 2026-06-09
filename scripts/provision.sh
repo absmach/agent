@@ -502,12 +502,13 @@ PROFILE_ID=""
 
 PROFILE_LOOKUP=$(curl -sSL "${PROFILE_URL}?limit=100" \
   -H "Authorization: Bearer ${TOKEN}" 2>/dev/null || echo "")
-PROFILE_ID=$(echo "${PROFILE_LOOKUP}" | python3 -c "
-import sys, json
+PROFILE_ID=$(echo "${PROFILE_LOOKUP}" | PROFILE_NAME="${PROFILE_NAME}" python3 -c "
+import sys, json, os
 try:
     data = json.load(sys.stdin)
+    profile_name = os.environ['PROFILE_NAME']
     for p in data.get('profiles', []):
-        if p.get('name') == '${PROFILE_NAME}':
+        if p.get('name') == profile_name:
             print(p['id'])
             break
 except Exception:
@@ -549,11 +550,11 @@ echo "  API: ${ENROLL_URL}"
 
 ENROLL_LOOKUP=$(curl -sSL "${ENROLL_URL}?offset=0&limit=100" \
   -H "Authorization: Bearer ${TOKEN}" 2>/dev/null || echo "")
-ENROLLMENT_ID=$(echo "${ENROLL_LOOKUP}" | python3 -c "
-import sys, json
+ENROLLMENT_ID=$(echo "${ENROLL_LOOKUP}" | MG_AGENT_BOOTSTRAP_EXTERNAL_ID="${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}" python3 -c "
+import sys, json, os
 try:
     data = json.load(sys.stdin)
-    ext_id = '${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}'
+    ext_id = os.environ['MG_AGENT_BOOTSTRAP_EXTERNAL_ID']
     for c in data.get('configs', []):
         if c.get('external_id') == ext_id:
             print(c.get('id', ''))
@@ -588,11 +589,14 @@ else
     echo "  Enrollment ID: ${ENROLLMENT_ID}"
   else
     echo "  Enrollment creation returned HTTP ${ENROLL_HTTP_CODE}, checking for existing enrollment..."
-    ENROLLMENT_ID=$(echo "${ENROLL_LOOKUP}" | python3 -c "
-import sys, json
+    rm -f "${ENROLL_HEADERS}"
+    ENROLL_LOOKUP=$(curl -sSL "${ENROLL_URL}?offset=0&limit=100" \
+      -H "Authorization: Bearer ${TOKEN}" 2>/dev/null || echo "")
+    ENROLLMENT_ID=$(echo "${ENROLL_LOOKUP}" | MG_AGENT_BOOTSTRAP_EXTERNAL_ID="${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}" python3 -c "
+import sys, json, os
 try:
     data = json.load(sys.stdin)
-    ext_id = '${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}'
+    ext_id = os.environ['MG_AGENT_BOOTSTRAP_EXTERNAL_ID']
     for c in data.get('configs', []):
         if c.get('external_id') == ext_id:
             print(c.get('id', ''))
