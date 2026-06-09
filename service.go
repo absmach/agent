@@ -1138,8 +1138,10 @@ func (a *agent) applyLiveUpdate(key, val string) {
 	switch key {
 	case keyBsValid:
 		if val == "0" && a.bootstrapCachePath != "" {
-			if err := os.Remove(a.bootstrapCachePath); err != nil && !os.IsNotExist(err) {
-				a.logger.Warn("Failed to delete bootstrap cache", slog.Any("error", err))
+			if err := os.Remove(a.bootstrapCachePath); err != nil {
+				if !os.IsNotExist(err) {
+					a.logger.Warn("Failed to delete bootstrap cache", slog.Any("error", err))
+				}
 			} else {
 				a.logger.Info("Bootstrap cache invalidated")
 			}

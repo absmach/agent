@@ -85,7 +85,7 @@ func FetchAgentConfig(cfg Config, agentCfg agent.Config, logger *slog.Logger, fo
 			logger.Info("Loaded bootstrap config from cache", slog.String("path", cfg.CachePath))
 			return applyBootstrapResponse(agentCfg, br)
 		}
-		logger.Info("Bootstrap cache miss, fetching from service", slog.String("path", cfg.CachePath), slog.Any("cache_error", err))
+		logger.Info("Bootstrap cache miss, fetching from service", slog.String("path", cfg.CachePath), slog.Any("error", err))
 	}
 
 	retries, err := strconv.ParseUint(cfg.Retries, 10, 64)
@@ -265,6 +265,9 @@ func loadFromCache(path string) (bootstrapResponse, error) {
 	if br.Content == "" {
 		return bootstrapResponse{}, errors.New("cached bootstrap response has empty content")
 	}
+	if br.ClientKey == "" || br.ClientCert == "" {
+		return bootstrapResponse{}, errors.New("cached bootstrap response has empty credentials")
+	}
 	return br, nil
 }
 
@@ -281,5 +284,9 @@ func storeToCache(path string, br bootstrapResponse) error {
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
