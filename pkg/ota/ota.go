@@ -24,6 +24,12 @@ import (
 type State int
 
 const (
+	fieldURL  = "url"
+	fieldHash = "hash"
+	fieldSize = "size"
+)
+
+const (
 	StateIdle State = iota
 	StateTriggered
 	StateDownloading

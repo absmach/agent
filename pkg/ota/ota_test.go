@@ -67,14 +67,14 @@ func TestTriggerFromRecords(t *testing.T) {
 	}{
 		{
 			desc:    "url only",
-			records: []senml.Record{{Name: "url", StringValue: &urlVal}},
+			records: []senml.Record{{Name: fieldURL, StringValue: &urlVal}},
 			url:     urlVal,
 		},
 		{
 			desc: "url with hash",
 			records: []senml.Record{
-				{Name: "url", StringValue: &urlVal},
-				{Name: "hash", StringValue: &hashVal},
+				{Name: fieldURL, StringValue: &urlVal},
+				{Name: fieldHash, StringValue: &hashVal},
 			},
 			url:       urlVal,
 			sha256hex: hashVal,
@@ -82,9 +82,9 @@ func TestTriggerFromRecords(t *testing.T) {
 		{
 			desc: "url with hash and size",
 			records: []senml.Record{
-				{Name: "url", StringValue: &urlVal},
-				{Name: "hash", StringValue: &hashVal},
-				{Name: "size", Value: &sizeVal},
+				{Name: fieldURL, StringValue: &urlVal},
+				{Name: fieldHash, StringValue: &hashVal},
+				{Name: fieldSize, Value: &sizeVal},
 			},
 			url:       urlVal,
 			sha256hex: hashVal,
@@ -93,8 +93,8 @@ func TestTriggerFromRecords(t *testing.T) {
 		{
 			desc: "url with size only",
 			records: []senml.Record{
-				{Name: "url", StringValue: &urlVal},
-				{Name: "size", Value: &sizeVal},
+				{Name: fieldURL, StringValue: &urlVal},
+				{Name: fieldSize, Value: &sizeVal},
 			},
 			url:  urlVal,
 			size: 153600,
@@ -106,23 +106,23 @@ func TestTriggerFromRecords(t *testing.T) {
 		},
 		{
 			desc:    "missing url record",
-			records: []senml.Record{{Name: "hash", StringValue: &hashVal}},
+			records: []senml.Record{{Name: fieldHash, StringValue: &hashVal}},
 			wantErr: true,
 		},
 		{
 			desc:    "url record with nil value",
-			records: []senml.Record{{Name: "url", StringValue: nil}},
+			records: []senml.Record{{Name: fieldURL, StringValue: nil}},
 			wantErr: true,
 		},
 		{
 			desc:    "url record with whitespace-only value",
-			records: []senml.Record{{Name: "url", StringValue: func() *string { s := "   "; return &s }()}},
+			records: []senml.Record{{Name: fieldURL, StringValue: func() *string { s := "   "; return &s }()}},
 			wantErr: true,
 		},
 		{
 			desc: "unknown records ignored",
 			records: []senml.Record{
-				{Name: "url", StringValue: &urlVal},
+				{Name: fieldURL, StringValue: &urlVal},
 				{Name: "extra", StringValue: &hashVal},
 			},
 			url: urlVal,

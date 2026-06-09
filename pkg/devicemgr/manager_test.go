@@ -19,6 +19,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	mgFieldName        = "name"
+	mgFieldCredentials = "credentials"
+	mgFieldSecret      = "secret"
+	mgIDNotExist       = "does-not-exist"
+	mgDescMarkNotExist = "mark non-existent device returns error"
+	mgDescIfaceNotOpen = "error when interface not open"
+	mgAnyDeviceID      = "any-device-id"
+	mgErrNotOpen       = "not open"
+)
+
 // magistralaServer returns a combined httptest.Server that handles the three
 // SDK endpoints used during provisioning:
 //
@@ -45,11 +56,11 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":   "device-uuid",
-				"name": "my-device",
-				"credentials": map[string]any{
-					"identity": "ext-id",
-					"secret":   "device-secret",
+				"id":        "device-uuid",
+				mgFieldName: "my-device",
+				mgFieldCredentials: map[string]any{
+					"identity":    "ext-id",
+					mgFieldSecret: "device-secret",
 				},
 			})
 
@@ -339,7 +350,7 @@ func TestManager_Remove(t *testing.T) {
 		id   string
 	}{
 		{desc: "remove existing device", id: d.ID},
-		{desc: "remove non-existent device is a no-op", id: "does-not-exist"},
+		{desc: "remove non-existent device is a no-op", id: mgIDNotExist},
 	}
 
 	for _, tc := range cases {
@@ -445,7 +456,7 @@ func TestManager_MarkSeen(t *testing.T) {
 		wantErr bool
 	}{
 		{desc: "mark existing device as seen", id: d.ID},
-		{desc: "mark non-existent device returns error", id: "missing", wantErr: true},
+		{desc: mgDescMarkNotExist, id: "missing", wantErr: true},
 	}
 
 	for _, tc := range cases {
@@ -502,9 +513,9 @@ func TestManager_CloseIface(t *testing.T) {
 		errContains string
 	}{
 		{
-			desc:        "error when interface not open",
-			id:          "any-device-id",
-			errContains: "not open",
+			desc:        mgDescIfaceNotOpen,
+			id:          mgAnyDeviceID,
+			errContains: mgErrNotOpen,
 		},
 	}
 
