@@ -6,6 +6,7 @@ configs/config.toml
 ui/node_modules/
 ui/dist/*
 !ui/dist/.gitkeep
+!ui/dist/placeholder
 !ui/dist/assets
 ui/dist/assets/*
 !ui/dist/assets/placeholder
