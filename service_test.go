@@ -649,11 +649,11 @@ func TestConfigGetSet(t *testing.T) {
 			wantResp: "ok",
 		},
 		{
-			desc:     "get command_secret returns previously set value",
+			desc:     "get command_secret returns redacted",
 			cmd:      "get,command_secret",
 			useStore: true,
 			seed:     map[string]string{"command_secret": "my-secret-token"},
-			wantResp: "my-secret-token",
+			wantResp: "REDACTED",
 		},
 		{
 			desc:     "reset command_secret returns ok",

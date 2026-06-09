@@ -263,7 +263,7 @@ func (b *broker) handleMsg(msg mqtt.Message) {
 		return
 	}
 
-	commandSecret := b.svc.Config().CommandSecret
+	commandSecret := b.svc.CommandSecret()
 	if commandSecret != "" {
 		if !authorizeCommand(records, commandSecret) {
 			b.logger.Warn("Command rejected: invalid or missing token")

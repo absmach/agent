@@ -157,6 +157,9 @@ type Service interface {
 	// Config returns Config struct created from config file.
 	Config() Config
 
+	// CommandSecret returns the current command secret for inbound MQTT command validation.
+	CommandSecret() string
+
 	// Saves config file.
 	ServiceConfig(ctx context.Context, uuid, cmdStr string) error
 
@@ -384,7 +387,11 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 		if a.store == nil {
 			resp = notConfigured
 		} else if val, ok := a.store.Get(cmdArgs[1]); ok {
-			resp = val
+			if cmdArgs[1] == keyCommandSecret {
+				resp = "REDACTED"
+			} else {
+				resp = val
+			}
 		} else {
 			resp = notFound
 		}
@@ -788,6 +795,12 @@ func (a *agent) Config() Config {
 	return *a.config
 }
 
+func (a *agent) CommandSecret() string {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.config.CommandSecret
+}
+
 func (a *agent) Services() []Info {
 	a.svcsMu.RLock()
 	defer a.svcsMu.RUnlock()
@@ -1061,6 +1074,8 @@ func validateSettableValue(key, val string) error {
 		}
 	case keyCommandSecret:
 		// Any non-empty string is valid; empty value clears the secret.
+	default:
+		return errInvalidCommand
 	}
 	return nil
 }
@@ -1127,6 +1142,9 @@ func (a *agent) applyLiveUpdate(key, val string) {
 			default:
 			}
 		}
+	case keyCommandSecret:
+		// Secret is read from Config() on each inbound message;
+		// no live subsystem needs updating.
 	}
 }
 

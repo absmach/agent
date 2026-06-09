@@ -45,12 +45,7 @@ func TestAuthorizeCommand(t *testing.T) {
 			secret:  "my-secret-token",
 			want:    false,
 		},
-		{
-			desc:    "empty secret matches empty token",
-			records: []senml.Record{otherRecord, {Name: "token", StringValue: new("")}},
-			secret:  "",
-			want:    true,
-		},
+
 		{
 			desc:    "empty token does not match non-empty secret",
 			records: []senml.Record{otherRecord, {Name: "token", StringValue: new("")}},

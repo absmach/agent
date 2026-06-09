@@ -183,6 +183,23 @@ func (_c *Service_AddDevice_Call) RunAndReturn(run func(ctx context.Context, nam
 	return _c
 }
 
+// CommandSecret provides a mock function for the type Service
+func (_mock *Service) CommandSecret() string {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for CommandSecret")
+	}
+
+	var r0 string
+	if returnFunc, ok := ret.Get(0).(func() string); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	return r0
+}
+
 // Config provides a mock function for the type Service
 func (_mock *Service) Config() agent.Config {
 	ret := _mock.Called()
@@ -198,6 +215,33 @@ func (_mock *Service) Config() agent.Config {
 		r0 = ret.Get(0).(agent.Config)
 	}
 	return r0
+}
+
+// Service_CommandSecret_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CommandSecret'
+type Service_CommandSecret_Call struct {
+	*mock.Call
+}
+
+// CommandSecret is a helper method to define mock.On call
+func (_e *Service_Expecter) CommandSecret() *Service_CommandSecret_Call {
+	return &Service_CommandSecret_Call{Call: _e.mock.On("CommandSecret")}
+}
+
+func (_c *Service_CommandSecret_Call) Run(run func()) *Service_CommandSecret_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *Service_CommandSecret_Call) Return(secret string) *Service_CommandSecret_Call {
+	_c.Call.Return(secret)
+	return _c
+}
+
+func (_c *Service_CommandSecret_Call) RunAndReturn(run func() string) *Service_CommandSecret_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // Service_Config_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Config'

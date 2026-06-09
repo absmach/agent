@@ -103,6 +103,14 @@ func (lm *loggingMiddleware) Config() agent.Config {
 	return lm.svc.Config()
 }
 
+func (lm *loggingMiddleware) CommandSecret() string {
+	defer func(begin time.Time) {
+		lm.logger.Info("Retrieve command secret completed successfully.", slog.String("duration", time.Since(begin).String()))
+	}(time.Now())
+
+	return lm.svc.CommandSecret()
+}
+
 func (lm *loggingMiddleware) ServiceConfig(ctx context.Context, uuid, cmdStr string) (err error) {
 	defer func(begin time.Time) {
 		args := []any{
