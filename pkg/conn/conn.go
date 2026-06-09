@@ -5,6 +5,7 @@ package conn
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"log/slog"
 	"os"
@@ -262,6 +263,14 @@ func (b *broker) handleMsg(msg mqtt.Message) {
 		return
 	}
 
+	commandSecret := b.svc.Config().CommandSecret
+	if commandSecret != "" {
+		if !authorizeCommand(records, commandSecret) {
+			b.logger.Warn("Command rejected: invalid or missing token")
+			return
+		}
+	}
+
 	cmdType := records[0].Name
 
 	b.mu.RLock()
@@ -276,6 +285,18 @@ func (b *broker) handleMsg(msg mqtt.Message) {
 	if err := h(b.ctx, sm); err != nil {
 		b.logger.Warn("command handler failed", slog.String("command", cmdType), slog.Any("error", err))
 	}
+}
+
+// authorizeCommand checks whether the SenML pack contains a valid token record.
+// Returns false if the token is missing or does not match the stored secret.
+// Uses constant-time comparison to prevent timing attacks.
+func authorizeCommand(records []senml.Record, secret string) bool {
+	for _, r := range records {
+		if r.Name == "token" && r.StringValue != nil {
+			return subtle.ConstantTimeCompare([]byte(*r.StringValue), []byte(secret)) == 1
+		}
+	}
+	return false
 }
 
 // extractCmd returns the uuid and string value from the first SenML record.

@@ -37,34 +37,35 @@ import (
 )
 
 type config struct {
-	LogLevel             string `env:"MG_AGENT_LOG_LEVEL" envDefault:"info"`
-	NodeRedURL           string `env:"MG_AGENT_NODERED_URL" envDefault:"http://localhost:1880/"`
-	MqttURL              string `env:"MG_AGENT_MQTT_URL" envDefault:"localhost:1883"`
-	HTTPPort             string `env:"MG_AGENT_HTTP_PORT" envDefault:"9999"`
-	MqttSkipTLSVer       string `env:"MG_AGENT_MQTT_SKIP_TLS" envDefault:"true"`
-	MqttMTLS             string `env:"MG_AGENT_MQTT_MTLS" envDefault:"false"`
-	MqttCA               string `env:"MG_AGENT_MQTT_CA" envDefault:"ca.crt"`
-	MqttQoS              string `env:"MG_AGENT_MQTT_QOS" envDefault:"0"`
-	MqttRetain           string `env:"MG_AGENT_MQTT_RETAIN" envDefault:"false"`
-	MqttCert             string `env:"MG_AGENT_MQTT_CLIENT_CERT" envDefault:"client.cert"`
-	MqttPrivateKey       string `env:"MG_AGENT_MQTT_CLIENT_KEY" envDefault:"client.key"`
-	HeartbeatInterval    string `env:"MG_AGENT_HEARTBEAT_INTERVAL" envDefault:"10s"`
-	TermSessionTimeout   string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT" envDefault:"60s"`
-	OTAEnabled           string `env:"MG_AGENT_OTA_ENABLED" envDefault:"false"`
-	OTABinaryPath        string `env:"MG_AGENT_OTA_BINARY_PATH" envDefault:"/usr/local/bin/agent"`
-	OTADownloadDir       string `env:"MG_AGENT_OTA_DOWNLOAD_DIR" envDefault:"/tmp"`
-	BootstrapURL         string `env:"MG_AGENT_BOOTSTRAP_URL" envDefault:""`
-	BootstrapExternalID  string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_ID" envDefault:""`
-	BootstrapExternalKey string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_KEY" envDefault:""`
-	BootstrapRetries     string `env:"MG_AGENT_BOOTSTRAP_RETRIES" envDefault:"5"`
+	LogLevel             string `env:"MG_AGENT_LOG_LEVEL"                     envDefault:"info"`
+	NodeRedURL           string `env:"MG_AGENT_NODERED_URL"                   envDefault:"http://localhost:1880/"`
+	MqttURL              string `env:"MG_AGENT_MQTT_URL"                      envDefault:"localhost:1883"`
+	HTTPPort             string `env:"MG_AGENT_HTTP_PORT"                     envDefault:"9999"`
+	MqttSkipTLSVer       string `env:"MG_AGENT_MQTT_SKIP_TLS"                 envDefault:"true"`
+	MqttMTLS             string `env:"MG_AGENT_MQTT_MTLS"                     envDefault:"false"`
+	MqttCA               string `env:"MG_AGENT_MQTT_CA"                       envDefault:"ca.crt"`
+	MqttQoS              string `env:"MG_AGENT_MQTT_QOS"                      envDefault:"0"`
+	MqttRetain           string `env:"MG_AGENT_MQTT_RETAIN"                   envDefault:"false"`
+	MqttCert             string `env:"MG_AGENT_MQTT_CLIENT_CERT"              envDefault:"client.cert"`
+	MqttPrivateKey       string `env:"MG_AGENT_MQTT_CLIENT_KEY"               envDefault:"client.key"`
+	HeartbeatInterval    string `env:"MG_AGENT_HEARTBEAT_INTERVAL"            envDefault:"10s"`
+	TermSessionTimeout   string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT"      envDefault:"60s"`
+	OTAEnabled           string `env:"MG_AGENT_OTA_ENABLED"                   envDefault:"false"`
+	OTABinaryPath        string `env:"MG_AGENT_OTA_BINARY_PATH"               envDefault:"/usr/local/bin/agent"`
+	OTADownloadDir       string `env:"MG_AGENT_OTA_DOWNLOAD_DIR"              envDefault:"/tmp"`
+	BootstrapURL         string `env:"MG_AGENT_BOOTSTRAP_URL"                 envDefault:""`
+	BootstrapExternalID  string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_ID"         envDefault:""`
+	BootstrapExternalKey string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_KEY"        envDefault:""`
+	BootstrapRetries     string `env:"MG_AGENT_BOOTSTRAP_RETRIES"             envDefault:"5"`
 	BootstrapRetryDelay  string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
-	BootstrapSkipTLS     string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS" envDefault:"false"`
-	ClientsURL           string `env:"MG_AGENT_CLIENTS_URL" envDefault:""`
-	ChannelsURL          string `env:"MG_AGENT_CHANNELS_URL" envDefault:""`
-	RulesEngineURL       string `env:"MG_AGENT_RULES_ENGINE_URL" envDefault:""`
-	ProvisionToken       string `env:"MG_PAT" envDefault:""`
-	DeviceDBPath         string `env:"MG_AGENT_DEVICE_DB_PATH" envDefault:"/var/lib/agent/devices.db"`
-	ConfigPath           string `env:"MG_AGENT_CONFIG_PATH" envDefault:"agent-config.json"`
+	BootstrapSkipTLS     string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS"            envDefault:"false"`
+	ClientsURL           string `env:"MG_AGENT_CLIENTS_URL"                   envDefault:""`
+	ChannelsURL          string `env:"MG_AGENT_CHANNELS_URL"                  envDefault:""`
+	RulesEngineURL       string `env:"MG_AGENT_RULES_ENGINE_URL"              envDefault:""`
+	ProvisionToken       string `env:"MG_PAT"                                 envDefault:""`
+	DeviceDBPath         string `env:"MG_AGENT_DEVICE_DB_PATH"                envDefault:"/var/lib/agent/devices.db"`
+	ConfigPath           string `env:"MG_AGENT_CONFIG_PATH"                   envDefault:"agent-config.json"`
+	CommandSecret        string `env:"MG_AGENT_COMMAND_SECRET"                envDefault:""`
 }
 
 var (
@@ -318,6 +319,7 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 	}
 
 	c := agent.NewConfig(sc, agent.ChanConfig{}, nc, lc, mc, ch, ct, oc)
+	c.CommandSecret = cfg.CommandSecret
 	return c, nil
 }
 

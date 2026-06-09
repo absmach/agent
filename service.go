@@ -52,6 +52,7 @@ const (
 	keyLogLevel               = "log_level"
 	keyHeartbeatInterval      = "heartbeat_interval"
 	keyTerminalSessionTimeout = "terminal_session_timeout"
+	keyCommandSecret          = "command_secret"
 
 	notConfigured = "not_configured"
 	notFound      = "not_found"
@@ -1037,6 +1038,7 @@ var settableKeys = map[string]bool{
 	keyLogLevel:               true,
 	keyHeartbeatInterval:      true,
 	keyTerminalSessionTimeout: true,
+	keyCommandSecret:          true,
 }
 
 // validateSettableValue returns errInvalidCommand if val is not a valid value for key.
@@ -1057,8 +1059,8 @@ func validateSettableValue(key, val string) error {
 		if err != nil || d <= 0 {
 			return errInvalidCommand
 		}
-	default:
-		return errInvalidCommand
+	case keyCommandSecret:
+		// Any non-empty string is valid; empty value clears the secret.
 	}
 	return nil
 }
@@ -1078,6 +1080,9 @@ func (a *agent) revertToStartup(key string) {
 	case keyTerminalSessionTimeout:
 		a.config.Terminal.SessionTimeout = a.startupConfig.Terminal.SessionTimeout
 		liveVal = a.config.Terminal.SessionTimeout.String()
+	case keyCommandSecret:
+		a.config.CommandSecret = a.startupConfig.CommandSecret
+		liveVal = a.config.CommandSecret
 	}
 	a.cfgMu.Unlock()
 	if liveVal != "" {
@@ -1099,6 +1104,8 @@ func ApplyConfigEntry(cfg *Config, key, val string) {
 		if d, err := time.ParseDuration(val); err == nil && d > 0 {
 			cfg.Terminal.SessionTimeout = d
 		}
+	case keyCommandSecret:
+		cfg.CommandSecret = val
 	}
 }
 

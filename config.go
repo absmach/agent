@@ -88,16 +88,17 @@ type ProvisionConfig struct {
 }
 
 type Config struct {
-	Server    ServerConfig    `json:"server"`
-	Terminal  TerminalConfig  `json:"terminal"`
-	Heartbeat HeartbeatConfig `json:"heartbeat"`
-	Channels  ChanConfig      `json:"channels"`
-	NodeRed   NodeRedConfig   `json:"nodered"`
-	Log       LogConfig       `json:"log"`
-	MQTT      MQTTConfig      `json:"mqtt"`
-	OTA       OTAConfig       `json:"ota"`
-	Provision ProvisionConfig `json:"provision"`
-	DomainID  string          `json:"domain_id"`
+	Server        ServerConfig    `json:"server"`
+	Terminal      TerminalConfig  `json:"terminal"`
+	Heartbeat     HeartbeatConfig `json:"heartbeat"`
+	Channels      ChanConfig      `json:"channels"`
+	NodeRed       NodeRedConfig   `json:"nodered"`
+	Log           LogConfig       `json:"log"`
+	MQTT          MQTTConfig      `json:"mqtt"`
+	OTA           OTAConfig       `json:"ota"`
+	Provision     ProvisionConfig `json:"provision"`
+	DomainID      string          `json:"domain_id"`
+	CommandSecret string          `json:"-"`
 }
 
 func NewConfig(sc ServerConfig, cc ChanConfig, nc NodeRedConfig, lc LogConfig, mc MQTTConfig, hc HeartbeatConfig, tc TerminalConfig, oc OTAConfig) Config {

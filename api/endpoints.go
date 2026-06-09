@@ -15,6 +15,8 @@ import (
 	"github.com/go-kit/kit/endpoint"
 )
 
+const svcName = "agent"
+
 func pubEndpoint(svc agent.Service) endpoint.Endpoint {
 	return func(_ context.Context, request any) (any, error) {
 		req := request.(pubReq)
@@ -31,7 +33,7 @@ func pubEndpoint(svc agent.Service) endpoint.Endpoint {
 		}
 
 		return publishRes{
-			Service:  "agent",
+			Service:  svcName,
 			Response: "publish",
 		}, nil
 	}
@@ -84,7 +86,7 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 		}
 
 		return addConfigRes{
-			Service:  "agent",
+			Service:  svcName,
 			Response: "config",
 		}, nil
 	}
@@ -124,7 +126,7 @@ func nodeRedEndpoint(svc agent.Service) endpoint.Endpoint {
 		}
 
 		return nodeRedRes{
-			Service:  "agent",
+			Service:  svcName,
 			Response: resp,
 		}, nil
 	}
