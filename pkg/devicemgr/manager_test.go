@@ -56,11 +56,11 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":   "device-uuid",
+				"id":        "device-uuid",
 				testNameKey: "my-device",
 				testCredsKey: map[string]any{
-					"identity": "ext-id",
-					testSecretKey:   "device-secret",
+					"identity":    "ext-id",
+					testSecretKey: "device-secret",
 				},
 			})
 
@@ -69,7 +69,7 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":   fmt.Sprintf("channel-uuid-%d", callCount),
+				"id":        fmt.Sprintf("channel-uuid-%d", callCount),
 				testNameKey: fmt.Sprintf("channel-%d", callCount),
 			})
 
@@ -215,8 +215,8 @@ func TestManager_Add_AuthHeader(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":          "d1",
-				testNameKey:        "n",
+				"id":         "d1",
+				testNameKey:  "n",
 				testCredsKey: map[string]any{testSecretKey: "k1"},
 			})
 		},
@@ -403,8 +403,8 @@ func TestManager_List(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":          fmt.Sprintf("dev-%d", callCount),
-				testNameKey:        fmt.Sprintf("device-%d", callCount),
+				"id":         fmt.Sprintf("dev-%d", callCount),
+				testNameKey:  fmt.Sprintf("device-%d", callCount),
 				testCredsKey: map[string]any{testSecretKey: "k"},
 			})
 		},

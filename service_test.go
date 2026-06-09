@@ -48,6 +48,7 @@ const (
 	testMQTTHost          = "mqtt.example.com"
 	testLegacyTopicScript = `msg.topic = "m/old-domain/c/old-channel/data";`
 	testListCmd           = "list"
+	testDataChannel       = "data-channel"
 )
 
 func mqttTopic(channel, suffix string) string {
@@ -57,7 +58,7 @@ func mqttTopic(channel, suffix string) string {
 func testConfig() agent.Config {
 	return agent.NewConfig(
 		agent.ServerConfig{Port: "9000"},
-		agent.ChanConfig{CtrlID: testCtrlChannel, DataID: "data-channel"},
+		agent.ChanConfig{CtrlID: testCtrlChannel, DataID: testDataChannel},
 		agent.NodeRedConfig{URL: "http://nodered:1880/"},
 		agent.LogConfig{Level: testLogDebug},
 		agent.MQTTConfig{
@@ -85,7 +86,7 @@ func newServiceWithStore(t *testing.T, cfg agent.Config, store cfgstore.Store) (
 	hbToken := agentmocks.NewMQTTToken(t)
 	hbToken.On("Wait").Maybe().Return(true)
 	hbToken.On("Error").Maybe().Return(error(nil))
-	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"),
+	mqttClient.On("Publish", mqttTopic(testDataChannel, "gateway/heartbeat"),
 		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(hbToken)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -108,7 +109,7 @@ func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (
 	hbToken.On("Wait").Maybe().Return(true)
 	hbToken.On("Error").Maybe().Return(error(nil))
 	mqttClient.On("IsConnected").Maybe().Return(true)
-	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"),
+	mqttClient.On("Publish", mqttTopic(testDataChannel, "gateway/heartbeat"),
 		cfg.MQTT.QoS, mock.Anything, mock.Anything).Maybe().Return(hbToken)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -145,7 +146,7 @@ func TestSelfHeartbeatPublishesRichPayload(t *testing.T) {
 		close(published)
 	}).Return(error(nil)).Once()
 
-	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"), cfg.MQTT.QoS, false, mock.MatchedBy(func(payload interface{}) bool {
+	mqttClient.On("Publish", mqttTopic(testDataChannel, "gateway/heartbeat"), cfg.MQTT.QoS, false, mock.MatchedBy(func(payload interface{}) bool {
 		return richHeartbeatPayload(t, payload)
 	})).Return(token).Once()
 
@@ -210,9 +211,9 @@ func TestChannelConfig(t *testing.T) {
 	}{
 		{
 			desc: "use split channels",
-			cfg:  agent.ChanConfig{CtrlID: testCtrlChannel, DataID: "data-channel"},
+			cfg:  agent.ChanConfig{CtrlID: testCtrlChannel, DataID: testDataChannel},
 			ctrl: testCtrlChannel,
-			data: "data-channel",
+			data: testDataChannel,
 		},
 	}
 
@@ -1076,7 +1077,7 @@ func TestPublish(t *testing.T) {
 		{
 			desc:   "publish data message successfully",
 			topic:  "data",
-			output: mqttTopic("data-channel", "gateway/telemetry"),
+			output: mqttTopic(testDataChannel, "gateway/telemetry"),
 		},
 		{
 			desc:   "return mqtt publish error",
@@ -1174,7 +1175,7 @@ func TestPing(t *testing.T) {
 			startupToken.On("Wait").Return(true).Once()
 			startupToken.On("Error").Return(error(nil)).Once()
 			mqttClient.On("Publish",
-				mqttTopic("data-channel", "gateway/heartbeat"),
+				mqttTopic(testDataChannel, "gateway/heartbeat"),
 				cfg.MQTT.QoS, false, mock.Anything,
 			).Run(func(_ mock.Arguments) { close(startupFired) }).Return(startupToken).Once()
 
@@ -1195,7 +1196,7 @@ func TestPing(t *testing.T) {
 			pingToken.On("Wait").Return(true).Once()
 			pingToken.On("Error").Return(tc.pubErr).Once()
 			mqttClient.On("Publish",
-				mqttTopic("data-channel", "gateway/heartbeat"),
+				mqttTopic(testDataChannel, "gateway/heartbeat"),
 				cfg.MQTT.QoS, false, mock.Anything,
 			).Return(pingToken).Once()
 
@@ -1273,7 +1274,7 @@ func TestNormalizeNodeRedFlow(t *testing.T) {
 	cfg := agent.Config{
 		DomainID: domainID,
 		Channels: agent.ChanConfig{
-			DataID: "data-channel",
+			DataID: testDataChannel,
 		},
 		MQTT: agent.MQTTConfig{
 			URL:        testMQTTURL,
@@ -1329,9 +1330,9 @@ func TestNormalizeNodeRedFlow(t *testing.T) {
 			assert.Equal(t, true, broker["usetls"], fmt.Sprintf("%s: unexpected tls flag", tc.desc))
 			assert.Equal(t, agent.NodeRedTLSConfigIDForTest, broker["tls"], fmt.Sprintf("%s: unexpected tls config id", tc.desc))
 			assert.Equal(t, map[string]any{"user": "client-id", "password": "client-secret"}, broker["credentials"], fmt.Sprintf("%s: unexpected credentials", tc.desc))
-			assert.Equal(t, fmt.Sprintf(`msg.topic = "%s";`, mqttTopic("data-channel", "gateway/telemetry")), byID["fn"]["func"], fmt.Sprintf("%s: unexpected function topic", tc.desc))
+			assert.Equal(t, fmt.Sprintf(`msg.topic = "%s";`, mqttTopic(testDataChannel, "gateway/telemetry")), byID["fn"]["func"], fmt.Sprintf("%s: unexpected function topic", tc.desc))
 			assert.Equal(t, "broker-a", byID["out"]["broker"], fmt.Sprintf("%s: unexpected mqtt out broker", tc.desc))
-			assert.Equal(t, mqttTopic("data-channel", "gateway/telemetry"), byID["out"]["topic"], fmt.Sprintf("%s: unexpected mqtt out topic", tc.desc))
+			assert.Equal(t, mqttTopic(testDataChannel, "gateway/telemetry"), byID["out"]["topic"], fmt.Sprintf("%s: unexpected mqtt out topic", tc.desc))
 			assert.Contains(t, byID, agent.NodeRedTLSConfigIDForTest, fmt.Sprintf("%s: expected tls config node", tc.desc))
 		})
 	}
@@ -1486,7 +1487,7 @@ func TestGetTopic(t *testing.T) {
 		DomainID: domainID,
 		Channels: agent.ChanConfig{
 			CtrlID: testCtrlChannel,
-			DataID: "data-channel",
+			DataID: testDataChannel,
 		},
 	}
 
@@ -1503,7 +1504,7 @@ func TestGetTopic(t *testing.T) {
 		{
 			desc:  "data message",
 			topic: "data",
-			want:  mqttTopic("data-channel", "gateway/telemetry"),
+			want:  mqttTopic(testDataChannel, "gateway/telemetry"),
 		},
 		{
 			desc:  "named response",

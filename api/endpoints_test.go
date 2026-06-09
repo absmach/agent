@@ -35,6 +35,8 @@ const (
 	testCommandKey = "command"
 	testDevID1     = "dev-id-1"
 	testSvcError   = "service error"
+	testServerKey  = "server"
+	testURLKey     = "url"
 )
 
 type testRequest struct {
@@ -111,7 +113,7 @@ func TestPublish(t *testing.T) {
 			desc: "publish data",
 			req: toJSON(map[string]string{
 				testPayload: testPayload,
-				testTopic: testTopic,
+				testTopic:   testTopic,
 			}),
 			status:   http.StatusOK,
 			response: "publish",
@@ -134,7 +136,7 @@ func TestPublish(t *testing.T) {
 			desc: "publish service error",
 			req: toJSON(map[string]string{
 				testPayload: testPayload,
-				testTopic: testTopic,
+				testTopic:   testTopic,
 			}),
 			status: http.StatusInternalServerError,
 			mockSetup: func(svc *agentmocks.Service) {
@@ -282,12 +284,12 @@ func TestAddConfig(t *testing.T) {
 		{
 			desc: "add config",
 			req: toJSON(map[string]any{
-				"server":   map[string]string{testPortKey: "7777"},
-				"channels": map[string]string{"ctrl_id": "new-ctrl", "data_id": "new-data"},
-				testNodeRedKey: map[string]string{"url": "http://new-nodered:1880"},
-				"log":      map[string]string{"level": "debug"},
+				testServerKey:  map[string]string{testPortKey: "7777"},
+				"channels":     map[string]string{"ctrl_id": "new-ctrl", "data_id": "new-data"},
+				testNodeRedKey: map[string]string{testURLKey: "http://new-nodered:1880"},
+				"log":          map[string]string{"level": "debug"},
 				"mqtt": map[string]string{
-					"url":      "ssl://new-broker:8883",
+					testURLKey: "ssl://new-broker:8883",
 					"username": "new-user",
 					"password": "new-pass",
 				},
@@ -301,7 +303,7 @@ func TestAddConfig(t *testing.T) {
 		},
 		{
 			desc:   "add config malformed request",
-			req:    toJSON(map[string]any{"server": map[string]string{testPortKey: ""}}),
+			req:    toJSON(map[string]any{testServerKey: map[string]string{testPortKey: ""}}),
 			status: http.StatusBadRequest,
 			err:    agent.ErrMalformedEntity,
 		},
@@ -313,12 +315,12 @@ func TestAddConfig(t *testing.T) {
 		{
 			desc: "add config service error",
 			req: toJSON(map[string]any{
-				"server":   map[string]string{testPortKey: "7777"},
-				"channels": map[string]string{"ctrl_id": "new-ctrl", "data_id": "new-data"},
-				testNodeRedKey: map[string]string{"url": "http://new-nodered:1880"},
-				"log":      map[string]string{"level": "debug"},
+				testServerKey:  map[string]string{testPortKey: "7777"},
+				"channels":     map[string]string{"ctrl_id": "new-ctrl", "data_id": "new-data"},
+				testNodeRedKey: map[string]string{testURLKey: "http://new-nodered:1880"},
+				"log":          map[string]string{"level": "debug"},
 				"mqtt": map[string]string{
-					"url":      "ssl://new-broker:8883",
+					testURLKey: "ssl://new-broker:8883",
 					"username": "new-user",
 					"password": "new-pass",
 				},
@@ -387,11 +389,11 @@ func TestViewConfig(t *testing.T) {
 	var body map[string]any
 	err = json.NewDecoder(res.Body).Decode(&body)
 	assert.Nil(t, err)
-	assert.Equal(t, cfg.Server.Port, body["server"].(map[string]any)[testPortKey])
+	assert.Equal(t, cfg.Server.Port, body[testServerKey].(map[string]any)[testPortKey])
 	assert.Equal(t, cfg.Channels.CtrlID, body["channels"].(map[string]any)["ctrl_id"])
 	assert.Equal(t, cfg.Channels.DataID, body["channels"].(map[string]any)["data_id"])
-	assert.Equal(t, cfg.NodeRed.URL, body[testNodeRedKey].(map[string]any)["url"])
-	assert.Equal(t, cfg.MQTT.URL, body["mqtt"].(map[string]any)["url"])
+	assert.Equal(t, cfg.NodeRed.URL, body[testNodeRedKey].(map[string]any)[testURLKey])
+	assert.Equal(t, cfg.MQTT.URL, body["mqtt"].(map[string]any)[testURLKey])
 	assert.Equal(t, cfg.MQTT.Username, body["mqtt"].(map[string]any)["username"])
 	assert.Equal(t, cfg.MQTT.Password, body["mqtt"].(map[string]any)["password"])
 	assert.Equal(t, cfg.DomainID, body["domain_id"])
@@ -847,9 +849,9 @@ func TestMarkDeviceSeen(t *testing.T) {
 
 func TestOTATrigger(t *testing.T) {
 	validBody := toJSON(map[string]any{
-		"url":    "https://example.com/agent.bin",
-		"sha256": "abc123",
-		"size":   uint64(1024),
+		testURLKey: "https://example.com/agent.bin",
+		"sha256":   "abc123",
+		"size":     uint64(1024),
 	})
 
 	cases := []struct {
