@@ -36,6 +36,8 @@ const (
 	testDevID1   = "dev-id-1"
 	testSvcErr   = "service error"
 	testAgentSvc = "agent"
+	keyServer    = "server"
+	keyURL       = "url"
 )
 
 type testRequest struct {
@@ -283,12 +285,12 @@ func TestAddConfig(t *testing.T) {
 		{
 			desc: "add config",
 			req: toJSON(map[string]any{
-				"server":    map[string]string{testPort: "7777"},
+				keyServer:   map[string]string{testPort: "7777"},
 				"channels":  map[string]string{"ctrl_id": "new-ctrl", "data_id": "new-data"},
-				testNodered: map[string]string{"url": "http://new-nodered:1880"},
+				testNodered: map[string]string{keyURL: "http://new-nodered:1880"},
 				"log":       map[string]string{"level": "debug"},
 				"mqtt": map[string]string{
-					"url":      "ssl://new-broker:8883",
+					keyURL:     "ssl://new-broker:8883",
 					"username": "new-user",
 					"password": "new-pass",
 				},
@@ -302,7 +304,7 @@ func TestAddConfig(t *testing.T) {
 		},
 		{
 			desc:   "add config malformed request",
-			req:    toJSON(map[string]any{"server": map[string]string{testPort: ""}}),
+			req:    toJSON(map[string]any{keyServer: map[string]string{testPort: ""}}),
 			status: http.StatusBadRequest,
 			err:    agent.ErrMalformedEntity,
 		},
@@ -314,12 +316,12 @@ func TestAddConfig(t *testing.T) {
 		{
 			desc: "add config service error",
 			req: toJSON(map[string]any{
-				"server":    map[string]string{testPort: "7777"},
+				keyServer:   map[string]string{testPort: "7777"},
 				"channels":  map[string]string{"ctrl_id": "new-ctrl", "data_id": "new-data"},
-				testNodered: map[string]string{"url": "http://new-nodered:1880"},
+				testNodered: map[string]string{keyURL: "http://new-nodered:1880"},
 				"log":       map[string]string{"level": "debug"},
 				"mqtt": map[string]string{
-					"url":      "ssl://new-broker:8883",
+					keyURL:     "ssl://new-broker:8883",
 					"username": "new-user",
 					"password": "new-pass",
 				},
@@ -388,11 +390,11 @@ func TestViewConfig(t *testing.T) {
 	var body map[string]any
 	err = json.NewDecoder(res.Body).Decode(&body)
 	assert.Nil(t, err)
-	assert.Equal(t, cfg.Server.Port, body["server"].(map[string]any)[testPort])
+	assert.Equal(t, cfg.Server.Port, body[keyServer].(map[string]any)[testPort])
 	assert.Equal(t, cfg.Channels.CtrlID, body["channels"].(map[string]any)["ctrl_id"])
 	assert.Equal(t, cfg.Channels.DataID, body["channels"].(map[string]any)["data_id"])
-	assert.Equal(t, cfg.NodeRed.URL, body[testNodered].(map[string]any)["url"])
-	assert.Equal(t, cfg.MQTT.URL, body["mqtt"].(map[string]any)["url"])
+	assert.Equal(t, cfg.NodeRed.URL, body[testNodered].(map[string]any)[keyURL])
+	assert.Equal(t, cfg.MQTT.URL, body["mqtt"].(map[string]any)[keyURL])
 	assert.Equal(t, cfg.MQTT.Username, body["mqtt"].(map[string]any)["username"])
 	assert.Equal(t, cfg.MQTT.Password, body["mqtt"].(map[string]any)["password"])
 	assert.Equal(t, cfg.DomainID, body["domain_id"])
@@ -848,7 +850,7 @@ func TestMarkDeviceSeen(t *testing.T) {
 
 func TestOTATrigger(t *testing.T) {
 	validBody := toJSON(map[string]any{
-		"url":    "https://example.com/agent.bin",
+		keyURL:   "https://example.com/agent.bin",
 		"sha256": "abc123",
 		"size":   uint64(1024),
 	})

@@ -69,8 +69,8 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":   fmt.Sprintf("channel-uuid-%d", callCount),
-				"name": fmt.Sprintf("channel-%d", callCount),
+				"id":        fmt.Sprintf("channel-uuid-%d", callCount),
+				mgFieldName: fmt.Sprintf("channel-%d", callCount),
 			})
 
 		case strings.HasSuffix(r.URL.Path, "/connect") && r.Method == http.MethodPost:
@@ -216,7 +216,7 @@ func TestManager_Add_AuthHeader(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id":          "d1",
-				"name":        "n",
+				mgFieldName:   "n",
 				"credentials": map[string]any{"secret": "k1"},
 			})
 		},
@@ -404,7 +404,7 @@ func TestManager_List(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id":          fmt.Sprintf("dev-%d", callCount),
-				"name":        fmt.Sprintf("device-%d", callCount),
+				mgFieldName:   fmt.Sprintf("device-%d", callCount),
 				"credentials": map[string]any{"secret": "k"},
 			})
 		},
@@ -538,7 +538,7 @@ func TestManager_ReadIface(t *testing.T) {
 	}{
 		{
 			desc:        "error when interface not open",
-			id:          "any-device-id",
+			id:          mgAnyDeviceID,
 			n:           4,
 			errContains: "not open",
 		},
@@ -563,13 +563,13 @@ func TestManager_WriteIface(t *testing.T) {
 	}{
 		{
 			desc:        "error when interface not open",
-			id:          "any-device-id",
+			id:          mgAnyDeviceID,
 			hexData:     "deadbeef",
 			errContains: "not open",
 		},
 		{
 			desc:    "error on invalid hex data",
-			id:      "any-device-id",
+			id:      mgAnyDeviceID,
 			hexData: "zzzz",
 		},
 	}
