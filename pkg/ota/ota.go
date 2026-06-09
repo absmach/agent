@@ -31,6 +31,12 @@ const (
 	StateRestarting
 )
 
+const (
+	fieldURL  = "url"
+	fieldHash = "hash"
+	fieldSize = "size"
+)
+
 func (s State) String() string {
 	switch s {
 	case StateIdle:
@@ -67,11 +73,6 @@ type Trigger struct {
 	Size      uint64 // expected byte count, 0 means no size check
 }
 
-const (
-	otaFieldName = "url"
-	otaFieldHash = "hash"
-	otaFieldSize = "size"
-)
 
 // TriggerFromRecords parses OTA trigger fields from the SenML records that
 // follow the dispatch record. The full wire format (all records in the pack) is:
@@ -86,16 +87,16 @@ func TriggerFromRecords(records []senml.Record) (Trigger, error) {
 	var t Trigger
 	for _, r := range records {
 		switch r.Name {
-		case otaFieldName:
+		case fieldURL:
 			if r.StringValue == nil || strings.TrimSpace(*r.StringValue) == "" {
 				return Trigger{}, fmt.Errorf("ota trigger: url record has no value")
 			}
 			t.URL = strings.TrimSpace(*r.StringValue)
-		case otaFieldHash:
+		case fieldHash:
 			if r.StringValue != nil {
 				t.SHA256Hex = *r.StringValue
 			}
-		case otaFieldSize:
+		case fieldSize:
 			if r.Value != nil {
 				t.Size = uint64(*r.Value)
 			}

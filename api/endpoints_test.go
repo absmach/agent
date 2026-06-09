@@ -25,7 +25,17 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-const contentType = "application/json"
+const (
+	contentType    = "application/json"
+	testPayload    = "payload"
+	testTopic      = "topic"
+	testBaseName   = "device:"
+	testPortKey    = "port"
+	testNodeRedKey = "nodered"
+	testCommandKey = "command"
+	testDevID1     = "dev-id-1"
+	testSvcError   = "service error"
+)
 
 type testRequest struct {
 	client      *http.Client
@@ -100,18 +110,18 @@ func TestPublish(t *testing.T) {
 		{
 			desc: "publish data",
 			req: toJSON(map[string]string{
-				"payload": "payload",
-				"topic":   "topic",
+				testPayload: testPayload,
+				testTopic: testTopic,
 			}),
 			status:   http.StatusOK,
 			response: "publish",
 			mockSetup: func(svc *agentmocks.Service) {
-				svc.On("Publish", "topic", "payload").Return(nil)
+				svc.On("Publish", testTopic, testPayload).Return(nil)
 			},
 		},
 		{
 			desc:   "publish malformed request",
-			req:    toJSON(map[string]string{"payload": "payload"}),
+			req:    toJSON(map[string]string{testPayload: testPayload}),
 			status: http.StatusBadRequest,
 			err:    agent.ErrMalformedEntity,
 		},
@@ -123,12 +133,12 @@ func TestPublish(t *testing.T) {
 		{
 			desc: "publish service error",
 			req: toJSON(map[string]string{
-				"payload": "payload",
-				"topic":   "topic",
+				testPayload: testPayload,
+				testTopic: testTopic,
 			}),
 			status: http.StatusInternalServerError,
 			mockSetup: func(svc *agentmocks.Service) {
-				svc.On("Publish", "topic", "payload").Return(svcErr)
+				svc.On("Publish", testTopic, testPayload).Return(svcErr)
 			},
 			err: svcErr,
 		},
@@ -182,7 +192,7 @@ func TestExec(t *testing.T) {
 		{
 			desc: "execute command",
 			req: toJSON(map[string]string{
-				"bn": "device:",
+				"bn": testBaseName,
 				"n":  "exec",
 				"vs": "ls",
 			}),
@@ -194,7 +204,7 @@ func TestExec(t *testing.T) {
 		},
 		{
 			desc:   "execute malformed request",
-			req:    toJSON(map[string]string{"bn": "device:", "n": "wrong", "vs": "ls"}),
+			req:    toJSON(map[string]string{"bn": testBaseName, "n": "wrong", "vs": "ls"}),
 			status: http.StatusBadRequest,
 			err:    agent.ErrMalformedEntity,
 		},
@@ -206,7 +216,7 @@ func TestExec(t *testing.T) {
 		{
 			desc: "execute service error",
 			req: toJSON(map[string]string{
-				"bn": "device:",
+				"bn": testBaseName,
 				"n":  "exec",
 				"vs": "ls",
 			}),
@@ -250,7 +260,7 @@ func TestExec(t *testing.T) {
 			}
 			err = json.NewDecoder(res.Body).Decode(&body)
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error while decoding response body: %s", tc.desc, err))
-			assert.Equal(t, "device:", body.BaseName)
+			assert.Equal(t, testBaseName, body.BaseName)
 			assert.Equal(t, "exec", body.Name)
 			assert.Equal(t, tc.response, body.Value)
 		})
@@ -272,9 +282,9 @@ func TestAddConfig(t *testing.T) {
 		{
 			desc: "add config",
 			req: toJSON(map[string]any{
-				"server":   map[string]string{"port": "7777"},
+				"server":   map[string]string{testPortKey: "7777"},
 				"channels": map[string]string{"ctrl_id": "new-ctrl", "data_id": "new-data"},
-				"nodered":  map[string]string{"url": "http://new-nodered:1880"},
+				testNodeRedKey: map[string]string{"url": "http://new-nodered:1880"},
 				"log":      map[string]string{"level": "debug"},
 				"mqtt": map[string]string{
 					"url":      "ssl://new-broker:8883",
@@ -291,7 +301,7 @@ func TestAddConfig(t *testing.T) {
 		},
 		{
 			desc:   "add config malformed request",
-			req:    toJSON(map[string]any{"server": map[string]string{"port": ""}}),
+			req:    toJSON(map[string]any{"server": map[string]string{testPortKey: ""}}),
 			status: http.StatusBadRequest,
 			err:    agent.ErrMalformedEntity,
 		},
@@ -303,9 +313,9 @@ func TestAddConfig(t *testing.T) {
 		{
 			desc: "add config service error",
 			req: toJSON(map[string]any{
-				"server":   map[string]string{"port": "7777"},
+				"server":   map[string]string{testPortKey: "7777"},
 				"channels": map[string]string{"ctrl_id": "new-ctrl", "data_id": "new-data"},
-				"nodered":  map[string]string{"url": "http://new-nodered:1880"},
+				testNodeRedKey: map[string]string{"url": "http://new-nodered:1880"},
 				"log":      map[string]string{"level": "debug"},
 				"mqtt": map[string]string{
 					"url":      "ssl://new-broker:8883",
@@ -377,10 +387,10 @@ func TestViewConfig(t *testing.T) {
 	var body map[string]any
 	err = json.NewDecoder(res.Body).Decode(&body)
 	assert.Nil(t, err)
-	assert.Equal(t, cfg.Server.Port, body["server"].(map[string]any)["port"])
+	assert.Equal(t, cfg.Server.Port, body["server"].(map[string]any)[testPortKey])
 	assert.Equal(t, cfg.Channels.CtrlID, body["channels"].(map[string]any)["ctrl_id"])
 	assert.Equal(t, cfg.Channels.DataID, body["channels"].(map[string]any)["data_id"])
-	assert.Equal(t, cfg.NodeRed.URL, body["nodered"].(map[string]any)["url"])
+	assert.Equal(t, cfg.NodeRed.URL, body[testNodeRedKey].(map[string]any)["url"])
 	assert.Equal(t, cfg.MQTT.URL, body["mqtt"].(map[string]any)["url"])
 	assert.Equal(t, cfg.MQTT.Username, body["mqtt"].(map[string]any)["username"])
 	assert.Equal(t, cfg.MQTT.Password, body["mqtt"].(map[string]any)["password"])
@@ -391,7 +401,7 @@ func TestViewServices(t *testing.T) {
 	ts, svc := newAgentServer(t)
 	defer ts.Close()
 
-	services := []agent.Info{{Name: "nodered", Status: "online", Type: "service"}}
+	services := []agent.Info{{Name: testNodeRedKey, Status: "online", Type: "service"}}
 
 	svc.On("Services").Return(services)
 
@@ -424,7 +434,7 @@ func TestNodeRed(t *testing.T) {
 	}{
 		{
 			desc:   "nodered ping",
-			req:    toJSON(map[string]string{"command": "nodered-ping"}),
+			req:    toJSON(map[string]string{testCommandKey: "nodered-ping"}),
 			status: http.StatusOK,
 			mockSetup: func(svc *agentmocks.Service) {
 				svc.On("NodeRed", "nodered-ping").Return("pong", nil)
@@ -433,7 +443,7 @@ func TestNodeRed(t *testing.T) {
 		},
 		{
 			desc:   "nodered deploy",
-			req:    toJSON(map[string]string{"command": "nodered-deploy", "flows": "W10="}),
+			req:    toJSON(map[string]string{testCommandKey: "nodered-deploy", "flows": "W10="}),
 			status: http.StatusOK,
 			mockSetup: func(svc *agentmocks.Service) {
 				svc.On("NodeRed", "nodered-deploy,W10=").Return("deployed", nil)
@@ -442,7 +452,7 @@ func TestNodeRed(t *testing.T) {
 		},
 		{
 			desc:   "nodered malformed request",
-			req:    toJSON(map[string]string{"command": ""}),
+			req:    toJSON(map[string]string{testCommandKey: ""}),
 			status: http.StatusBadRequest,
 			err:    agent.ErrMalformedEntity,
 		},
@@ -453,7 +463,7 @@ func TestNodeRed(t *testing.T) {
 		},
 		{
 			desc:   "nodered conflict",
-			req:    toJSON(map[string]string{"command": "nodered-add-flow", "flows": "W10="}),
+			req:    toJSON(map[string]string{testCommandKey: "nodered-add-flow", "flows": "W10="}),
 			status: http.StatusConflict,
 			mockSetup: func(svc *agentmocks.Service) {
 				svc.On("NodeRed", "nodered-add-flow,W10=").Return("", mgerrors.Wrap(nodered.ErrFlowConflict, mgerrors.New("duplicate id")))
@@ -462,7 +472,7 @@ func TestNodeRed(t *testing.T) {
 		},
 		{
 			desc:   "nodered service error",
-			req:    toJSON(map[string]string{"command": "nodered-ping"}),
+			req:    toJSON(map[string]string{testCommandKey: "nodered-ping"}),
 			status: http.StatusInternalServerError,
 			mockSetup: func(svc *agentmocks.Service) {
 				svc.On("NodeRed", "nodered-ping").Return("", svcErr)
@@ -566,7 +576,7 @@ func TestMiscRoutes(t *testing.T) {
 func TestListDevices(t *testing.T) {
 	svcErr := mgerrors.New("list failed")
 	dev := devicemgr.Device{
-		ID:            "dev-id-1",
+		ID:            testDevID1,
 		Name:          "sensor-a",
 		InterfaceType: iface.InterfaceBLE,
 		InterfaceAddr: "AA:BB:CC:DD:EE:FF",
@@ -593,7 +603,7 @@ func TestListDevices(t *testing.T) {
 			},
 		},
 		{
-			desc:   "service error",
+			desc:   testSvcError,
 			status: http.StatusInternalServerError,
 			mockSetup: func(svc *agentmocks.Service) {
 				svc.On("ListDevices").Return([]devicemgr.Device(nil), svcErr)
@@ -622,7 +632,7 @@ func TestListDevices(t *testing.T) {
 
 func TestGetDevice(t *testing.T) {
 	svcErr := mgerrors.New("not found")
-	dev := devicemgr.Device{ID: "dev-id-1", Name: "sensor-a"}
+	dev := devicemgr.Device{ID: testDevID1, Name: "sensor-a"}
 
 	cases := []struct {
 		desc      string
@@ -632,10 +642,10 @@ func TestGetDevice(t *testing.T) {
 	}{
 		{
 			desc:   "get existing device",
-			id:     "dev-id-1",
+			id:     testDevID1,
 			status: http.StatusOK,
 			mockSetup: func(svc *agentmocks.Service) {
-				svc.On("GetDevice", "dev-id-1").Return(dev, nil)
+				svc.On("GetDevice", testDevID1).Return(dev, nil)
 			},
 		},
 		{
@@ -712,7 +722,7 @@ func TestAddDevice(t *testing.T) {
 			mockSetup: func(_ *agentmocks.Service) {},
 		},
 		{
-			desc:   "service error",
+			desc:   testSvcError,
 			body:   validBody,
 			status: http.StatusInternalServerError,
 			mockSetup: func(svc *agentmocks.Service) {
@@ -754,14 +764,14 @@ func TestRemoveDevice(t *testing.T) {
 	}{
 		{
 			desc:   "remove existing device",
-			id:     "dev-id-1",
+			id:     testDevID1,
 			status: http.StatusNoContent,
 			mockSetup: func(svc *agentmocks.Service) {
-				svc.On("RemoveDevice", "dev-id-1").Return(nil)
+				svc.On("RemoveDevice", testDevID1).Return(nil)
 			},
 		},
 		{
-			desc:   "service error",
+			desc:   testSvcError,
 			id:     "bad-id",
 			status: http.StatusInternalServerError,
 			mockSetup: func(svc *agentmocks.Service) {
@@ -800,14 +810,14 @@ func TestMarkDeviceSeen(t *testing.T) {
 	}{
 		{
 			desc:   "mark existing device seen",
-			id:     "dev-id-1",
+			id:     testDevID1,
 			status: http.StatusNoContent,
 			mockSetup: func(svc *agentmocks.Service) {
-				svc.On("MarkDeviceSeen", "dev-id-1").Return(nil)
+				svc.On("MarkDeviceSeen", testDevID1).Return(nil)
 			},
 		},
 		{
-			desc:   "service error",
+			desc:   testSvcError,
 			id:     "bad-id",
 			status: http.StatusInternalServerError,
 			mockSetup: func(svc *agentmocks.Service) {
