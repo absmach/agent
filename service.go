@@ -916,7 +916,7 @@ func (a *agent) selfHeartbeatPayload() ([]byte, error) {
 
 func (a *agent) selfTelemetry(ctx context.Context, topic string, interval time.Duration, qos byte) {
 	publish := func() {
-		now := float64(time.Now().UnixNano())
+		now := float64(time.Now().UnixNano()) / float64(time.Second)
 		uptime := time.Since(startTime).Seconds()
 		pack := []senml.Record{
 			{BaseName: "gw:", BaseTime: now, Name: "uptime", Unit: "s", Value: &uptime},
@@ -932,14 +932,45 @@ func (a *agent) selfTelemetry(ctx context.Context, topic string, interval time.D
 			a.logger.Warn("self-telemetry publish failed", slog.Any("error", err))
 		}
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+
+	var ticker *time.Ticker
+	var tickerCh <-chan time.Time
+
+	stopTicker := func() {
+		if ticker != nil {
+			ticker.Stop()
+			ticker = nil
+			tickerCh = nil
+		}
+	}
+
+	startTicker := func(d time.Duration) {
+		stopTicker()
+		ticker = time.NewTicker(d)
+		tickerCh = ticker.C
+	}
+
+	if interval > 0 {
+		startTicker(interval)
+		publish()
+	}
+	defer stopTicker()
+
 	for {
 		select {
-		case <-ticker.C:
+		case <-tickerCh:
 			publish()
 		case d := <-a.telemetryIntervalCh:
-			ticker.Reset(d)
+			if d > 0 {
+				if ticker == nil {
+					startTicker(d)
+					publish()
+				} else {
+					ticker.Reset(d)
+				}
+			} else {
+				stopTicker()
+			}
 		case <-ctx.Done():
 			return
 		}
@@ -1222,7 +1253,7 @@ func (a *agent) applyLiveUpdate(key, val string) {
 			}
 		}
 	case keyTelemetryInterval:
-		if d, err := time.ParseDuration(val); err == nil && d > 0 {
+		if d, err := time.ParseDuration(val); err == nil {
 			select {
 			case a.telemetryIntervalCh <- d:
 			default:
