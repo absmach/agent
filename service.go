@@ -27,9 +27,9 @@ import (
 	"github.com/absmach/agent/pkg/iface"
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/ota"
-	"github.com/absmach/agent/pkg/senml"
 	"github.com/absmach/agent/pkg/terminal"
 	"github.com/absmach/magistrala/pkg/errors"
+	"github.com/absmach/senml"
 	paho "github.com/eclipse/paho.mqtt.golang"
 	toml "github.com/pelletier/go-toml"
 )
@@ -410,54 +410,51 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 			return errInvalidCommand
 		}
 		key := cmdArgs[1]
-		switch {
-		case credentialKeys[key]:
+		if credentialKeys[key] {
 			resp = notAllowed
-		case !settableKeys[key]:
+		} else if !settableKeys[key] {
 			resp = notFound
-		case a.store == nil:
+		} else if a.store == nil {
 			resp = notConfigured
-		default:
-			if val, ok := a.store.Get(key); ok {
-				resp = val
-			} else {
-				resp = notFound
-			}
+		} else if val, ok := a.store.Get(key); ok {
+			resp = val
+		} else {
+			resp = notFound
 		}
 	case "set":
 		if len(cmdArgs) < 3 || cmdArgs[1] == "" || cmdArgs[2] == "" {
 			return errInvalidCommand
 		}
 		key, val := cmdArgs[1], cmdArgs[2]
-		switch {
-		case !settableKeys[key]:
+		if !settableKeys[key] {
 			resp = notFound
-		case a.store == nil:
-			resp = notConfigured
-		default:
+		} else {
 			if err := validateSettableValue(key, val); err != nil {
 				return err
 			}
-			if err := a.store.Set(key, val); err != nil {
-				return err
+			if a.store == nil {
+				resp = notConfigured
+			} else {
+				if err := a.store.Set(key, val); err != nil {
+					return err
+				}
+				a.cfgMu.Lock()
+				ApplyConfigEntry(a.config, key, val)
+				a.cfgMu.Unlock()
+				a.applyLiveUpdate(key, val)
+				resp = "ok"
 			}
-			a.cfgMu.Lock()
-			ApplyConfigEntry(a.config, key, val)
-			a.cfgMu.Unlock()
-			a.applyLiveUpdate(key, val)
-			resp = "ok"
 		}
 	case "reset":
 		if len(cmdArgs) < 2 || cmdArgs[1] == "" {
 			return errInvalidCommand
 		}
 		key := cmdArgs[1]
-		switch {
-		case !settableKeys[key]:
+		if !settableKeys[key] {
 			resp = notFound
-		case a.store == nil:
+		} else if a.store == nil {
 			resp = notConfigured
-		default:
+		} else {
 			if err := a.store.Remove(key); err != nil {
 				return err
 			}
