@@ -57,6 +57,8 @@ linters:
       template: |-
         Copyright (c) Abstract Machines
         SPDX-License-Identifier: Apache-2.0
+    goconst:
+      ignore-tests: true
     misspell:
       ignore-rules:
         - mosquitto

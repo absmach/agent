@@ -307,13 +307,13 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 		skipTLSVer = true
 	}
 
-	qos, err := strconv.Atoi(cfg.MqttQoS)
-	if err != nil {
+	qos, err := strconv.ParseUint(cfg.MqttQoS, 10, 8)
+	if err != nil || qos > 2 {
 		qos = 0
 	}
 
-	cmdQoS, err := strconv.Atoi(cfg.MqttCmdQoS)
-	if err != nil {
+	cmdQoS, err := strconv.ParseUint(cfg.MqttCmdQoS, 10, 8)
+	if err != nil || cmdQoS > 2 {
 		cmdQoS = 1
 	}
 
