@@ -6,6 +6,9 @@ configs/config.toml
 ui/node_modules/
 ui/dist/*
 !ui/dist/.gitkeep
+!ui/dist/assets
+ui/dist/assets/*
+!ui/dist/assets/placeholder
 ui/.env.local
 ui/tsconfig.tsbuildinfo
 
