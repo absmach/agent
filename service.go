@@ -1211,6 +1211,10 @@ func (a *agent) revertToStartup(key string) {
 
 // ApplyConfigEntry updates cfg in place for the known settable keys.
 // Used at startup to replay persisted overrides before the agent starts.
+//
+// Keys for bootstrap-derived fields (domain_id, channels_*, mqtt_*) are
+// applied at startup only. They are not included in settableKeys and
+// cannot be modified via runtime MQTT set commands.
 func ApplyConfigEntry(cfg *Config, key, val string) {
 	switch key {
 	case keyLogLevel:

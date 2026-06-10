@@ -129,7 +129,7 @@ func main() {
 				exitCode = 1
 				return
 			}
-			persistBootstrapFields(store, cfg)
+			persistBootstrapFields(store, cfg, logger)
 			if err := store.Set("bs_valid", "1"); err != nil {
 				logger.Warn("Failed to persist bs_valid flag", slog.Any("error", err))
 			}
@@ -283,19 +283,44 @@ func hasBootstrapCredentials(cfg agent.Config) bool {
 	if cfg.MQTT.URL == "" {
 		return false
 	}
-	if !cfg.MQTT.MTLS && (cfg.MQTT.Username == "" || cfg.MQTT.Password == "") {
+	if cfg.MQTT.MTLS {
+		if cfg.MQTT.ClientCert == "" || cfg.MQTT.ClientKey == "" {
+			if cfg.MQTT.CertPath == "" || cfg.MQTT.PrivKeyPath == "" {
+				return false
+			}
+		}
+	} else if cfg.MQTT.Username == "" || cfg.MQTT.Password == "" {
 		return false
 	}
 	return true
 }
 
-func persistBootstrapFields(store pkgconfig.Store, cfg agent.Config) {
-	_ = store.Set("domain_id", cfg.DomainID)
-	_ = store.Set("channels_ctrl_id", cfg.Channels.CtrlID)
-	_ = store.Set("channels_data_id", cfg.Channels.DataID)
-	_ = store.Set("mqtt_url", cfg.MQTT.URL)
-	_ = store.Set("mqtt_username", cfg.MQTT.Username)
-	_ = store.Set("mqtt_password", cfg.MQTT.Password)
+// persistBootstrapFields writes the critical bootstrap-derived fields to the
+// persistent config store so they survive agent restarts and allow the
+// bootstrap HTTP fetch to be skipped on subsequent runs.
+//
+// The MQTT password is stored in plaintext in agent-config.json. The file is
+// created with 0o600 permissions (owner read/write only) and the password is
+// needed to reconnect when mTLS is not in use.
+func persistBootstrapFields(store pkgconfig.Store, cfg agent.Config, logger *slog.Logger) {
+	if err := store.Set("domain_id", cfg.DomainID); err != nil {
+		logger.Warn("Failed to persist domain_id", slog.Any("error", err))
+	}
+	if err := store.Set("channels_ctrl_id", cfg.Channels.CtrlID); err != nil {
+		logger.Warn("Failed to persist channels_ctrl_id", slog.Any("error", err))
+	}
+	if err := store.Set("channels_data_id", cfg.Channels.DataID); err != nil {
+		logger.Warn("Failed to persist channels_data_id", slog.Any("error", err))
+	}
+	if err := store.Set("mqtt_url", cfg.MQTT.URL); err != nil {
+		logger.Warn("Failed to persist mqtt_url", slog.Any("error", err))
+	}
+	if err := store.Set("mqtt_username", cfg.MQTT.Username); err != nil {
+		logger.Warn("Failed to persist mqtt_username", slog.Any("error", err))
+	}
+	if err := store.Set("mqtt_password", cfg.MQTT.Password); err != nil {
+		logger.Warn("Failed to persist mqtt_password", slog.Any("error", err))
+	}
 }
 
 func loadEnvConfig(cfg config) (agent.Config, error) {
