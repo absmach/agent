@@ -26,6 +26,7 @@ func TestApplyBootstrapResponse(t *testing.T) {
 		agent.HeartbeatConfig{Interval: time.Second},
 		agent.TerminalConfig{SessionTimeout: time.Minute},
 		agent.OTAConfig{},
+		agent.TelemetryConfig{},
 	)
 
 	cases := []struct {

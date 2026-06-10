@@ -69,6 +69,10 @@ type HeartbeatConfig struct {
 	Interval time.Duration
 }
 
+type TelemetryConfig struct {
+	Interval time.Duration `json:"interval"`
+}
+
 type TerminalConfig struct {
 	SessionTimeout time.Duration `json:"session_timeout"`
 }
@@ -92,6 +96,7 @@ type Config struct {
 	Server        ServerConfig    `json:"server"`
 	Terminal      TerminalConfig  `json:"terminal"`
 	Heartbeat     HeartbeatConfig `json:"heartbeat"`
+	Telemetry     TelemetryConfig `json:"telemetry"`
 	Channels      ChanConfig      `json:"channels"`
 	NodeRed       NodeRedConfig   `json:"nodered"`
 	Log           LogConfig       `json:"log"`
@@ -102,7 +107,7 @@ type Config struct {
 	CommandSecret string          `json:"-"`
 }
 
-func NewConfig(sc ServerConfig, cc ChanConfig, nc NodeRedConfig, lc LogConfig, mc MQTTConfig, hc HeartbeatConfig, tc TerminalConfig, oc OTAConfig) Config {
+func NewConfig(sc ServerConfig, cc ChanConfig, nc NodeRedConfig, lc LogConfig, mc MQTTConfig, hc HeartbeatConfig, tc TerminalConfig, oc OTAConfig, tlc TelemetryConfig) Config {
 	return Config{
 		Server:    sc,
 		Channels:  cc,
@@ -112,6 +117,7 @@ func NewConfig(sc ServerConfig, cc ChanConfig, nc NodeRedConfig, lc LogConfig, m
 		Heartbeat: hc,
 		Terminal:  tc,
 		OTA:       oc,
+		Telemetry: tlc,
 	}
 }
 
@@ -158,6 +164,32 @@ func (d *TerminalConfig) UnmarshalJSON(b []byte) error {
 	case string:
 		var err error
 		d.SessionTimeout, err = time.ParseDuration(value)
+		if err != nil {
+			return err
+		}
+		return nil
+	default:
+		return errors.New("invalid duration")
+	}
+}
+
+// UnmarshalJSON parses the duration from JSON.
+func (d *TelemetryConfig) UnmarshalJSON(b []byte) error {
+	var v map[string]any
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	interval, ok := v["interval"]
+	if !ok {
+		return errors.New("missing value")
+	}
+	switch value := interval.(type) {
+	case float64:
+		d.Interval = time.Duration(value)
+		return nil
+	case string:
+		var err error
+		d.Interval, err = time.ParseDuration(value)
 		if err != nil {
 			return err
 		}

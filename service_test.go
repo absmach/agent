@@ -54,6 +54,7 @@ func testConfig() agent.Config {
 		agent.HeartbeatConfig{Interval: time.Hour},
 		agent.TerminalConfig{SessionTimeout: time.Minute},
 		agent.OTAConfig{Enabled: false, BinaryPath: "/usr/local/bin/agent", DownloadDir: "/tmp"},
+		agent.TelemetryConfig{Interval: 0},
 	)
 }
 
@@ -212,43 +213,68 @@ func TestDurationConfigUnmarshalJSON(t *testing.T) {
 		body      string
 		heartbeat time.Duration
 		terminal  time.Duration
+		telemetry time.Duration
 		err       bool
 	}{
 		{
 			desc:      "parse string durations",
-			body:      `{"heartbeat":{"interval":"2s"},"terminal":{"session_timeout":"3s"}}`,
+			body:      `{"heartbeat":{"interval":"2s"},"terminal":{"session_timeout":"3s"},"telemetry":{"interval":"5s"}}`,
 			heartbeat: 2 * time.Second,
 			terminal:  3 * time.Second,
+			telemetry: 5 * time.Second,
 		},
 		{
 			desc:      "parse numeric durations",
-			body:      `{"heartbeat":{"interval":5000000000},"terminal":{"session_timeout":7000000000}}`,
+			body:      `{"heartbeat":{"interval":5000000000},"terminal":{"session_timeout":7000000000},"telemetry":{"interval":10000000000}}`,
 			heartbeat: 5 * time.Second,
 			terminal:  7 * time.Second,
+			telemetry: 10 * time.Second,
+		},
+		{
+			desc:      "parse zero telemetry interval",
+			body:      `{"heartbeat":{"interval":"2s"},"terminal":{"session_timeout":"3s"},"telemetry":{"interval":"0s"}}`,
+			heartbeat: 2 * time.Second,
+			terminal:  3 * time.Second,
+			telemetry: 0,
 		},
 		{
 			desc: "reject missing heartbeat duration",
-			body: `{"heartbeat":{},"terminal":{"session_timeout":"3s"}}`,
+			body: `{"heartbeat":{},"terminal":{"session_timeout":"3s"},"telemetry":{"interval":"5s"}}`,
 			err:  true,
 		},
 		{
 			desc: "reject invalid heartbeat duration",
-			body: `{"heartbeat":{"interval":"soon"},"terminal":{"session_timeout":"3s"}}`,
+			body: `{"heartbeat":{"interval":"soon"},"terminal":{"session_timeout":"3s"},"telemetry":{"interval":"5s"}}`,
 			err:  true,
 		},
 		{
 			desc: "reject invalid heartbeat type",
-			body: `{"heartbeat":{"interval":true},"terminal":{"session_timeout":"3s"}}`,
+			body: `{"heartbeat":{"interval":true},"terminal":{"session_timeout":"3s"},"telemetry":{"interval":"5s"}}`,
 			err:  true,
 		},
 		{
 			desc: "reject missing terminal duration",
-			body: `{"heartbeat":{"interval":"2s"},"terminal":{}}`,
+			body: `{"heartbeat":{"interval":"2s"},"terminal":{},"telemetry":{"interval":"5s"}}`,
 			err:  true,
 		},
 		{
 			desc: "reject invalid terminal duration",
-			body: `{"heartbeat":{"interval":"2s"},"terminal":{"session_timeout":true}}`,
+			body: `{"heartbeat":{"interval":"2s"},"terminal":{"session_timeout":true},"telemetry":{"interval":"5s"}}`,
+			err:  true,
+		},
+		{
+			desc: "reject missing telemetry duration",
+			body: `{"heartbeat":{"interval":"2s"},"terminal":{"session_timeout":"3s"},"telemetry":{}}`,
+			err:  true,
+		},
+		{
+			desc: "reject invalid telemetry duration",
+			body: `{"heartbeat":{"interval":"2s"},"terminal":{"session_timeout":"3s"},"telemetry":{"interval":"soon"}}`,
+			err:  true,
+		},
+		{
+			desc: "reject invalid telemetry type",
+			body: `{"heartbeat":{"interval":"2s"},"terminal":{"session_timeout":"3s"},"telemetry":{"interval":true}}`,
 			err:  true,
 		},
 		{
@@ -269,6 +295,7 @@ func TestDurationConfigUnmarshalJSON(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tc.heartbeat, cfg.Heartbeat.Interval)
 			assert.Equal(t, tc.terminal, cfg.Terminal.SessionTimeout)
+			assert.Equal(t, tc.telemetry, cfg.Telemetry.Interval)
 		})
 	}
 }
@@ -583,6 +610,44 @@ func TestConfigGetSet(t *testing.T) {
 			err:      true,
 		},
 		{
+			desc:     "set telemetry_interval stores valid duration",
+			cmd:      "set,telemetry_interval,30s",
+			useStore: true,
+			wantResp: "ok",
+		},
+		{
+			desc:     "get telemetry_interval after set returns previously set value",
+			cmd:      "get,telemetry_interval",
+			useStore: true,
+			seed:     map[string]string{"telemetry_interval": "30s"},
+			wantResp: "30s",
+		},
+		{
+			desc:     "reject set with invalid telemetry duration",
+			cmd:      "set,telemetry_interval,not-a-duration",
+			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "reject set telemetry interval below minimum",
+			cmd:      "set,telemetry_interval,500ms",
+			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "reject set telemetry interval above maximum",
+			cmd:      "set,telemetry_interval,2h",
+			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "reset telemetry_interval returns ok",
+			cmd:      "reset,telemetry_interval",
+			useStore: true,
+			seed:     map[string]string{"telemetry_interval": "30s"},
+			wantResp: "ok",
+		},
+		{
 			desc:     "reject get without key",
 			cmd:      "get",
 			useStore: true,
@@ -803,6 +868,30 @@ func TestApplyConfigEntry(t *testing.T) {
 			val:  "2m",
 			check: func(t *testing.T, cfg agent.Config) {
 				assert.Equal(t, 2*time.Minute, cfg.Terminal.SessionTimeout)
+			},
+		},
+		{
+			desc: "set telemetry interval",
+			key:  "telemetry_interval",
+			val:  "30s",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, 30*time.Second, cfg.Telemetry.Interval)
+			},
+		},
+		{
+			desc: "invalid telemetry duration is ignored",
+			key:  "telemetry_interval",
+			val:  "not-a-duration",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, time.Duration(0), cfg.Telemetry.Interval)
+			},
+		},
+		{
+			desc: "zero telemetry duration is ignored",
+			key:  "telemetry_interval",
+			val:  "0s",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, time.Duration(0), cfg.Telemetry.Interval)
 			},
 		},
 		{
