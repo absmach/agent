@@ -7,6 +7,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,19 +17,25 @@ import (
 )
 
 type mockMQTT struct {
+	mu        sync.Mutex
 	connected bool
 }
 
-func (m *mockMQTT) IsConnected() bool { return m.connected }
+func (m *mockMQTT) IsConnected() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.connected
+}
 
 type mockChecker struct {
+	mu      sync.Mutex
 	name    string
 	healthy bool
 }
 
 func (c *mockChecker) Name() string      { return c.name }
-func (c *mockChecker) Healthy() bool     { return c.healthy }
-func (c *mockChecker) SetHealthy(v bool) { c.healthy = v }
+func (c *mockChecker) Healthy() bool     { c.mu.Lock(); defer c.mu.Unlock(); return c.healthy }
+func (c *mockChecker) SetHealthy(v bool) { c.mu.Lock(); defer c.mu.Unlock(); c.healthy = v }
 
 func TestSupervisorDisabled(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -74,11 +81,21 @@ func TestSupervisorUnhealthyTriggersRestart(t *testing.T) {
 	checker := &mockChecker{name: "test", healthy: true}
 	sup.Register(checker)
 
-	// The supervisor goroutine would call os.Exit on unhealthy timeout,
-	// which we can't test. Just verify the checker state changes.
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- sup.Run(ctx)
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+	assert.True(t, sup.IsHealthy())
+
 	checker.SetHealthy(false)
-	time.Sleep(40 * time.Millisecond)
-	assert.False(t, checker.Healthy())
+	time.Sleep(20 * time.Millisecond)
+	assert.False(t, sup.IsHealthy())
+
+	cancel()
+	require.ErrorIs(t, <-done, context.Canceled)
 }
 
 func TestMQTTChecker(t *testing.T) {

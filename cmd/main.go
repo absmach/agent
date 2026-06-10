@@ -225,10 +225,15 @@ func main() {
 	// the process if the agent remains unhealthy for longer than the timeout.
 	// When running under systemd, it also sends periodic WATCHDOG=1
 	// notifications via the NOTIFY_SOCKET.
-	wdInterval, _ := time.ParseDuration(c.WatchdogInterval)
-	wdTimeout, _ := time.ParseDuration(c.WatchdogTimeout)
-	if wdInterval <= 0 {
-		wdTimeout, _ = time.ParseDuration("60s")
+	wdInterval, err := time.ParseDuration(c.WatchdogInterval)
+	if err != nil {
+		logger.Warn("Invalid watchdog interval, disabling watchdog", slog.String("interval", c.WatchdogInterval), slog.Any("error", err))
+		wdInterval = 0
+	}
+	wdTimeout, err := time.ParseDuration(c.WatchdogTimeout)
+	if err != nil {
+		logger.Warn("Invalid watchdog timeout, using default 60s", slog.String("timeout", c.WatchdogTimeout), slog.Any("error", err))
+		wdTimeout = 60 * time.Second
 	}
 	sup := health.NewSupervisor(health.Config{
 		Interval: wdInterval,

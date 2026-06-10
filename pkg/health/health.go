@@ -101,6 +101,7 @@ func (s *Supervisor) Run(ctx context.Context) error {
 			}
 
 			if anyUnhealthy {
+				s.healthy.Store(false)
 				if unhealthySince.IsZero() {
 					unhealthySince = time.Now()
 				}
@@ -133,6 +134,14 @@ func (s *Supervisor) restart() {
 // sdWatchdogLoop sends periodic WATCHDOG=1 notifications to systemd via the
 // unix socket at socketPath.
 func (s *Supervisor) sdWatchdogLoop(ctx context.Context, socketPath string) {
+	addr := &net.UnixAddr{Name: socketPath, Net: "unixgram"}
+	conn, err := net.DialUnix("unixgram", nil, addr)
+	if err != nil {
+		s.logger.Warn("Failed to connect to systemd notification socket", slog.Any("error", err))
+		return
+	}
+	defer conn.Close()
+
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
@@ -141,23 +150,14 @@ func (s *Supervisor) sdWatchdogLoop(ctx context.Context, socketPath string) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := sdNotify(socketPath, "WATCHDOG=1\n"); err != nil {
+			if !s.healthy.Load() {
+				continue
+			}
+			if _, err := conn.Write([]byte("WATCHDOG=1\n")); err != nil {
 				s.logger.Warn("Failed to notify systemd watchdog", slog.Any("error", err))
 			}
 		}
 	}
-}
-
-// sdNotify sends a message to the systemd notification socket.
-func sdNotify(socketPath, state string) error {
-	addr := &net.UnixAddr{Name: socketPath, Net: "unixgram"}
-	conn, err := net.DialUnix("unixgram", nil, addr)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	_, err = conn.Write([]byte(state))
-	return err
 }
 
 // IsHealthy returns whether the supervisor currently considers the agent
