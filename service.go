@@ -52,6 +52,7 @@ const (
 	keyLogLevel               = "log_level"
 	keyHeartbeatInterval      = "heartbeat_interval"
 	keyTerminalSessionTimeout = "terminal_session_timeout"
+	keyCommandSecret          = "command_secret"
 
 	notConfigured = "not_configured"
 	notFound      = "not_found"
@@ -155,6 +156,9 @@ type Service interface {
 
 	// Config returns Config struct created from config file.
 	Config() Config
+
+	// CommandSecret returns the current command secret for inbound MQTT command validation.
+	CommandSecret() string
 
 	// Saves config file.
 	ServiceConfig(ctx context.Context, uuid, cmdStr string) error
@@ -383,7 +387,11 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 		if a.store == nil {
 			resp = notConfigured
 		} else if val, ok := a.store.Get(cmdArgs[1]); ok {
-			resp = val
+			if cmdArgs[1] == keyCommandSecret {
+				resp = "REDACTED"
+			} else {
+				resp = val
+			}
 		} else {
 			resp = notFound
 		}
@@ -787,6 +795,12 @@ func (a *agent) Config() Config {
 	return *a.config
 }
 
+func (a *agent) CommandSecret() string {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.config.CommandSecret
+}
+
 func (a *agent) Services() []Info {
 	a.svcsMu.RLock()
 	defer a.svcsMu.RUnlock()
@@ -1037,6 +1051,7 @@ var settableKeys = map[string]bool{
 	keyLogLevel:               true,
 	keyHeartbeatInterval:      true,
 	keyTerminalSessionTimeout: true,
+	keyCommandSecret:          true,
 }
 
 // validateSettableValue returns errInvalidCommand if val is not a valid value for key.
@@ -1057,6 +1072,8 @@ func validateSettableValue(key, val string) error {
 		if err != nil || d <= 0 {
 			return errInvalidCommand
 		}
+	case keyCommandSecret:
+		// Any non-empty string is valid; empty value clears the secret.
 	default:
 		return errInvalidCommand
 	}
@@ -1078,6 +1095,9 @@ func (a *agent) revertToStartup(key string) {
 	case keyTerminalSessionTimeout:
 		a.config.Terminal.SessionTimeout = a.startupConfig.Terminal.SessionTimeout
 		liveVal = a.config.Terminal.SessionTimeout.String()
+	case keyCommandSecret:
+		a.config.CommandSecret = a.startupConfig.CommandSecret
+		liveVal = a.config.CommandSecret
 	}
 	a.cfgMu.Unlock()
 	if liveVal != "" {
@@ -1099,6 +1119,8 @@ func ApplyConfigEntry(cfg *Config, key, val string) {
 		if d, err := time.ParseDuration(val); err == nil && d > 0 {
 			cfg.Terminal.SessionTimeout = d
 		}
+	case keyCommandSecret:
+		cfg.CommandSecret = val
 	}
 }
 
@@ -1120,6 +1142,9 @@ func (a *agent) applyLiveUpdate(key, val string) {
 			default:
 			}
 		}
+	case keyCommandSecret:
+		// Secret is read from Config() on each inbound message;
+		// no live subsystem needs updating.
 	}
 }
 

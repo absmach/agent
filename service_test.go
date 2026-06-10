@@ -642,6 +642,26 @@ func TestConfigGetSet(t *testing.T) {
 			useStore: true,
 			err:      true,
 		},
+		{
+			desc:     "set command_secret persists and returns ok",
+			cmd:      "set,command_secret,my-secret-token",
+			useStore: true,
+			wantResp: "ok",
+		},
+		{
+			desc:     "get command_secret returns redacted",
+			cmd:      "get,command_secret",
+			useStore: true,
+			seed:     map[string]string{"command_secret": "my-secret-token"},
+			wantResp: "REDACTED",
+		},
+		{
+			desc:     "reset command_secret returns ok",
+			cmd:      "reset,command_secret",
+			useStore: true,
+			seed:     map[string]string{"command_secret": "my-secret-token"},
+			wantResp: "ok",
+		},
 	}
 
 	for _, tc := range cases {
@@ -736,6 +756,14 @@ func TestApplyConfigEntry(t *testing.T) {
 			val:  "secret",
 			check: func(t *testing.T, cfg agent.Config) {
 				assert.Equal(t, "client-secret", cfg.MQTT.Password)
+			},
+		},
+		{
+			desc: "set command secret",
+			key:  "command_secret",
+			val:  "my-secret-token",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, "my-secret-token", cfg.CommandSecret)
 			},
 		},
 	}

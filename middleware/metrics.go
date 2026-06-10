@@ -77,6 +77,15 @@ func (ms *metricsMiddleware) Config() agent.Config {
 	return ms.svc.Config()
 }
 
+func (ms *metricsMiddleware) CommandSecret() string {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "command_secret").Add(1)
+		ms.latency.With("method", "command_secret").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.CommandSecret()
+}
+
 func (ms *metricsMiddleware) Services() []agent.Info {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "services").Add(1)
