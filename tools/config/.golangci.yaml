@@ -62,8 +62,6 @@ linters:
     misspell:
       ignore-rules:
         - mosquitto
-    goconst:
-      ignore-tests: true
     staticcheck:
       checks:
         - -ST1000
