@@ -1068,7 +1068,11 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	runErr := ota.Run(otaCtx, otaCfg, url, sha256hex, size, progressFn)
 	if runErr != nil {
 		a.otaMu.Lock()
-		a.otaLastErr = runErr.Error()
+		if context.Cause(otaCtx) != nil || otaCtx.Err() != nil {
+			a.otaLastErr = "aborted"
+		} else {
+			a.otaLastErr = runErr.Error()
+		}
 		a.otaMu.Unlock()
 	}
 	return runErr
@@ -1077,6 +1081,9 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 func (a *agent) OTAAbort() error {
 	a.otaMu.Lock()
 	cancel := a.otaCancel
+	if cancel != nil {
+		a.otaLastErr = "aborted"
+	}
 	a.otaMu.Unlock()
 	if cancel == nil {
 		return errors.New("no OTA in progress")

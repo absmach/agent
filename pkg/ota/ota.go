@@ -6,6 +6,7 @@ package ota
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -127,6 +128,9 @@ func Run(ctx context.Context, cfg Config, url, sha256hex string, size uint64, pr
 		progressFn(StateDownloading, pct)
 	})
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			progressFn(StateAborted, 0)
+		}
 		return fmt.Errorf("ota download: %w", err)
 	}
 
@@ -134,6 +138,9 @@ func Run(ctx context.Context, cfg Config, url, sha256hex string, size uint64, pr
 	verified, err := verify(ctx, url, tmpPath, sha256hex)
 	if err != nil {
 		_ = os.Remove(tmpPath)
+		if errors.Is(err, context.Canceled) {
+			progressFn(StateAborted, 0)
+		}
 		return fmt.Errorf("ota verify: %w", err)
 	}
 	if !verified {
