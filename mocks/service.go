@@ -200,23 +200,6 @@ func (_mock *Service) CommandSecret() string {
 	return r0
 }
 
-// Config provides a mock function for the type Service
-func (_mock *Service) Config() agent.Config {
-	ret := _mock.Called()
-
-	if len(ret) == 0 {
-		panic("no return value specified for Config")
-	}
-
-	var r0 agent.Config
-	if returnFunc, ok := ret.Get(0).(func() agent.Config); ok {
-		r0 = returnFunc()
-	} else {
-		r0 = ret.Get(0).(agent.Config)
-	}
-	return r0
-}
-
 // Service_CommandSecret_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CommandSecret'
 type Service_CommandSecret_Call struct {
 	*mock.Call
@@ -234,14 +217,31 @@ func (_c *Service_CommandSecret_Call) Run(run func()) *Service_CommandSecret_Cal
 	return _c
 }
 
-func (_c *Service_CommandSecret_Call) Return(secret string) *Service_CommandSecret_Call {
-	_c.Call.Return(secret)
+func (_c *Service_CommandSecret_Call) Return(s string) *Service_CommandSecret_Call {
+	_c.Call.Return(s)
 	return _c
 }
 
 func (_c *Service_CommandSecret_Call) RunAndReturn(run func() string) *Service_CommandSecret_Call {
 	_c.Call.Return(run)
 	return _c
+}
+
+// Config provides a mock function for the type Service
+func (_mock *Service) Config() agent.Config {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Config")
+	}
+
+	var r0 agent.Config
+	if returnFunc, ok := ret.Get(0).(func() agent.Config); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(agent.Config)
+	}
+	return r0
 }
 
 // Service_Config_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Config'
@@ -748,6 +748,50 @@ func (_c *Service_OTA_Call) Return(err error) *Service_OTA_Call {
 }
 
 func (_c *Service_OTA_Call) RunAndReturn(run func(ctx context.Context, url string, sha256hex string, size uint64) error) *Service_OTA_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// OTAAbort provides a mock function for the type Service
+func (_mock *Service) OTAAbort() error {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for OTAAbort")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func() error); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Service_OTAAbort_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OTAAbort'
+type Service_OTAAbort_Call struct {
+	*mock.Call
+}
+
+// OTAAbort is a helper method to define mock.On call
+func (_e *Service_Expecter) OTAAbort() *Service_OTAAbort_Call {
+	return &Service_OTAAbort_Call{Call: _e.mock.On("OTAAbort")}
+}
+
+func (_c *Service_OTAAbort_Call) Run(run func()) *Service_OTAAbort_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *Service_OTAAbort_Call) Return(err error) *Service_OTAAbort_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_OTAAbort_Call) RunAndReturn(run func() error) *Service_OTAAbort_Call {
 	_c.Call.Return(run)
 	return _c
 }

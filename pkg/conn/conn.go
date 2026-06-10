@@ -157,7 +157,15 @@ func (b *broker) registerBuiltins() {
 	})
 
 	b.RegisterHandler(otaCmd, func(ctx context.Context, pack senml.Pack) error {
-		uuid, _ := extractCmd(pack)
+		uuid, cmdStr := extractCmd(pack)
+		if cmdStr == "abort" {
+			log.Info("OTA abort command", slog.String("uuid", uuid))
+			if err := svc.OTAAbort(); err != nil {
+				log.Warn("OTA abort failed", slog.Any("error", err))
+				return err
+			}
+			return nil
+		}
 		trigger, err := ota.TriggerFromRecords(pack.Records[1:])
 		if err != nil {
 			return err

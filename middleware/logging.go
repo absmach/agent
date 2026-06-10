@@ -251,6 +251,22 @@ func (lm *loggingMiddleware) OTAStatus() agent.OTAStatusInfo {
 	return lm.svc.OTAStatus()
 }
 
+func (lm *loggingMiddleware) OTAAbort() (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("OTA abort failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("OTA abort completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.OTAAbort()
+}
+
 func (lm *loggingMiddleware) ListDevices() (devs []devicemgr.Device, err error) {
 	defer func(begin time.Time) {
 		args := []any{slog.String("duration", time.Since(begin).String())}

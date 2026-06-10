@@ -203,6 +203,9 @@ type Service interface {
 	// OTAStatus returns whether an OTA operation is currently in progress and the last error message, if any.
 	OTAStatus() OTAStatusInfo
 
+	// OTAAbort cancels an in-progress OTA update. It returns an error if no OTA is running.
+	OTAAbort() error
+
 	DeviceService
 }
 
@@ -236,6 +239,8 @@ type agent struct {
 	startupConfig       Config
 	otaMu               sync.Mutex
 	otaLastErr          string
+	otaCancel           context.CancelFunc
+	otaAborted          atomic.Bool
 	bootstrapCachePath  string
 }
 
@@ -1016,15 +1021,27 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	if !cfg.OTA.Enabled {
 		return errors.New("OTA is disabled")
 	}
-	if !a.otaBusy.CompareAndSwap(false, true) {
+
+	otaCtx, otaCancel := context.WithCancel(ctx)
+
+	a.otaMu.Lock()
+	if a.otaBusy.Load() {
+		a.otaMu.Unlock()
+		otaCancel()
 		return errors.New("OTA already in progress")
 	}
+	a.otaBusy.Store(true)
+	a.otaLastErr = ""
+	a.otaCancel = otaCancel
+	a.otaAborted.Store(false)
+	a.otaMu.Unlock()
+
 	defer func() {
+		a.otaMu.Lock()
+		a.otaCancel = nil
+		a.otaMu.Unlock()
 		a.otaBusy.Store(false)
 	}()
-	a.otaMu.Lock()
-	a.otaLastErr = ""
-	a.otaMu.Unlock()
 
 	otaCfg := ota.Config{
 		BinaryPath:  cfg.OTA.BinaryPath,
@@ -1052,13 +1069,36 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 		token.Wait()
 	}
 
-	runErr := ota.Run(ctx, otaCfg, url, sha256hex, size, progressFn)
+	runErr := ota.Run(otaCtx, otaCfg, url, sha256hex, size, progressFn)
 	if runErr != nil {
 		a.otaMu.Lock()
-		a.otaLastErr = runErr.Error()
+		if context.Cause(otaCtx) != nil || otaCtx.Err() != nil {
+			a.otaLastErr = "aborted"
+		}
+		if a.otaAborted.Load() {
+			progressFn(ota.StateAborted, 0)
+			a.otaLastErr = "OTA aborted by user"
+		} else {
+			a.otaLastErr = runErr.Error()
+		}
 		a.otaMu.Unlock()
 	}
 	return runErr
+}
+
+func (a *agent) OTAAbort() error {
+	a.otaMu.Lock()
+	cancel := a.otaCancel
+	if cancel != nil {
+		a.otaLastErr = "aborted"
+	}
+	a.otaMu.Unlock()
+	if cancel == nil {
+		return errors.New("no OTA in progress")
+	}
+	a.otaAborted.Store(true)
+	cancel()
+	return nil
 }
 
 func (a *agent) OTAStatus() OTAStatusInfo {
