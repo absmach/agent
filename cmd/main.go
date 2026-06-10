@@ -45,6 +45,7 @@ type config struct {
 	MqttMTLS             string `env:"MG_AGENT_MQTT_MTLS"                     envDefault:"false"`
 	MqttCA               string `env:"MG_AGENT_MQTT_CA"                       envDefault:"ca.crt"`
 	MqttQoS              string `env:"MG_AGENT_MQTT_QOS"                      envDefault:"0"`
+	MqttCmdQoS           string `env:"MG_AGENT_MQTT_CMD_QOS"                  envDefault:"1"`
 	MqttRetain           string `env:"MG_AGENT_MQTT_RETAIN"                   envDefault:"false"`
 	MqttCert             string `env:"MG_AGENT_MQTT_CLIENT_CERT"              envDefault:"client.cert"`
 	MqttPrivateKey       string `env:"MG_AGENT_MQTT_CLIENT_KEY"               envDefault:"client.key"`
@@ -306,9 +307,14 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 		skipTLSVer = true
 	}
 
-	qos, err := strconv.Atoi(cfg.MqttQoS)
-	if err != nil {
+	qos, err := strconv.ParseUint(cfg.MqttQoS, 10, 8)
+	if err != nil || qos > 2 {
 		qos = 0
+	}
+
+	cmdQoS, err := strconv.ParseUint(cfg.MqttCmdQoS, 10, 8)
+	if err != nil || cmdQoS > 2 {
+		cmdQoS = 1
 	}
 
 	retain, err := strconv.ParseBool(cfg.MqttRetain)
@@ -324,6 +330,7 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 		PrivKeyPath: cfg.MqttPrivateKey,
 		SkipTLSVer:  skipTLSVer,
 		QoS:         byte(qos),
+		CmdQoS:      byte(cmdQoS),
 		Retain:      retain,
 	}
 

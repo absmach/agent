@@ -48,7 +48,8 @@ func testConfig() agent.Config {
 			Password:   "client-secret",
 			SkipTLSVer: true,
 			Retain:     true,
-			QoS:        1,
+			QoS:        0,
+			CmdQoS:     1,
 		},
 		agent.HeartbeatConfig{Interval: time.Hour},
 		agent.TerminalConfig{SessionTimeout: time.Minute},
@@ -90,7 +91,7 @@ func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (
 	hbToken.On("Error").Maybe().Return(error(nil))
 	mqttClient.On("IsConnected").Maybe().Return(true)
 	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"),
-		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(hbToken)
+		cfg.MQTT.QoS, mock.Anything, mock.Anything).Maybe().Return(hbToken)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -104,11 +105,11 @@ func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (
 	return svc, mqttClient, nodeRed, err
 }
 
-func expectMQTTPublish(t *testing.T, mqttClient *agentmocks.MQTTClient, topic string, err error) *mock.Call {
+func expectMQTTPublish(t *testing.T, mqttClient *agentmocks.MQTTClient, topic string, qos byte, err error) *mock.Call {
 	token := agentmocks.NewMQTTToken(t)
 	token.On("Wait").Return(true).Once()
 	token.On("Error").Return(err).Once()
-	return mqttClient.On("Publish", topic, byte(1), true, mock.Anything).Return(token).Once()
+	return mqttClient.On("Publish", topic, qos, true, mock.Anything).Return(token).Once()
 }
 
 func TestSelfHeartbeatPublishesRichPayload(t *testing.T) {
@@ -349,7 +350,7 @@ func TestExecute(t *testing.T) {
 			require.NoError(t, err)
 			var payload any
 			if tc.topic != "" {
-				expectMQTTPublish(t, mqttClient, tc.topic, tc.pubErr).Run(func(args mock.Arguments) {
+				expectMQTTPublish(t, mqttClient, tc.topic, byte(1), tc.pubErr).Run(func(args mock.Arguments) {
 					payload = args.Get(3)
 				})
 			}
@@ -391,7 +392,7 @@ func TestControl(t *testing.T) {
 			cmd:  "nodered-ping",
 			mockFn: func(t *testing.T, mqttClient *agentmocks.MQTTClient, nodeRed *nrmocks.Client) {
 				nodeRed.On("Ping").Return("pong", nil).Once()
-				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), nil)
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil)
 			},
 		},
 		{
@@ -408,7 +409,7 @@ func TestControl(t *testing.T) {
 			err:  true,
 			mockFn: func(t *testing.T, mqttClient *agentmocks.MQTTClient, nodeRed *nrmocks.Client) {
 				nodeRed.On("Ping").Return("pong", nil).Once()
-				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), errBoom)
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), errBoom)
 			},
 		},
 	}
@@ -502,7 +503,7 @@ func TestServiceConfig(t *testing.T) {
 				require.NoError(t, svc.UpdateLiveness("nodered", "service"))
 			}
 			if !tc.err || tc.pubErr != nil {
-				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), tc.pubErr)
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), tc.pubErr)
 			}
 			err = svc.ServiceConfig(context.Background(), "uuid", tc.cmd)
 			if tc.err {
@@ -717,7 +718,7 @@ func TestConfigGetSet(t *testing.T) {
 			assert.Nil(t, setupErr, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, setupErr))
 
 			if !tc.err {
-				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), nil).Run(func(args mock.Arguments) {
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil).Run(func(args mock.Arguments) {
 					payload, _ := args.Get(3).(string)
 					assert.Contains(t, payload, tc.wantResp, fmt.Sprintf("%s: unexpected response payload", tc.desc))
 				})
@@ -1072,7 +1073,7 @@ func TestPublish(t *testing.T) {
 			svc, mqttClient, _, err := newService(t, testConfig())
 			require.NoError(t, err)
 			var payload any
-			expectMQTTPublish(t, mqttClient, tc.output, tc.err).Run(func(args mock.Arguments) {
+			expectMQTTPublish(t, mqttClient, tc.output, byte(0), tc.err).Run(func(args mock.Arguments) {
 				payload = args.Get(3)
 			})
 			err = svc.Publish(tc.topic, "payload")
@@ -1113,6 +1114,78 @@ func TestShutdown(t *testing.T) {
 			mqttClient.On("Disconnect", uint(1000)).Once()
 			svc.Shutdown()
 			mqttClient.AssertExpectations(t)
+		})
+	}
+}
+
+func TestHeartbeatStop(t *testing.T) {
+	h := agent.NewHeartbeat("nodered", "service", time.Hour)
+	assert.Equal(t, "online", h.Info().Status, "unexpected initial heartbeat status")
+	h.Stop()
+}
+
+func TestPing(t *testing.T) {
+	errBoom := fmt.Errorf("boom")
+
+	cases := []struct {
+		desc   string
+		err    bool
+		pubErr error
+	}{
+		{
+			desc: "ping successfully",
+		},
+		{
+			desc:   "return publish error",
+			err:    true,
+			pubErr: errBoom,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			cfg := testConfig()
+			cfg.DomainID = domainID
+			mqttClient := agentmocks.NewMQTTClient(t)
+			nodeRed := nrmocks.NewClient(t)
+			mqttClient.On("IsConnected").Maybe().Return(true)
+
+			startupFired := make(chan struct{})
+			startupToken := agentmocks.NewMQTTToken(t)
+			startupToken.On("Wait").Return(true).Once()
+			startupToken.On("Error").Run(func(_ mock.Arguments) { close(startupFired) }).Return(error(nil)).Once()
+			mqttClient.On("Publish",
+				mqttTopic("data-channel", "gateway/heartbeat"),
+				cfg.MQTT.QoS, false, mock.Anything,
+			).Return(startupToken).Once()
+
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+
+			svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed,
+				slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, "")
+			require.NoError(t, err)
+
+			select {
+			case <-startupFired:
+			case <-time.After(time.Second):
+				t.Fatal("startup heartbeat did not fire")
+			}
+
+			pingToken := agentmocks.NewMQTTToken(t)
+			pingToken.On("Wait").Return(true).Once()
+			pingToken.On("Error").Return(tc.pubErr).Once()
+			mqttClient.On("Publish",
+				mqttTopic("data-channel", "gateway/heartbeat"),
+				cfg.MQTT.QoS, false, mock.Anything,
+			).Return(pingToken).Once()
+
+			err = svc.Ping()
+			if tc.err {
+				assert.Error(t, err, fmt.Sprintf("%s: expected error", tc.desc))
+			} else {
+				assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
+			}
 		})
 	}
 }

@@ -313,7 +313,7 @@ func (a *agent) Execute(uuid, cmd string) (string, error) {
 		return "", errors.Wrap(errFailedEncode, err)
 	}
 
-	if err := a.Publish(control, string(payload)); err != nil {
+	if err := a.publishCmd(control, string(payload)); err != nil {
 		return "", errors.Wrap(errFailedToPublish, err)
 	}
 
@@ -744,7 +744,7 @@ func (a *agent) processResponse(uuid, cmd, resp string) error {
 	if err != nil {
 		return errors.Wrap(errFailedEncode, err)
 	}
-	if err := a.Publish(control, string(payload)); err != nil {
+	if err := a.publishCmd(control, string(payload)); err != nil {
 		return errors.Wrap(errFailedToPublish, err)
 	}
 	return nil
@@ -821,12 +821,19 @@ func (a *agent) Services() []Info {
 }
 
 func (a *agent) Publish(t, payload string) error {
+	return a.publish(t, payload, a.Config().MQTT.QoS)
+}
+
+func (a *agent) publishCmd(t, payload string) error {
+	return a.publish(t, payload, a.Config().MQTT.CmdQoS)
+}
+
+func (a *agent) publish(t, payload string, qos byte) error {
 	topic := a.getTopic(t)
 	mqtt := a.Config().MQTT
-	token := a.mqttClient.Publish(topic, mqtt.QoS, mqtt.Retain, payload)
+	token := a.mqttClient.Publish(topic, qos, mqtt.Retain, payload)
 	token.Wait()
-	err := token.Error()
-	if err != nil {
+	if err := token.Error(); err != nil {
 		return errors.New(err.Error())
 	}
 	return nil
