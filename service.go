@@ -55,6 +55,12 @@ const (
 	keyTerminalSessionTimeout = "terminal_session_timeout"
 	keyCommandSecret          = "command_secret"
 	keyBsValid                = "bs_valid"
+	keyDomainID               = "domain_id"
+	keyChannelsCtrlID         = "channels_ctrl_id"
+	keyChannelsDataID         = "channels_data_id"
+	keyMqttURL                = "mqtt_url"
+	keyMqttUsername           = "mqtt_username"
+	keyMqttPassword           = "mqtt_password"
 
 	notConfigured = "not_configured"
 	notFound      = "not_found"
@@ -1223,6 +1229,18 @@ func ApplyConfigEntry(cfg *Config, key, val string) {
 		}
 	case keyCommandSecret:
 		cfg.CommandSecret = val
+	case keyDomainID:
+		cfg.DomainID = val
+	case keyChannelsCtrlID:
+		cfg.Channels.CtrlID = val
+	case keyChannelsDataID:
+		cfg.Channels.DataID = val
+	case keyMqttURL:
+		cfg.MQTT.URL = val
+	case keyMqttUsername:
+		cfg.MQTT.Username = val
+	case keyMqttPassword:
+		cfg.MQTT.Password = val
 	}
 }
 

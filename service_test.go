@@ -920,8 +920,8 @@ func TestApplyConfigEntry(t *testing.T) {
 		},
 		{
 			desc: "unknown key is a no-op",
-			key:  "mqtt_password",
-			val:  "secret",
+			key:  "nonexistent_key",
+			val:  "some_value",
 			check: func(t *testing.T, cfg agent.Config) {
 				assert.Equal(t, "client-secret", cfg.MQTT.Password)
 			},
@@ -932,6 +932,54 @@ func TestApplyConfigEntry(t *testing.T) {
 			val:  "my-secret-token",
 			check: func(t *testing.T, cfg agent.Config) {
 				assert.Equal(t, "my-secret-token", cfg.CommandSecret)
+			},
+		},
+		{
+			desc: "set domain id",
+			key:  "domain_id",
+			val:  "my-domain",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, "my-domain", cfg.DomainID)
+			},
+		},
+		{
+			desc: "set channels ctrl id",
+			key:  "channels_ctrl_id",
+			val:  "new-ctrl-channel",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, "new-ctrl-channel", cfg.Channels.CtrlID)
+			},
+		},
+		{
+			desc: "set channels data id",
+			key:  "channels_data_id",
+			val:  "new-data-channel",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, "new-data-channel", cfg.Channels.DataID)
+			},
+		},
+		{
+			desc: "set mqtt url",
+			key:  "mqtt_url",
+			val:  "ssl://new-broker.example.com:8883",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, "ssl://new-broker.example.com:8883", cfg.MQTT.URL)
+			},
+		},
+		{
+			desc: "set mqtt username",
+			key:  "mqtt_username",
+			val:  "new-username",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, "new-username", cfg.MQTT.Username)
+			},
+		},
+		{
+			desc: "set mqtt password",
+			key:  "mqtt_password",
+			val:  "new-secret",
+			check: func(t *testing.T, cfg agent.Config) {
+				assert.Equal(t, "new-secret", cfg.MQTT.Password)
 			},
 		},
 	}

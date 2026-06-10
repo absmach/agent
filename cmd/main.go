@@ -115,23 +115,30 @@ func main() {
 		return
 	}
 
+	cfg = applyPersistedOverrides(cfg, store)
+
 	if hasBootstrapConfig(c) {
 		forceFetch := false
 		if val, ok := store.Get("bs_valid"); ok && val == "0" {
 			forceFetch = true
 		}
-		cfg, err = loadBootConfig(cfg, c, logger, forceFetch)
-		if err != nil {
-			logger.Error("Failed to load bootstrap config", slog.Any("error", err))
-			exitCode = 1
-			return
-		}
-		if err := store.Set("bs_valid", "1"); err != nil {
-			logger.Warn("Failed to persist bs_valid flag", slog.Any("error", err))
+		if forceFetch || !hasBootstrapCredentials(cfg) {
+			cfg, err = loadBootConfig(cfg, c, logger, forceFetch)
+			if err != nil {
+				logger.Error("Failed to load bootstrap config", slog.Any("error", err))
+				exitCode = 1
+				return
+			}
+			persistBootstrapFields(store, cfg)
+			if err := store.Set("bs_valid", "1"); err != nil {
+				logger.Warn("Failed to persist bs_valid flag", slog.Any("error", err))
+			}
+			cfg = applyPersistedOverrides(cfg, store)
+		} else {
+			logger.Info("Bootstrap data already present, skipping bootstrap fetch")
 		}
 	}
 
-	cfg = applyPersistedOverrides(cfg, store)
 	// Sync the live log-level variable with any persisted log_level override.
 	if val, ok := store.Get("log_level"); ok {
 		var l slog.Level
@@ -264,6 +271,31 @@ func validateRuntimeConfig(cfg agent.Config) error {
 
 func hasBootstrapConfig(cfg config) bool {
 	return cfg.BootstrapURL != "" && cfg.BootstrapExternalID != "" && cfg.BootstrapExternalKey != ""
+}
+
+func hasBootstrapCredentials(cfg agent.Config) bool {
+	if cfg.DomainID == "" {
+		return false
+	}
+	if cfg.Channels.CtrlID == "" || cfg.Channels.DataID == "" {
+		return false
+	}
+	if cfg.MQTT.URL == "" {
+		return false
+	}
+	if !cfg.MQTT.MTLS && (cfg.MQTT.Username == "" || cfg.MQTT.Password == "") {
+		return false
+	}
+	return true
+}
+
+func persistBootstrapFields(store pkgconfig.Store, cfg agent.Config) {
+	_ = store.Set("domain_id", cfg.DomainID)
+	_ = store.Set("channels_ctrl_id", cfg.Channels.CtrlID)
+	_ = store.Set("channels_data_id", cfg.Channels.DataID)
+	_ = store.Set("mqtt_url", cfg.MQTT.URL)
+	_ = store.Set("mqtt_username", cfg.MQTT.Username)
+	_ = store.Set("mqtt_password", cfg.MQTT.Password)
 }
 
 func loadEnvConfig(cfg config) (agent.Config, error) {
