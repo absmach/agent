@@ -74,6 +74,7 @@ func testConfig() agent.Config {
 		agent.HeartbeatConfig{Interval: time.Hour},
 		agent.TerminalConfig{SessionTimeout: time.Minute},
 		agent.OTAConfig{Enabled: false, BinaryPath: "/usr/local/bin/agent", DownloadDir: "/tmp"},
+		agent.TelemetryConfig{},
 	)
 }
 
@@ -101,7 +102,7 @@ func newService(t *testing.T, cfg agent.Config, store cfgstore.Store, devices ..
 		mgr = devices[0]
 	}
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr, store, nil)
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr, store, nil, "")
 	return svc, mqttClient, nodeRed, err
 }
 
@@ -761,6 +762,26 @@ func TestConfigGetSet(t *testing.T) {
 			desc:     "reject set bs_valid with invalid value",
 			cmd:      "set,bs_valid,2",
 			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "reject set bs_valid with non-numeric value",
+			cmd:      "set,bs_valid,yes",
+			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "get bs_valid after set",
+			cmd:      "get,bs_valid",
+			useStore: true,
+			seed:     map[string]string{"bs_valid": "1"},
+			wantResp: "1",
+		},
+		{
+			desc:     "reset bs_valid",
+			cmd:      "reset,bs_valid",
+			useStore: true,
+			seed:     map[string]string{"bs_valid": "1"},
 			wantResp: "ok",
 		},
 		{
@@ -805,13 +826,33 @@ func TestConfigGetSet(t *testing.T) {
 			desc:     "reject set bs_valid with invalid value",
 			cmd:      "set,bs_valid,2",
 			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "reject set bs_valid with non-numeric value",
+			cmd:      "set,bs_valid,yes",
+			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "get bs_valid after set",
+			cmd:      "get,bs_valid",
+			useStore: true,
+			seed:     map[string]string{"bs_valid": "1"},
+			wantResp: "1",
+		},
+		{
+			desc:     "reset bs_valid",
+			cmd:      "reset,bs_valid",
+			useStore: true,
+			seed:     map[string]string{"bs_valid": "1"},
 			wantResp: "ok",
 		},
 		{
 			desc:     "reset unknown key returns not_found",
 			cmd:      "reset,totally_unknown",
 			useStore: true,
-			wantResp: "not_found",
+			wantResp: testNotFound,
 		},
 	}
 
@@ -967,8 +1008,8 @@ func TestApplyConfigEntry(t *testing.T) {
 		},
 		{
 			desc: "set mqtt_password",
-			key:  "nonexistent_key",
-			val:  "new-some_value",
+			key:  "mqtt_password",
+			val:  "new-secret",
 			check: func(t *testing.T, cfg agent.Config) {
 				assert.Equal(t, "new-secret", cfg.MQTT.Password)
 			},

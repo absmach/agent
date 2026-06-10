@@ -410,7 +410,15 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 			return errInvalidCommand
 		}
 		key := cmdArgs[1]
-		if credentialKeys[key] {
+		if key == keyCommandSecret {
+			if a.store == nil {
+				resp = notConfigured
+			} else if _, ok := a.store.Get(key); ok {
+				resp = "REDACTED"
+			} else {
+				resp = notFound
+			}
+		} else if credentialKeys[key] {
 			resp = notAllowed
 		} else if !settableKeys[key] {
 			resp = notFound
@@ -1222,7 +1230,7 @@ func validateSettableValue(key, val string) error {
 		if val != "0" && val != "1" {
 			return errInvalidCommand
 		}
-	case keyMQTTPassword, keyProvisionToken:
+	case keyCommandSecret, keyMQTTPassword, keyProvisionToken:
 		if val == "" {
 			return errInvalidCommand
 		}

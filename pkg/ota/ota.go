@@ -39,12 +39,6 @@ const (
 	StateAborted
 )
 
-const (
-	fieldURL  = "url"
-	fieldHash = "hash"
-	fieldSize = "size"
-)
-
 func (s State) String() string {
 	switch s {
 	case StateIdle:
