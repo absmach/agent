@@ -240,6 +240,7 @@ type agent struct {
 	otaMu               sync.Mutex
 	otaLastErr          string
 	otaCancel           context.CancelFunc
+	otaAborted          atomic.Bool
 	bootstrapCachePath  string
 }
 
@@ -1020,23 +1021,26 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	if !cfg.OTA.Enabled {
 		return errors.New("OTA is disabled")
 	}
-	if !a.otaBusy.CompareAndSwap(false, true) {
-		return errors.New("OTA already in progress")
-	}
-	defer func() {
-		a.otaBusy.Store(false)
-	}()
 
 	otaCtx, otaCancel := context.WithCancel(ctx)
+
 	a.otaMu.Lock()
+	if a.otaBusy.Load() {
+		a.otaMu.Unlock()
+		otaCancel()
+		return errors.New("OTA already in progress")
+	}
+	a.otaBusy.Store(true)
 	a.otaLastErr = ""
 	a.otaCancel = otaCancel
+	a.otaAborted.Store(false)
 	a.otaMu.Unlock()
 
 	defer func() {
 		a.otaMu.Lock()
 		a.otaCancel = nil
 		a.otaMu.Unlock()
+		a.otaBusy.Store(false)
 	}()
 
 	otaCfg := ota.Config{
@@ -1070,6 +1074,10 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 		a.otaMu.Lock()
 		if context.Cause(otaCtx) != nil || otaCtx.Err() != nil {
 			a.otaLastErr = "aborted"
+		}
+		if a.otaAborted.Load() {
+			progressFn(ota.StateAborted, 0)
+			a.otaLastErr = "OTA aborted by user"
 		} else {
 			a.otaLastErr = runErr.Error()
 		}
@@ -1088,6 +1096,7 @@ func (a *agent) OTAAbort() error {
 	if cancel == nil {
 		return errors.New("no OTA in progress")
 	}
+	a.otaAborted.Store(true)
 	cancel()
 	return nil
 }
