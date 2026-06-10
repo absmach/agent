@@ -1153,11 +1153,11 @@ func TestPing(t *testing.T) {
 			startupFired := make(chan struct{})
 			startupToken := agentmocks.NewMQTTToken(t)
 			startupToken.On("Wait").Return(true).Once()
-			startupToken.On("Error").Return(error(nil)).Once()
+			startupToken.On("Error").Run(func(_ mock.Arguments) { close(startupFired) }).Return(error(nil)).Once()
 			mqttClient.On("Publish",
 				mqttTopic("data-channel", "gateway/heartbeat"),
 				cfg.MQTT.QoS, false, mock.Anything,
-			).Run(func(_ mock.Arguments) { close(startupFired) }).Return(startupToken).Once()
+			).Return(startupToken).Once()
 
 			ctx, cancel := context.WithCancel(context.Background())
 			t.Cleanup(cancel)
