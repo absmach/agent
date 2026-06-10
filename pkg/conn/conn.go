@@ -23,8 +23,9 @@ import (
 )
 
 const (
-	reqTopic  = "req"
-	servTopic = "services"
+	reqTopic    = "req"
+	servTopic   = "services"
+	otaCfgTopic = "ota/cfg"
 
 	control = "control"
 	exec    = "exec"
@@ -202,6 +203,11 @@ func (b *broker) subscribe() error {
 	if err := n.Error(); n.Wait() && err != nil {
 		return err
 	}
+	topic = fmt.Sprintf("m/%s/c/%s/%s", b.domainID, b.channel, otaCfgTopic)
+	o := b.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) { b.handleOTACfgMsg(b.ctx, msg) })
+	if err := o.Error(); o.Wait() && err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -219,6 +225,42 @@ func (b *broker) handleBrokerMsg(msg mqtt.Message) {
 			b.logger.Warn("Error updating service liveness", slog.Any("error", err))
 		}
 	}
+}
+
+// handleOTACfgMsg handles OTA trigger messages arriving on the ota/cfg topic.
+// The payload is a SenML pack with url, hash, and size records.
+// If a command secret is configured, the pack must include a valid token record.
+func (b *broker) handleOTACfgMsg(ctx context.Context, msg mqtt.Message) {
+	records, err := senml.Decode(msg.Payload())
+	if err != nil {
+		b.logger.Warn("OTA cfg SenML decode failed", slog.Any("error", err))
+		return
+	}
+	if len(records) == 0 {
+		b.logger.Error("OTA cfg SenML payload empty")
+		return
+	}
+
+	commandSecret := b.svc.CommandSecret()
+	if commandSecret != "" {
+		if !authorizeCommand(records, commandSecret) {
+			b.logger.Warn("OTA cfg rejected: invalid or missing token")
+			return
+		}
+	}
+
+	trigger, err := ota.TriggerFromRecords(records)
+	if err != nil {
+		b.logger.Warn("OTA cfg trigger parse failed", slog.Any("error", err))
+		return
+	}
+
+	b.logger.Info("OTA cfg command", slog.String("url", trigger.URL))
+	go func(ctx context.Context) {
+		if err := b.svc.OTA(ctx, trigger.URL, trigger.SHA256Hex, trigger.Size); err != nil {
+			b.logger.Warn("OTA cfg operation failed", slog.Any("error", err))
+		}
+	}(context.WithoutCancel(ctx))
 }
 
 // extractHeartbeat checks whether the MQTT topic is a service heartbeat and,
