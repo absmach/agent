@@ -19,17 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	testNameKey      = "name"
-	testCredsKey     = "credentials"
-	testSecretKey    = "secret"
-	testMissingID    = "does-not-exist"
-	testMarkMissing  = "mark non-existent device returns error"
-	testIfaceNotOpen = "error when interface not open"
-	testAnyDevID     = "any-device-id"
-	testNotOpen      = "not open"
-)
-
 // magistralaServer returns a combined httptest.Server that handles the three
 // SDK endpoints used during provisioning:
 //
@@ -56,11 +45,11 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":        "device-uuid",
-				testNameKey: "my-device",
-				testCredsKey: map[string]any{
-					"identity":    "ext-id",
-					testSecretKey: "device-secret",
+				"id":   "device-uuid",
+				"name": "my-device",
+				"credentials": map[string]any{
+					"identity": "ext-id",
+					"secret":   "device-secret",
 				},
 			})
 
@@ -69,8 +58,8 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":        fmt.Sprintf("channel-uuid-%d", callCount),
-				testNameKey: fmt.Sprintf("channel-%d", callCount),
+				"id":   fmt.Sprintf("channel-uuid-%d", callCount),
+				"name": fmt.Sprintf("channel-%d", callCount),
 			})
 
 		case strings.HasSuffix(r.URL.Path, "/connect") && r.Method == http.MethodPost:
@@ -215,9 +204,9 @@ func TestManager_Add_AuthHeader(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":         "d1",
-				testNameKey:  "n",
-				testCredsKey: map[string]any{testSecretKey: "k1"},
+				"id":          "d1",
+				"name":        "n",
+				"credentials": map[string]any{"secret": "k1"},
 			})
 		},
 	})
@@ -350,7 +339,7 @@ func TestManager_Remove(t *testing.T) {
 		id   string
 	}{
 		{desc: "remove existing device", id: d.ID},
-		{desc: "remove non-existent device is a no-op", id: testMissingID},
+		{desc: "remove non-existent device is a no-op", id: "does-not-exist"},
 	}
 
 	for _, tc := range cases {
@@ -403,9 +392,9 @@ func TestManager_List(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":         fmt.Sprintf("dev-%d", callCount),
-				testNameKey:  fmt.Sprintf("device-%d", callCount),
-				testCredsKey: map[string]any{testSecretKey: "k"},
+				"id":          fmt.Sprintf("dev-%d", callCount),
+				"name":        fmt.Sprintf("device-%d", callCount),
+				"credentials": map[string]any{"secret": "k"},
 			})
 		},
 	})
@@ -456,7 +445,7 @@ func TestManager_MarkSeen(t *testing.T) {
 		wantErr bool
 	}{
 		{desc: "mark existing device as seen", id: d.ID},
-		{desc: testMarkMissing, id: "missing", wantErr: true},
+		{desc: "mark non-existent device returns error", id: "missing", wantErr: true},
 	}
 
 	for _, tc := range cases {
@@ -513,9 +502,9 @@ func TestManager_CloseIface(t *testing.T) {
 		errContains string
 	}{
 		{
-			desc:        testIfaceNotOpen,
-			id:          testAnyDevID,
-			errContains: testNotOpen,
+			desc:        "error when interface not open",
+			id:          "any-device-id",
+			errContains: "not open",
 		},
 	}
 
@@ -537,10 +526,10 @@ func TestManager_ReadIface(t *testing.T) {
 		errContains string
 	}{
 		{
-			desc:        testIfaceNotOpen,
-			id:          testAnyDevID,
+			desc:        "error when interface not open",
+			id:          "any-device-id",
 			n:           4,
-			errContains: testNotOpen,
+			errContains: "not open",
 		},
 	}
 
@@ -562,14 +551,14 @@ func TestManager_WriteIface(t *testing.T) {
 		errContains string
 	}{
 		{
-			desc:        testIfaceNotOpen,
-			id:          testAnyDevID,
+			desc:        "error when interface not open",
+			id:          "any-device-id",
 			hexData:     "deadbeef",
-			errContains: testNotOpen,
+			errContains: "not open",
 		},
 		{
 			desc:    "error on invalid hex data",
-			id:      testAnyDevID,
+			id:      "any-device-id",
 			hexData: "zzzz",
 		},
 	}

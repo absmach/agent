@@ -15,8 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testMACAddr = "AA:BB:CC:DD:EE:01"
-
 func newTestStore(t *testing.T) *devicemgr.Store {
 	t.Helper()
 	s, err := devicemgr.NewStore(filepath.Join(t.TempDir(), "devices.db"))
@@ -85,7 +83,7 @@ func TestStore_SaveAndGet(t *testing.T) {
 		},
 		{
 			desc:    "get non-existent device returns error",
-			id:      testMissingID,
+			id:      "does-not-exist",
 			wantErr: true,
 		},
 	}
@@ -143,7 +141,7 @@ func TestStore_Remove(t *testing.T) {
 		},
 		{
 			desc: "remove non-existent device is a no-op",
-			id:   testMissingID,
+			id:   "does-not-exist",
 		},
 	}
 
@@ -190,7 +188,7 @@ func TestStore_FindByAddr(t *testing.T) {
 
 	ble := devicemgr.Device{
 		ID: "ble-1", Key: "k1", ChannelID: "ch-1",
-		InterfaceType: iface.InterfaceBLE, InterfaceAddr: testMACAddr,
+		InterfaceType: iface.InterfaceBLE, InterfaceAddr: "AA:BB:CC:DD:EE:01",
 		Active: true,
 	}
 	serial := devicemgr.Device{
@@ -217,7 +215,7 @@ func TestStore_FindByAddr(t *testing.T) {
 		{
 			desc:      "find active BLE device by address",
 			ifaceType: iface.InterfaceBLE,
-			addr:      testMACAddr,
+			addr:      "AA:BB:CC:DD:EE:01",
 			wantID:    "ble-1",
 		},
 		{
@@ -235,7 +233,7 @@ func TestStore_FindByAddr(t *testing.T) {
 		{
 			desc:      "wrong interface type returns no match",
 			ifaceType: iface.InterfaceSerial,
-			addr:      testMACAddr,
+			addr:      "AA:BB:CC:DD:EE:01",
 			wantErr:   true,
 		},
 		{
@@ -275,8 +273,8 @@ func TestStore_MarkSeen(t *testing.T) {
 			id:   d.ID,
 		},
 		{
-			desc:    testMarkMissing,
-			id:      testMissingID,
+			desc:    "mark non-existent device returns error",
+			id:      "does-not-exist",
 			wantErr: true,
 		},
 	}
@@ -315,8 +313,8 @@ func TestStore_MarkActive(t *testing.T) {
 			id:   d.ID,
 		},
 		{
-			desc:    testMarkMissing,
-			id:      testMissingID,
+			desc:    "mark non-existent device returns error",
+			id:      "does-not-exist",
 			wantErr: true,
 		},
 	}
