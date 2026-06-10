@@ -11,6 +11,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +30,7 @@ type Config struct {
 	RetryDelaySec string
 	Encrypt       string
 	SkipTLS       bool
+	CachePath     string
 }
 
 // renderedContent holds the device configuration rendered by the bootstrap
@@ -72,7 +75,19 @@ type bootstrapResponse struct {
 
 // FetchAgentConfig retrieves device configuration from the bootstrap service and
 // overlays the returned credentials and channel IDs onto agentCfg.
-func FetchAgentConfig(cfg Config, agentCfg agent.Config, logger *slog.Logger) (agent.Config, error) {
+// When cfg.CachePath is set and forceFetch is false, it first attempts to load
+// a previously cached response from disk. On cache miss it fetches from the
+// bootstrap service and writes the response to cfg.CachePath.
+func FetchAgentConfig(cfg Config, agentCfg agent.Config, logger *slog.Logger, forceFetch bool) (agent.Config, error) {
+	if !forceFetch && cfg.CachePath != "" {
+		br, err := loadFromCache(cfg.CachePath)
+		if err == nil {
+			logger.Info("Loaded bootstrap config from cache", slog.String("path", cfg.CachePath))
+			return applyBootstrapResponse(agentCfg, br)
+		}
+		logger.Info("Bootstrap cache miss, fetching from service", slog.String("path", cfg.CachePath), slog.Any("error", err))
+	}
+
 	retries, err := strconv.ParseUint(cfg.Retries, 10, 64)
 	if err != nil {
 		return agentCfg, errors.New(fmt.Sprintf("Invalid BOOTSTRAP_RETRIES value: %s", err))
@@ -105,6 +120,14 @@ func FetchAgentConfig(cfg Config, agentCfg agent.Config, logger *slog.Logger) (a
 	}
 	if fetchErr != nil {
 		return agentCfg, fmt.Errorf("bootstrap retries exhausted: %w", fetchErr)
+	}
+
+	if cfg.CachePath != "" {
+		if cacheErr := storeToCache(cfg.CachePath, br); cacheErr != nil {
+			logger.Warn("Failed to cache bootstrap response", slog.Any("error", cacheErr))
+		} else {
+			logger.Info("Cached bootstrap response", slog.String("path", cfg.CachePath))
+		}
 	}
 
 	return applyBootstrapResponse(agentCfg, br)
@@ -228,4 +251,42 @@ func getConfig(bsID, bsKey, bsSvrURL string, skipTLS bool, logger *slog.Logger) 
 
 func bootstrapConfigURL(bsSvrURL, bsID string) string {
 	return fmt.Sprintf("%s/%s", strings.TrimRight(bsSvrURL, "/"), strings.TrimLeft(bsID, "/"))
+}
+
+func loadFromCache(path string) (bootstrapResponse, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return bootstrapResponse{}, err
+	}
+	var br bootstrapResponse
+	if err := json.Unmarshal(data, &br); err != nil {
+		return bootstrapResponse{}, err
+	}
+	if br.Content == "" {
+		return bootstrapResponse{}, errors.New("cached bootstrap response has empty content")
+	}
+	if br.ClientKey == "" || br.ClientCert == "" {
+		return bootstrapResponse{}, errors.New("cached bootstrap response has empty credentials")
+	}
+	return br, nil
+}
+
+func storeToCache(path string, br bootstrapResponse) error {
+	data, err := json.MarshalIndent(br, "", "  ")
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }

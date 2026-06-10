@@ -59,6 +59,7 @@ type config struct {
 	BootstrapRetries     string `env:"MG_AGENT_BOOTSTRAP_RETRIES"             envDefault:"5"`
 	BootstrapRetryDelay  string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
 	BootstrapSkipTLS     string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS"            envDefault:"false"`
+	BootstrapCachePath   string `env:"MG_AGENT_BOOTSTRAP_CACHE_PATH"          envDefault:"/var/lib/agent/bootstrap.json"`
 	ClientsURL           string `env:"MG_AGENT_CLIENTS_URL"                   envDefault:""`
 	ChannelsURL          string `env:"MG_AGENT_CHANNELS_URL"                  envDefault:""`
 	RulesEngineURL       string `env:"MG_AGENT_RULES_ENGINE_URL"              envDefault:""`
@@ -105,21 +106,29 @@ func main() {
 	stream := logstream.New()
 	logger = slog.New(logstream.NewHandler(logger.Handler(), stream))
 
-	if hasBootstrapConfig(c) {
-		cfg, err = loadBootConfig(cfg, c, logger)
-		if err != nil {
-			logger.Error("Failed to load bootstrap config", slog.Any("error", err))
-			exitCode = 1
-			return
-		}
-	}
-
 	store, err := pkgconfig.NewStore(c.ConfigPath)
 	if err != nil {
 		logger.Error("Failed to open persistent config store", slog.Any("error", err))
 		exitCode = 1
 		return
 	}
+
+	if hasBootstrapConfig(c) {
+		forceFetch := false
+		if val, ok := store.Get("bs_valid"); ok && val == "0" {
+			forceFetch = true
+		}
+		cfg, err = loadBootConfig(cfg, c, logger, forceFetch)
+		if err != nil {
+			logger.Error("Failed to load bootstrap config", slog.Any("error", err))
+			exitCode = 1
+			return
+		}
+		if err := store.Set("bs_valid", "1"); err != nil {
+			logger.Warn("Failed to persist bs_valid flag", slog.Any("error", err))
+		}
+	}
+
 	cfg = applyPersistedOverrides(cfg, store)
 	// Sync the live log-level variable with any persisted log_level override.
 	if val, ok := store.Get("log_level"); ok {
@@ -187,7 +196,7 @@ func main() {
 		}
 	}()
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger, devices, store, levelVar)
+	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger, devices, store, levelVar, c.BootstrapCachePath)
 	if err != nil {
 		logger.Error("Error in agent service", slog.Any("error", err))
 		exitCode = 1
@@ -474,7 +483,7 @@ func applyPersistedOverrides(cfg agent.Config, store pkgconfig.Store) agent.Conf
 	return cfg
 }
 
-func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Config, error) {
+func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger, forceFetch bool) (agent.Config, error) {
 	missing := []string{}
 	if cfg.BootstrapURL == "" {
 		missing = append(missing, "MG_AGENT_BOOTSTRAP_URL")
@@ -501,9 +510,10 @@ func loadBootConfig(c agent.Config, cfg config, logger *slog.Logger) (agent.Conf
 		Retries:       cfg.BootstrapRetries,
 		RetryDelaySec: cfg.BootstrapRetryDelay,
 		SkipTLS:       skipTLS,
+		CachePath:     cfg.BootstrapCachePath,
 	}
 
-	bsc, err := bootstrap.FetchAgentConfig(bsConfig, c, logger)
+	bsc, err := bootstrap.FetchAgentConfig(bsConfig, c, logger, forceFetch)
 	if err != nil {
 		return c, errors.Wrap(errFetchingBootstrapFailed, err)
 	}

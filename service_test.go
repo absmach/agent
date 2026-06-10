@@ -72,7 +72,7 @@ func newServiceWithStore(t *testing.T, cfg agent.Config, store cfgstore.Store) (
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, store, nil)
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, store, nil, "")
 	return svc, mqttClient, nodeRed, err
 }
 
@@ -100,7 +100,7 @@ func newService(t *testing.T, cfg agent.Config, devices ...*devicemgr.Manager) (
 		mgr = devices[0]
 	}
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr, nil, nil)
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr, nil, nil, "")
 	return svc, mqttClient, nodeRed, err
 }
 
@@ -133,7 +133,7 @@ func TestSelfHeartbeatPublishesRichPayload(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+	_, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, "")
 	require.NoError(t, err)
 
 	select {
@@ -649,6 +649,12 @@ func TestConfigGetSet(t *testing.T) {
 			wantResp: "ok",
 		},
 		{
+			desc:     "set bs_valid to 1",
+			cmd:      "set,bs_valid,1",
+			useStore: true,
+			wantResp: "ok",
+		},
+		{
 			desc:     "get command_secret returns redacted",
 			cmd:      "get,command_secret",
 			useStore: true,
@@ -660,6 +666,38 @@ func TestConfigGetSet(t *testing.T) {
 			cmd:      "reset,command_secret",
 			useStore: true,
 			seed:     map[string]string{"command_secret": "my-secret-token"},
+			wantResp: "ok",
+		},
+		{
+			desc:     "set bs_valid to 0",
+			cmd:      "set,bs_valid,0",
+			useStore: true,
+			wantResp: "ok",
+		},
+		{
+			desc:     "reject set bs_valid with invalid value",
+			cmd:      "set,bs_valid,2",
+			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "reject set bs_valid with non-numeric value",
+			cmd:      "set,bs_valid,yes",
+			useStore: true,
+			err:      true,
+		},
+		{
+			desc:     "get bs_valid after set",
+			cmd:      "get,bs_valid",
+			useStore: true,
+			seed:     map[string]string{"bs_valid": "1"},
+			wantResp: "1",
+		},
+		{
+			desc:     "reset bs_valid",
+			cmd:      "reset,bs_valid",
+			useStore: true,
+			seed:     map[string]string{"bs_valid": "1"},
 			wantResp: "ok",
 		},
 	}
@@ -693,6 +731,46 @@ func TestConfigGetSet(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBsValidCacheInvalidation(t *testing.T) {
+	cacheDir := t.TempDir()
+	cachePath := filepath.Join(cacheDir, "bootstrap.json")
+	require.NoError(t, os.WriteFile(cachePath, []byte(`{"content":"cached"}`), 0o600))
+
+	s, storeErr := cfgstore.NewStore(filepath.Join(t.TempDir(), "config.json"))
+	require.NoError(t, storeErr)
+
+	cfg := testConfig()
+	cfg.DomainID = domainID
+	mqttClient := agentmocks.NewMQTTClient(t)
+	nodeRed := nrmocks.NewClient(t)
+
+	hbToken := agentmocks.NewMQTTToken(t)
+	hbToken.On("Wait").Maybe().Return(true)
+	hbToken.On("Error").Maybe().Return(error(nil))
+	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"),
+		mock.Anything, mock.Anything, mock.Anything).Maybe().Return(hbToken)
+	mqttClient.On("IsConnected").Maybe().Return(true)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, s, nil, cachePath)
+	require.NoError(t, err)
+
+	assert.FileExists(t, cachePath, "cache file should exist before invalidation")
+
+	respToken := agentmocks.NewMQTTToken(t)
+	respToken.On("Wait").Return(true).Once()
+	respToken.On("Error").Return(error(nil)).Once()
+	mqttClient.On("Publish", mqttTopic("ctrl-channel", "res"), mock.Anything, mock.Anything, mock.Anything).Return(respToken).Once()
+
+	err = svc.ServiceConfig(context.Background(), "uuid", "set,bs_valid,0")
+	require.NoError(t, err)
+
+	_, statErr := os.Stat(cachePath)
+	assert.True(t, os.IsNotExist(statErr), "cache file should be deleted after bs_valid=0")
 }
 
 func TestApplyConfigEntry(t *testing.T) {
