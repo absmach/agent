@@ -8,8 +8,6 @@ This guide explains how to run the Magistrala Agent with Node-RED support using 
   <img src="img/nodered-architecture.svg" alt="Agent + Node-RED Architecture" width="100%"/>
 </p>
 
-
-
 ## Quick Start
 
 ### 1. Build the Agent Docker image
@@ -106,6 +104,7 @@ bash scripts/provision.sh
 ```
 
 This will:
+
 1. Create a Client (device) with credentials
 2. Create telemetry and commands Channels
 3. Create a Bootstrap Profile and Enrollment with `external_id` and `external_key`
@@ -121,6 +120,7 @@ MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<external-key>
 ```
 
 Then restart the agent:
+
 ```bash
 docker compose up -d
 ```
@@ -171,6 +171,7 @@ curl -s -X POST http://localhost:9999/nodered \
 Send a SenML array to `m/<domain-id>/c/<commands-channel-id>/req`:
 
 Supported commands:
+
 - `nodered-deploy,<base64-flow>` — **Replace all running flows** with the provided flow JSON
 - `nodered-add-flow,<base64-flow>` — **Add a new flow tab** alongside existing running flows
 - `nodered-flows` — Fetch current flows
@@ -180,7 +181,13 @@ Supported commands:
 ### Via Control command
 
 ```json
-[{"bn":"uuid:", "n":"control", "vs":"nodered-deploy,<base64-encoded-flow-json>"}]
+[
+  {
+    "bn": "uuid:",
+    "n": "control",
+    "vs": "nodered-deploy,<base64-encoded-flow-json>"
+  }
+]
 ```
 
 ## Example Flows
@@ -197,12 +204,12 @@ A ready-to-deploy example that publishes `speed` (km/h), `rpm`, and `gear` SenML
 
 Simulates polling 4 Modbus TCP holding registers (FC03) every 10 seconds and publishing SenML records to Magistrala:
 
-| Register | Measurement | Unit |
-|----------|-------------|------|
-| HR0 | Voltage | V |
-| HR1 | Current (scaled ×10) | A |
-| HR2 | Power | W |
-| HR3 | Temperature | °C |
+| Register | Measurement          | Unit |
+| -------- | -------------------- | ---- |
+| HR0      | Voltage              | V    |
+| HR1      | Current (scaled ×10) | A    |
+| HR2      | Power                | W    |
+| HR3      | Temperature          | °C   |
 
 The simulation function node can be replaced with a real `modbus-read` node when a physical Modbus TCP slave is available.
 
@@ -223,6 +230,7 @@ mosquitto_pub \
 ```
 
 The agent will:
+
 1. Receive the SenML message over MQTT
 2. Base64-decode the flow JSON
 3. Patch the MQTT `clientid` in the flow to `<client-id>-nr` (prevents session conflict with the agent itself)
@@ -242,8 +250,14 @@ mosquitto_pub \
 ```
 
 The agent logs will show:
+
 ```json
-{"level":"INFO","msg":"NodeRed command \"nodered-deploy,...\" completed successfully.","duration":"...","uuid":"req-1"}
+{
+  "level": "INFO",
+  "msg": "NodeRed command \"nodered-deploy,...\" completed successfully.",
+  "duration": "...",
+  "uuid": "req-1"
+}
 ```
 
 Node-RED will start publishing speed data to the telemetry topic from the rendered profile, normally `m/<domain-id>/c/<telemetry-channel-id>/msg`, within 3 seconds of deployment.
@@ -256,12 +270,129 @@ The Node-RED URL is configured via environment variable:
 
 Device identity, MQTT credentials, domain ID, and telemetry/commands channel IDs come from the rendered bootstrap profile.
 
-## Environment Variables
+## Topic Map
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MG_AGENT_NODERED_URL` | `http://localhost:1880/` | Node-RED REST API base URL |
-| `MG_AGENT_BOOTSTRAP_URL` | `http://bootstrap:9013/clients/bootstrap` | Bootstrap fetch URL |
-| `MG_AGENT_BOOTSTRAP_EXTERNAL_ID` | | Bootstrap external ID |
-| `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` | | Bootstrap external key |
-| `MG_UI_PORT` | `3002` | Agent UI port |
+| Direction     | Topic                             | QoS | Description                                            |
+| ------------- | --------------------------------- | --- | ------------------------------------------------------ |
+| Cloud → Agent | `m/<domain-id>/c/<ctrl-chan>/req` | 1   | Node-RED commands via `nodered` or `control` subsystem |
+| Agent → Cloud | `m/<domain-id>/c/<ctrl-chan>/res` | 1   | Command response                                       |
+
+## MQTT Test Recipes
+
+All recipes use the **commands channel request topic**: `m/<domain-id>/c/<commands-channel-id>/req`.
+
+Responses are published to: `m/<domain-id>/c/<commands-channel-id>/res`.
+
+### Subscribe to responses
+
+```bash
+mosquitto_sub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> \
+  -t "m/<domain-id>/c/<commands-channel-id>/res" \
+  -v
+```
+
+### Ping Node-RED
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "nr-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:", "n":"nodered", "vs":"nodered-ping"}]'
+```
+
+**Expected response:**
+
+```json
+[{"bn":"req-1:","n":"nodered-ping","vs":"pong","t":...}]
+```
+
+### Get Node-RED runtime state
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "nr-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:", "n":"nodered", "vs":"nodered-state"}]'
+```
+
+### Fetch current flows
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "nr-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:", "n":"nodered", "vs":"nodered-flows"}]'
+```
+
+**Expected response (truncated):**
+
+```json
+[{"bn":"req-1:","n":"nodered-flows","vs":"[{\"id\":\"...\",\"type\":\"tab\",...}]","t":...}]
+```
+
+### Deploy flows (replace all)
+
+```bash
+FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
+
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "deploy-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-deploy,$FLOWS\"}]"
+```
+
+> **Warning:** `nodered-deploy` replaces **all** running flows. Use `nodered-add-flow` to add without replacing.
+
+### Add a flow tab (non-destructive)
+
+```bash
+FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
+
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "addflow-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-add-flow,$FLOWS\"}]"
+```
+
+### Deploy via control subsystem
+
+Node-RED commands can also be sent via the `control` subsystem:
+
+```bash
+FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
+
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "ctrl-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m "[{\"bn\":\"req-1:\",\"n\":\"control\",\"vs\":\"nodered-deploy,$FLOWS\"}]"
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable                          | Default                                   | Description                |
+| --------------------------------- | ----------------------------------------- | -------------------------- |
+| `MG_AGENT_NODERED_URL`            | `http://localhost:1880/`                  | Node-RED REST API base URL |
+| `MG_AGENT_BOOTSTRAP_URL`          | `http://bootstrap:9013/clients/bootstrap` | Bootstrap fetch URL        |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`  |                                           | Bootstrap external ID      |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` |                                           | Bootstrap external key     |
+| `MG_UI_PORT`                      | `3002`                                    | Agent UI port              |
+
+## Troubleshooting
+
+| Symptom                                      | Cause                           | Fix                                                                                      |
+| -------------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `nodered-ping` returns error                 | Node-RED not reachable          | Verify Node-RED is running at `MG_AGENT_NODERED_URL`                                     |
+| Deploy succeeds but flows don't publish      | MQTT client ID conflict         | Agent auto-patches `clientid` to `<client-id>-nr`; verify the flow's broker config       |
+| `nodered-deploy` returns `"invalid command"` | Empty or missing base64 payload | Ensure the flow JSON is properly base64-encoded                                          |
+| Flows publish to wrong topic                 | Topic patching didn't match     | Agent patches `m/.../c/.../(data                                                         | gateway/telemetry)` patterns; verify flow uses this pattern |
+| TLS errors from Node-RED MQTT node           | TLS not configured in flow      | Agent adds a `tls-config` node when `MQTT_SKIP_TLS` is true; check Node-RED TLS settings |
