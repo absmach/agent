@@ -115,23 +115,30 @@ func main() {
 		return
 	}
 
+	cfg = applyPersistedOverrides(cfg, store)
+
 	if hasBootstrapConfig(c) {
 		forceFetch := false
 		if val, ok := store.Get("bs_valid"); ok && val == "0" {
 			forceFetch = true
 		}
-		cfg, err = loadBootConfig(cfg, c, logger, forceFetch)
-		if err != nil {
-			logger.Error("Failed to load bootstrap config", slog.Any("error", err))
-			exitCode = 1
-			return
-		}
-		if err := store.Set("bs_valid", "1"); err != nil {
-			logger.Warn("Failed to persist bs_valid flag", slog.Any("error", err))
+		if forceFetch || !hasBootstrapCredentials(cfg) {
+			cfg, err = loadBootConfig(cfg, c, logger, forceFetch)
+			if err != nil {
+				logger.Error("Failed to load bootstrap config", slog.Any("error", err))
+				exitCode = 1
+				return
+			}
+			persistBootstrapFields(store, cfg, logger)
+			if err := store.Set("bs_valid", "1"); err != nil {
+				logger.Warn("Failed to persist bs_valid flag", slog.Any("error", err))
+			}
+			cfg = applyPersistedOverrides(cfg, store)
+		} else {
+			logger.Info("Bootstrap data already present, skipping bootstrap fetch")
 		}
 	}
 
-	cfg = applyPersistedOverrides(cfg, store)
 	// Sync the live log-level variable with any persisted log_level override.
 	if val, ok := store.Get("log_level"); ok {
 		var l slog.Level
@@ -264,6 +271,56 @@ func validateRuntimeConfig(cfg agent.Config) error {
 
 func hasBootstrapConfig(cfg config) bool {
 	return cfg.BootstrapURL != "" && cfg.BootstrapExternalID != "" && cfg.BootstrapExternalKey != ""
+}
+
+func hasBootstrapCredentials(cfg agent.Config) bool {
+	if cfg.DomainID == "" {
+		return false
+	}
+	if cfg.Channels.CtrlID == "" || cfg.Channels.DataID == "" {
+		return false
+	}
+	if cfg.MQTT.URL == "" {
+		return false
+	}
+	if cfg.MQTT.MTLS {
+		if cfg.MQTT.ClientCert == "" || cfg.MQTT.ClientKey == "" {
+			if cfg.MQTT.CertPath == "" || cfg.MQTT.PrivKeyPath == "" {
+				return false
+			}
+		}
+	} else if cfg.MQTT.Username == "" || cfg.MQTT.Password == "" {
+		return false
+	}
+	return true
+}
+
+// persistBootstrapFields writes the critical bootstrap-derived fields to the
+// persistent config store so they survive agent restarts and allow the
+// bootstrap HTTP fetch to be skipped on subsequent runs.
+//
+// The MQTT password is stored in plaintext in agent-config.json. The file is
+// created with 0o600 permissions (owner read/write only) and the password is
+// needed to reconnect when mTLS is not in use.
+func persistBootstrapFields(store pkgconfig.Store, cfg agent.Config, logger *slog.Logger) {
+	if err := store.Set("domain_id", cfg.DomainID); err != nil {
+		logger.Warn("Failed to persist domain_id", slog.Any("error", err))
+	}
+	if err := store.Set("channels_ctrl_id", cfg.Channels.CtrlID); err != nil {
+		logger.Warn("Failed to persist channels_ctrl_id", slog.Any("error", err))
+	}
+	if err := store.Set("channels_data_id", cfg.Channels.DataID); err != nil {
+		logger.Warn("Failed to persist channels_data_id", slog.Any("error", err))
+	}
+	if err := store.Set("mqtt_url", cfg.MQTT.URL); err != nil {
+		logger.Warn("Failed to persist mqtt_url", slog.Any("error", err))
+	}
+	if err := store.Set("mqtt_username", cfg.MQTT.Username); err != nil {
+		logger.Warn("Failed to persist mqtt_username", slog.Any("error", err))
+	}
+	if err := store.Set("mqtt_password", cfg.MQTT.Password); err != nil {
+		logger.Warn("Failed to persist mqtt_password", slog.Any("error", err))
+	}
 }
 
 func loadEnvConfig(cfg config) (agent.Config, error) {
