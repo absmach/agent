@@ -73,7 +73,6 @@ type Trigger struct {
 	Size      uint64 // expected byte count, 0 means no size check
 }
 
-
 // TriggerFromRecords parses OTA trigger fields from the SenML records that
 // follow the dispatch record. The full wire format (all records in the pack) is:
 //

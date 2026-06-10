@@ -1183,7 +1183,7 @@ func TestPing(t *testing.T) {
 			t.Cleanup(cancel)
 
 			svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed,
-				slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+				slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, "")
 			require.NoError(t, err)
 
 			select {
