@@ -25,6 +25,7 @@ import (
 	pkgconfig "github.com/absmach/agent/pkg/config"
 	"github.com/absmach/agent/pkg/conn"
 	"github.com/absmach/agent/pkg/devicemgr"
+	"github.com/absmach/agent/pkg/health"
 	"github.com/absmach/agent/pkg/iface"
 	"github.com/absmach/agent/pkg/logstream"
 	"github.com/absmach/agent/pkg/nodered"
@@ -69,6 +70,8 @@ type config struct {
 	DeviceDBPath         string `env:"MG_AGENT_DEVICE_DB_PATH"                envDefault:"/var/lib/agent/devices.db"`
 	ConfigPath           string `env:"MG_AGENT_CONFIG_PATH"                   envDefault:"agent-config.json"`
 	CommandSecret        string `env:"MG_AGENT_COMMAND_SECRET"                envDefault:""`
+	WatchdogInterval     string `env:"MG_AGENT_WATCHDOG_INTERVAL"            envDefault:"0s"`
+	WatchdogTimeout      string `env:"MG_AGENT_WATCHDOG_TIMEOUT"             envDefault:"60s"`
 }
 
 var (
@@ -218,6 +221,26 @@ func main() {
 	b := conn.NewBroker(svc, mqttClient, cfg.Channels.CtrlChan(), cfg.DomainID, logger)
 	onReconnect = b.Resubscribe
 
+	// Health supervisor: periodically checks subsystem liveness and restarts
+	// the process if the agent remains unhealthy for longer than the timeout.
+	// When running under systemd, it also sends periodic WATCHDOG=1
+	// notifications via the NOTIFY_SOCKET.
+	wdInterval, err := time.ParseDuration(c.WatchdogInterval)
+	if err != nil {
+		logger.Warn("Invalid watchdog interval, disabling watchdog", slog.String("interval", c.WatchdogInterval), slog.Any("error", err))
+		wdInterval = 0
+	}
+	wdTimeout, err := time.ParseDuration(c.WatchdogTimeout)
+	if err != nil {
+		logger.Warn("Invalid watchdog timeout, using default 60s", slog.String("timeout", c.WatchdogTimeout), slog.Any("error", err))
+		wdTimeout = 60 * time.Second
+	}
+	sup := health.NewSupervisor(health.Config{
+		Interval: wdInterval,
+		Timeout:  wdTimeout,
+	}, logger)
+	sup.Register(health.NewMQTTChecker(mqttClient))
+
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", cfg.Server.Port),
 		Handler: api.MakeHandler(svc, logger, stream, ""),
@@ -235,6 +258,12 @@ func main() {
 	g.Go(func() error {
 		return StopSignalHandler(ctx, cancel, logger, "agent", srv, svc.Shutdown)
 	})
+
+	if wdInterval > 0 {
+		g.Go(func() error {
+			return sup.Run(ctx)
+		})
+	}
 
 	if err := g.Wait(); err != nil {
 		logger.Error("Agent terminated", slog.Any("error", err))
