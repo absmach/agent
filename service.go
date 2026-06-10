@@ -203,6 +203,9 @@ type Service interface {
 	// OTAStatus returns whether an OTA operation is currently in progress and the last error message, if any.
 	OTAStatus() OTAStatusInfo
 
+	// OTAAbort cancels an in-progress OTA update. It returns an error if no OTA is running.
+	OTAAbort() error
+
 	DeviceService
 }
 
@@ -236,6 +239,7 @@ type agent struct {
 	startupConfig       Config
 	otaMu               sync.Mutex
 	otaLastErr          string
+	otaCancel           context.CancelFunc
 	bootstrapCachePath  string
 }
 
@@ -1022,9 +1026,18 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	defer func() {
 		a.otaBusy.Store(false)
 	}()
+
+	otaCtx, otaCancel := context.WithCancel(ctx)
 	a.otaMu.Lock()
 	a.otaLastErr = ""
+	a.otaCancel = otaCancel
 	a.otaMu.Unlock()
+
+	defer func() {
+		a.otaMu.Lock()
+		a.otaCancel = nil
+		a.otaMu.Unlock()
+	}()
 
 	otaCfg := ota.Config{
 		BinaryPath:  cfg.OTA.BinaryPath,
@@ -1052,13 +1065,24 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 		token.Wait()
 	}
 
-	runErr := ota.Run(ctx, otaCfg, url, sha256hex, size, progressFn)
+	runErr := ota.Run(otaCtx, otaCfg, url, sha256hex, size, progressFn)
 	if runErr != nil {
 		a.otaMu.Lock()
 		a.otaLastErr = runErr.Error()
 		a.otaMu.Unlock()
 	}
 	return runErr
+}
+
+func (a *agent) OTAAbort() error {
+	a.otaMu.Lock()
+	cancel := a.otaCancel
+	a.otaMu.Unlock()
+	if cancel == nil {
+		return errors.New("no OTA in progress")
+	}
+	cancel()
+	return nil
 }
 
 func (a *agent) OTAStatus() OTAStatusInfo {

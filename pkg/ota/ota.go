@@ -29,6 +29,7 @@ const (
 	StateVerifying
 	StateReady
 	StateRestarting
+	StateAborted
 )
 
 const (
@@ -51,6 +52,8 @@ func (s State) String() string {
 		return "READY"
 	case StateRestarting:
 		return "RESTARTING"
+	case StateAborted:
+		return "ABORTED"
 	default:
 		return "UNKNOWN"
 	}

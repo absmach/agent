@@ -166,6 +166,15 @@ func (ms *metricsMiddleware) OTAStatus() agent.OTAStatusInfo {
 	return ms.svc.OTAStatus()
 }
 
+func (ms *metricsMiddleware) OTAAbort() error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "ota_abort").Add(1)
+		ms.latency.With("method", "ota_abort").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.OTAAbort()
+}
+
 func (ms *metricsMiddleware) ListDevices() ([]devicemgr.Device, error) {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "list_devices").Add(1)
