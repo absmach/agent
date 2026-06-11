@@ -48,8 +48,8 @@ Export the provisioning values first:
 ```bash
 export MG_AGENT_BOOTSTRAP_EXTERNAL_ID='01:6:0:sb:sa'
 export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY='secret'
-export MG_DOMAIN_ID=<domain-id>
-export MG_PAT=<personal-access-token>
+export MG_DOMAIN_ID="<domain-id>"
+export MG_PAT="<personal-access-token>"
 make run_provision
 ```
 
@@ -58,6 +58,7 @@ Use your real PAT in the shell, but do not commit it to files. The provisioning 
 The PAT used for provisioning must be able to create bootstrap configs, rules, clients, and channels in the target domain. In practice the provisioning flow expects scopes like:
 
 - `bootstrap:create`
+- `bootstrap:update`
 - `rules:create`
 - `clients:create`
 - `clients:view`
@@ -76,10 +77,10 @@ The provisioning script uses sensible defaults for local Docker:
 Override them before provisioning when needed, for example:
 
 ```bash
-export MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<device-external-id>
-export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<device-external-key>
-export MG_DOMAIN_ID=<domain-id>
-export MG_PAT=<personal-access-token>
+export MG_AGENT_BOOTSTRAP_EXTERNAL_ID="<device-external-id>"
+export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="<device-external-key>"
+export MG_DOMAIN_ID="<domain-id>"
+export MG_PAT="<personal-access-token>"
 export MG_AGENT_MQTT_URL=ssl://messaging.magistrala.absmach.eu:8883
 export MG_AGENT_MQTT_SKIP_TLS=false
 make run_provision

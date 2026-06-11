@@ -13,24 +13,6 @@ Two heartbeat paths exist:
 
 The agent also accepts an MQTT `ping` command that publishes an immediate heartbeat without waiting for the next interval.
 
-## Architecture
-
-```
-┌─────────────────┐      MQTT       ┌──────────────┐
-│   Magistrala    │ ◄────────────── │    Agent     │
-│   (cloud/local) │                 │  self-hb pub │
-└─────────────────┘                 └──────┬───────┘
-                                           │ AMQP
-                                    ┌──────▼───────┐
-                                    │    FluxMQ     │
-                                    └──────┬───────┘
-                                           │ heartbeat.<name>.<type>
-                                    ┌──────▼───────┐
-                                    │   Service     │
-                                    │  (e.g. NR)   │
-                                    └──────────────┘
-```
-
 ## Self-Heartbeat
 
 The agent publishes a SenML heartbeat to the telemetry channel on startup and at every interval:

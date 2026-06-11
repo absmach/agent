@@ -1131,7 +1131,7 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
 
 	progressFn := func(state ota.State, progress float64) {
-		now := float64(time.Now().UnixNano())
+		now := float64(time.Now().UnixNano()) / float64(time.Second)
 		stateStr := strings.ToLower(state.String())
 		statusPack := []senml.Record{
 			{BaseName: "gw:", BaseTime: now, Name: "ota_state", StringValue: &stateStr},

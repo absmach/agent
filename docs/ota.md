@@ -29,6 +29,7 @@ The OTA update goes through these states:
 | `VERIFYING`   | SHA-256 hash verification in progress                  |
 | `READY`       | Download and verification complete, about to replace   |
 | `RESTARTING`  | Binary replaced, process restarting via `syscall.Exec` |
+| `ABORTED`     | OTA cancelled via abort command                        |
 
 ## Trigger Payload
 
@@ -133,6 +134,16 @@ mosquitto_pub \
   -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
   -t "m/<domain-id>/c/<commands-channel-id>/ota/cfg" \
   -m '[{"n":"url","vs":"https://example.com/agent-v2"},{"n":"hash","vs":"abcdef1234567890..."}]'
+```
+
+### Abort an in-progress OTA
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:","n":"ota","vs":"abort"}]'
 ```
 
 ### Trigger OTA with token auth (when command_secret is set)

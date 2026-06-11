@@ -12,6 +12,7 @@ All commands are sent as [SenML][senml] JSON arrays to the **commands channel re
 | --------- | ------------- | --------------------------------------------------------------- |
 | `exec`    | Execute       | Run an allowlisted shell command                                |
 | `config`  | ServiceConfig | View services, get/set/reset runtime config, save export config |
+| `service` | ServiceConfig | Alias for `config` — same handler                               |
 | `control` | Control       | Node-RED management commands                                    |
 | `term`    | Terminal      | Open/close/write interactive terminal sessions                  |
 | `nodered` | NodeRed       | Node-RED flow operations                                        |
@@ -117,6 +118,10 @@ The `config` command provides runtime management of agent parameters without res
 | `terminal_session_timeout` | Go duration (e.g. `60s`, `5m`)             | Terminal session idle timeout       |
 | `command_secret`           | Any non-empty string                       | Token for MQTT command auth         |
 | `bs_valid`                 | `0` or `1`                                 | Bootstrap cache validity flag       |
+| `mqtt_password`            | Any non-empty string                       | MQTT broker password (write-only)   |
+| `provision_token`          | Any non-empty string                       | Provisioning API token (write-only) |
+
+> **Note:** `mqtt_password` and `provision_token` are credential keys. They can be `set` but `get` returns `"not_allowed"` to avoid leaking secrets over MQTT.
 
 ### Commands
 
@@ -214,7 +219,7 @@ mosquitto_pub \
   -m '[{"bn":"req-1:", "n":"exec", "vs":"ls,-la"}]'
 ```
 
-Commands run via `sh -c`. Use `&&` to chain: `ls,-la,/tmp,&&,cat,/etc/os-release`.
+Commands are executed directly (not via a shell), so shell operators like `&&`, `||`, `|`, and `>` are not supported. Each command and its arguments are comma-separated: `ls,-la,/tmp`.
 
 **Response (on control response topic):**
 
@@ -237,6 +242,20 @@ mosquitto_pub \
   -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
   -t "m/<domain-id>/c/<commands-channel-id>/req" \
   -m "[{\"bn\":\"req-1:\", \"n\":\"config\", \"vs\":\"save,export,/path/to/config.toml,$CONTENT\"}]"
+```
+
+## Reset (process restart)
+
+The `reset` command performs a graceful shutdown (stops heartbeat tickers, disconnects MQTT) and then replaces the running process in-place via `syscall.Exec()`.
+
+> **Warning:** This restarts the agent process immediately. Use with caution in production.
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "reset-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:","n":"reset","vs":""}]'
 ```
 
 ## Topic Map

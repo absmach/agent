@@ -11,3 +11,5 @@ Per-feature documentation with configuration, MQTT topic maps, and copy-paste te
 | [ota.md](ota.md)             | Over-the-air binary updates, trigger payload, download/verify/replace cycle, status reporting, test recipes |
 | [terminal.md](terminal.md)   | Interactive terminal sessions over MQTT, session lifecycle, PTY management, test recipes                    |
 | [nodered.md](nodered.md)     | Node-RED integration, flow deployment, provisioning, HTTP and MQTT management, test recipes                 |
+| [devices.md](devices.md)     | Downstream device provisioning, physical interfaces, device CRUD, telemetry scheduler, test recipes         |
+| [health.md](health.md)       | Health supervisor, systemd watchdog integration, MQTT connection monitoring, health check endpoints         |

@@ -1,0 +1,261 @@
+# Device Manager — Downstream Device Provisioning and Management
+
+The device manager subsystem allows the agent to provision, register, and manage downstream devices connected via physical interfaces (serial, I2C, Modbus RTU/TCP, USB). Each device is provisioned as a Magistrala client with its own channel, and data from the device is forwarded to Magistrala over MQTT.
+
+## Overview
+
+```
+┌──────────────┐    MQTT     ┌──────────────┐   physical    ┌──────────────┐
+│  Magistrala  │ ◄────────── │    Agent     │ ◄──────────── │  Downstream  │
+│   (cloud)    │ ──────────► │  DeviceMgr   │ ────────────► │   Device     │
+└──────────────┘  commands   └──────────────┘  read/write   └──────────────┘
+                                │
+                                ▼
+                           BoltDB store
+                        (device registry)
+```
+
+## Architecture
+
+The device manager is split into three layers:
+
+1. **Service layer** (`DeviceManager()` in `service.go`) — handles MQTT command dispatch for 9 subcommands
+2. **Manager** (`pkg/devicemgr/manager.go`) — provisioning logic (create client, channel, connect, optional rule)
+3. **Store** (`pkg/devicemgr/store.go`) — BoltDB-backed persistent device registry
+
+## Supported Interface Types
+
+| Type         | Address Format     | Description             |
+| ------------ | ------------------ | ----------------------- |
+| `serial`     | `/dev/ttyS0`       | Serial / RS-232         |
+| `usb`        | `/dev/ttyACM0`     | USB serial              |
+| `modbus-rtu` | `/dev/ttyS0`       | Modbus RTU over serial  |
+| `modbus-tcp` | `192.168.1.10:502` | Modbus TCP over network |
+| `i2c`        | `/dev/i2c-1`       | Linux I2C bus           |
+| `ble`        | —                  | Not yet implemented     |
+| `zigbee`     | —                  | Not yet implemented     |
+
+## Subcommands
+
+All device commands are sent via the `devices` dispatch name on the commands channel:
+
+| Subcommand | Format                                                                                                  | Description                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `list`     | `devices,list`                                                                                          | Returns JSON array of all registered devices  |
+| `add`      | `devices,{"name":"...","external_id":"...","external_key":"...","iface_type":"...","iface_addr":"..."}` | Provision and register a new device           |
+| `remove`   | `devices,remove,<device_id>`                                                                            | Deregister and remove a device                |
+| `get`      | `devices,get,<device_id>`                                                                               | Returns JSON for one device                   |
+| `seen`     | `devices,seen,<device_id>`                                                                              | Mark device as active / update last-seen time |
+| `open`     | `devices,open,<device_id>`                                                                              | Open the physical interface for the device    |
+| `close`    | `devices,close,<device_id>`                                                                             | Close the physical interface                  |
+| `read`     | `devices,read,<device_id>,<n_bytes>`                                                                    | Read n bytes from device, reply as hex string |
+| `write`    | `devices,write,<device_id>,<hex_data>`                                                                  | Write hex-encoded bytes to the device         |
+
+## Provisioning Flow
+
+When `add` is called, the agent:
+
+1. Creates a Magistrala **Client** via the Clients API
+2. Creates a Magistrala **Channel** via the Channels API
+3. **Connects** the client to the channel (publish + subscribe)
+4. Optionally creates a **save_senml rule** via the Rules Engine API (if `MG_AGENT_RULES_ENGINE_URL` is configured)
+5. Saves the device to the local **BoltDB store**
+
+The device's Magistrala credentials (client ID/key) and channel ID are persisted locally so the agent can reconnect on restart.
+
+## Device Telemetry Scheduler
+
+When a device has a valid channel ID, the agent launches a background goroutine that:
+
+1. Creates a dedicated MQTT connection using the device's credentials
+2. Opens the physical interface
+3. Reads data in a loop (4096-byte buffer)
+4. Publishes raw data to `m/<domain-id>/c/<device-channel-id>/msg`
+
+Reconnection uses exponential backoff (1s to 30s).
+
+## Configuration
+
+### Environment Variables
+
+| Variable                    | Default | Description                                         |
+| --------------------------- | ------- | --------------------------------------------------- |
+| `MG_AGENT_DEVICE_DB_PATH`   |         | Path to the BoltDB database file                    |
+| `MG_AGENT_PROVISION_URL`    |         | Base URL for Magistrala provisioning API            |
+| `MG_AGENT_PROVISION_TOKEN`  |         | Token for provisioning API authentication           |
+| `MG_AGENT_RULES_ENGINE_URL` |         | URL for the Rules Engine (optional, for auto-rules) |
+
+## Topic Map
+
+| Direction     | Topic                             | QoS | Description            |
+| ------------- | --------------------------------- | --- | ---------------------- |
+| Cloud → Agent | `m/<domain-id>/c/<ctrl-chan>/req` | 1   | Device command request |
+| Agent → Cloud | `m/<domain-id>/c/<ctrl-chan>/res` | 1   | Command response       |
+| Agent → Cloud | `m/<domain-id>/c/<dev-chan>/msg`  | 0   | Device telemetry data  |
+
+## MQTT Test Recipes
+
+### List all devices
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:","n":"devices","vs":"list"}]'
+```
+
+**Response:**
+
+```json
+[{"bn":"req-1:","n":"list","vs":"[{\"id\":\"...\",\"name\":\"sensor-1\",...}]","t":...}]
+```
+
+### Add a device
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:","n":"devices","vs":"add,{\"name\":\"temp-sensor\",\"external_id\":\"ext-001\",\"external_key\":\"ext-key-001\",\"iface_type\":\"serial\",\"iface_addr\":\"/dev/ttyS0\"}"}]'
+```
+
+**Response:**
+
+```json
+[{"bn":"req-1:","n":"add","vs":"{\"id\":\"...\",\"name\":\"temp-sensor\",\"channel_id\":\"...\",...}","t":...}]
+```
+
+### Get a specific device
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:","n":"devices","vs":"get,<device-id>"}]'
+```
+
+### Remove a device
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:","n":"devices","vs":"remove,<device-id>"}]'
+```
+
+### Mark a device as seen
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:","n":"devices","vs":"seen,<device-id>"}]'
+```
+
+### Open a device interface
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:","n":"devices","vs":"open,<device-id>"}]'
+```
+
+### Close a device interface
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:","n":"devices","vs":"close,<device-id>"}]'
+```
+
+### Read bytes from a device
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:","n":"devices","vs":"read,<device-id>,64"}]'
+```
+
+**Response:**
+
+```json
+[{"bn":"req-1:","n":"read","vs":"48656c6c6f20576f726c64","t":...}]
+```
+
+### Write bytes to a device
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:","n":"devices","vs":"write,<device-id>,48656c6c6f"}]'
+```
+
+**Response:**
+
+```json
+[{"bn":"req-1:","n":"write","vs":"5","t":...}]
+```
+
+### Subscribe to device telemetry
+
+```bash
+mosquitto_sub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> \
+  -t "m/<domain-id>/c/<device-channel-id>/msg" \
+  -v
+```
+
+## HTTP API
+
+| Method   | Path                 | Description         |
+| -------- | -------------------- | ------------------- |
+| `GET`    | `/devices`           | List all devices    |
+| `GET`    | `/devices/{id}`      | Get a device        |
+| `POST`   | `/devices`           | Add a device        |
+| `DELETE` | `/devices/{id}`      | Remove a device     |
+| `POST`   | `/devices/{id}/seen` | Mark device as seen |
+
+### Add a device via HTTP
+
+```bash
+curl -s -X POST http://localhost:9999/devices \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "temp-sensor",
+    "external_id": "ext-001",
+    "external_key": "ext-key-001",
+    "interface_type": "serial",
+    "interface_address": "/dev/ttyS0"
+  }'
+```
+
+### List devices via HTTP
+
+```bash
+curl -s http://localhost:9999/devices | jq .
+```
+
+## Troubleshooting
+
+| Symptom                                       | Cause                                             | Fix                                                           |
+| --------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------- |
+| `add` returns error                           | Provisioning API unreachable or invalid token     | Check `MG_AGENT_PROVISION_URL` and `MG_AGENT_PROVISION_TOKEN` |
+| Agent logs `"device manager disabled"`        | Device database path not configured               | Set `MG_AGENT_DEVICE_DB_PATH`                                 |
+| `open` returns `"not implemented"`            | BLE or Zigbee interface type                      | Use a supported interface type (serial, modbus-rtu, etc.)     |
+| `read`/`write` returns `"interface not open"` | Interface was not opened before read/write        | Send `open` command first                                     |
+| Device telemetry not appearing on channel     | Physical interface not connected or misconfigured | Verify device address and interface type                      |
+| Device data stops flowing after disconnect    | Scheduler goroutine exited                        | Check agent logs for reconnection attempts                    |
