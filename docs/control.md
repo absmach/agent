@@ -21,19 +21,6 @@ All commands are sent as [SenML][senml] JSON arrays to the **commands channel re
 | `ota`     | OTA           | Over-the-air binary update                                      |
 | `devices` | DeviceManager | Downstream device CRUD                                          |
 
-## Architecture
-
-```
-┌──────────────┐      MQTT       ┌──────────────────────┐
-│  Magistrala  │ ──── req ────── │     Agent Broker     │
-│   (cloud)    │                 │  ┌──────────────────┐ │
-│              │ ◄─── res ────── │  │  handleMsg()     │ │
-└──────────────┘                 │  │    ↓ authorize   │ │
-                                 │  │    ↓ dispatch    │ │
-                                 │  └──────────────────┘ │
-                                 └──────────────────────┘
-```
-
 ## Message Format
 
 ### Request (cloud → agent)
@@ -96,10 +83,10 @@ and silently drops the message (no response is published).
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"config", "vs":"set,command_secret,my-secret-token"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:", "n":"config", "vs":"set,command_secret,my-secret-token"}]'
 ```
 
 > **Note:** The `get` command returns `REDACTED` for `command_secret` to avoid leaking the secret over MQTT.
@@ -129,62 +116,77 @@ The `config` command provides runtime management of agent parameters without res
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"config", "vs":"view"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:", "n":"config", "vs":"view"}]'
+```
+
+Response will be something like this:
+
+Channel `m/<domain-id>/c/<commands-channel-id>/res`
+
+```json
+[
+  {
+    "bn": "req-1",
+    "n": "view",
+    "t": 1781191691.7735436,
+    "vs": "[{\"name\":\"nodered\",\"last_seen\":\"2026-06-11T15:28:08.943017256Z\",\"status\":\"online\",\"type\":\"nodered\",\"terminal\":0}]"
+  }
+]
 ```
 
 #### Get a config value
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"config", "vs":"get,log_level"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:", "n":"config", "vs":"get,log_level"}]'
 ```
 
 **Response:**
 
 ```json
-[{"bn":"req-1:","n":"get","vs":"info","t":...}]
+[{ "bn": "req-1", "n": "get", "t": 1781192457.305233, "vs": "debug" }]
 ```
 
 #### Set a config value
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"config", "vs":"set,log_level,debug"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:", "n":"config", "vs":"set,log_level,debug"}]'
 ```
 
 **Response:**
 
 ```json
-[{"bn":"req-1:","n":"set","vs":"ok","t":...}]
+[{ "bn": "req-1", "n": "set", "t": 1781192515.7082806, "vs": "ok" }]
 ```
 
 #### Reset a config value to startup default
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"config", "vs":"reset,log_level"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:", "n":"config", "vs":"reset,log_level"}]'
 ```
 
 #### Invalidate bootstrap cache
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"config", "vs":"set,bs_valid,0"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:", "n":"config", "vs":"set,bs_valid,0"}]'
 ```
 
 Setting `bs_valid` to `0` deletes the cached bootstrap profile. On next restart, the agent re-fetches from the bootstrap server.
@@ -206,17 +208,17 @@ ss  systemctl  true  uname  uptime  who
 ```bash
 # No arguments
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"exec", "vs":"pwd"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:", "n":"exec", "vs":"pwd"}]'
 
 # With arguments (comma-separated)
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"exec", "vs":"ls,-la"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:", "n":"exec", "vs":"ls,-la"}]'
 ```
 
 Commands are executed directly (not via a shell), so shell operators like `&&`, `||`, `|`, and `>` are not supported. Each command and its arguments are comma-separated: `ls,-la,/tmp`.
@@ -224,7 +226,18 @@ Commands are executed directly (not via a shell), so shell operators like `&&`, 
 **Response (on control response topic):**
 
 ```json
-[{"bn":"req-1:","n":"ls -la","vs":"/\ndrwxr-xr-x ...","t":...}]
+[{ "bn": "req-1", "bt": 1781192628.4707563, "n": "pwd", "vs": "/\n" }]
+```
+
+```json
+[
+  {
+    "bn": "req-1",
+    "bt": 1781192641.2791781,
+    "n": "ls -la",
+    "vs": "total 22096\ndrwxr-xr-x    1 root     root             6 Jun 11 15:39 .\ndrwxr-xr-x    1 root     root             6 Jun 11 15:39 ..\n-rwxr-xr-x    1 root     root             0 Jun 11 15:39 .dockerenv\ndrwxr-xr-x    1 root     root           858 Dec 17 07:03 bin\ndrwxr-xr-x    5 root     root           340 Jun 11 15:39 dev\ndrwxr-xr-x    1 root     root            56 Jun 11 15:39 etc\n-rwxr-xr-x    1 root     root      22622370 Jun 11 15:39 exe\ndrwxr-xr-x    1 root     root             0 Dec 17 07:03 home\ndrwxr-xr-x    1 root     root           146 Dec 17 07:03 lib\ndrwxr-xr-x    1 root     root            28 Dec 17 07:03 media\ndrwxr-xr-x    1 root     root             0 Dec 17 07:03 mnt\ndrwxr-xr-x    1 root     root             0 Dec 17 07:03 opt\ndr-xr-xr-x 1073 root     root             0 Jun 11 15:39 proc\ndrwx------    1 root     root             0 Dec 17 07:03 root\ndrwxr-xr-x    1 root     root             8 Dec 17 07:03 run\ndrwxr-xr-x    1 root     root           810 Dec 17 07:03 sbin\ndrwxr-xr-x    1 root     root             0 Dec 17 07:03 srv\ndr-xr-xr-x   13 root     root             0 Jun 11 15:39 sys\ndrwxrwxrwt    1 root     root             0 Dec 17 07:03 tmp\ndrwxr-xr-x    1 root     root            40 Dec 17 07:03 usr\ndrwxr-xr-x    1 root     root             6 Dec 17 07:03 var\n"
+  }
+]
 ```
 
 > **Note:** `cd` is handled specially — it changes the agent's internal working directory, so subsequent `exec` commands use the new directory.
@@ -238,10 +251,10 @@ Push an export service config file to the gateway:
 CONTENT=$(base64 -w 0 export.json)
 
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m "[{\"bn\":\"req-1:\", \"n\":\"config\", \"vs\":\"save,export,/path/to/config.toml,$CONTENT\"}]"
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m "[{\"bn\":\"req-1:\", \"n\":\"config\", \"vs\":\"save,export,/path/to/config.toml,$CONTENT\"}]"
 ```
 
 ## Reset (process restart)
@@ -263,20 +276,20 @@ If no mode is specified, `graceful` is used by default.
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "reset-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"reset","vs":"graceful"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "reset-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"reset","vs":"graceful"}]'
 ```
 
 With token auth (when `command_secret` is set):
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "reset-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"reset","vs":"immediate"},{"n":"token","vs":"my-secret-token"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "reset-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"reset","vs":"immediate"},{"n":"token","vs":"my-secret-token"}]'
 ```
 
 ### Via HTTP
@@ -290,11 +303,7 @@ curl -s -X POST http://localhost:9999/reset \
 **Response (HTTP 202 Accepted):**
 
 ```json
-{
-  "service": "agent",
-  "response": "reset",
-  "mode": "graceful"
-}
+{ "service": "agent", "response": "reset", "mode": "graceful" }
 ```
 
 ### Goodbye Heartbeat
@@ -320,16 +329,5 @@ The reset reason (`graceful`, `immediate`, `watchdog`) is persisted in the confi
 | ------------- | --------------------------------- | --- | ---------------- |
 | Cloud → Agent | `m/<domain-id>/c/<ctrl-chan>/req` | 1   | Command request  |
 | Agent → Cloud | `m/<domain-id>/c/<ctrl-chan>/res` | 1   | Command response |
-
-## Troubleshooting
-
-| Symptom                                                   | Cause                                         | Fix                                                    |
-| --------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------ |
-| Command sent, no response                                 | Token auth enabled but `token` record missing | Add `{"n":"token","vs":"<secret>"}` to your SenML pack |
-| Agent logs `"command rejected: invalid or missing token"` | Wrong token value                             | Verify `MG_AGENT_COMMAND_SECRET` matches               |
-| Agent logs `"no handler registered for command"`          | Unknown `n` field                             | Check supported subsystems table above                 |
-| `exec` returns `"invalid command"`                        | Command not in allowlist                      | Use only allowlisted commands                          |
-| `config set` returns `"invalid command"`                  | Invalid key or value format                   | Check settable keys list and value format              |
-| `config get` returns `"not_configured"`                   | Persistent config store not initialized       | Check `MG_AGENT_CONFIG_PATH`                           |
 
 [senml]: https://tools.ietf.org/html/rfc8428
