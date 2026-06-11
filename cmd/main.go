@@ -51,7 +51,10 @@ type config struct {
 	MqttCert             string `env:"MG_AGENT_MQTT_CLIENT_CERT"              envDefault:"client.cert"`
 	MqttPrivateKey       string `env:"MG_AGENT_MQTT_CLIENT_KEY"               envDefault:"client.key"`
 	HeartbeatInterval    string `env:"MG_AGENT_HEARTBEAT_INTERVAL"            envDefault:"10s"`
-	TelemetryInterval    string `env:"MG_AGENT_TELEMETRY_INTERVAL"            envDefault:"0s"`
+	TelemetryInterval    string `env:"MG_AGENT_TELEMETRY_INTERVAL"             envDefault:"30s"`
+	TelemetryIncludeTemp string `env:"MG_AGENT_TELEMETRY_INCLUDE_TEMPERATURE"  envDefault:"true"`
+	TelemetryIncludeNet  string `env:"MG_AGENT_TELEMETRY_INCLUDE_NETWORK"      envDefault:"true"`
+	TelemetryIncludeLoad string `env:"MG_AGENT_TELEMETRY_INCLUDE_LOAD"         envDefault:"true"`
 	TermSessionTimeout   string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT"      envDefault:"60s"`
 	OTAEnabled           string `env:"MG_AGENT_OTA_ENABLED"                   envDefault:"false"`
 	OTABinaryPath        string `env:"MG_AGENT_OTA_BINARY_PATH"               envDefault:"/usr/local/bin/agent"`
@@ -376,8 +379,23 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 	if err != nil {
 		return agent.Config{}, err
 	}
+	telemetryIncludeTemp, err := strconv.ParseBool(cfg.TelemetryIncludeTemp)
+	if err != nil {
+		telemetryIncludeTemp = true
+	}
+	telemetryIncludeNet, err := strconv.ParseBool(cfg.TelemetryIncludeNet)
+	if err != nil {
+		telemetryIncludeNet = true
+	}
+	telemetryIncludeLoad, err := strconv.ParseBool(cfg.TelemetryIncludeLoad)
+	if err != nil {
+		telemetryIncludeLoad = true
+	}
 	tlc := agent.TelemetryConfig{
-		Interval: telemetryInterval,
+		Interval:           telemetryInterval,
+		IncludeTemperature: telemetryIncludeTemp,
+		IncludeNetwork:     telemetryIncludeNet,
+		IncludeLoad:        telemetryIncludeLoad,
 	}
 
 	nc := agent.NodeRedConfig{URL: cfg.NodeRedURL}
