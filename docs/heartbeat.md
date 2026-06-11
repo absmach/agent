@@ -13,6 +13,8 @@ Two heartbeat paths exist:
 
 The agent also accepts an MQTT `ping` command that publishes an immediate heartbeat without waiting for the next interval.
 
+On a graceful reset, the agent publishes a **goodbye heartbeat** with `heartbeat: false` before disconnecting, so downstream consumers can detect the agent going offline without waiting for a timeout.
+
 ## Self-Heartbeat
 
 The agent publishes a SenML heartbeat to the telemetry channel on startup and at every interval:

@@ -190,36 +190,53 @@ build/magistrala-agent
 
 ### Config
 
-In the normal runtime flow, configuration is built from environment variables plus the rendered bootstrap profile. Environment variables provide local infrastructure settings, such as HTTP port, FluxMQ URL, Node-RED URL, MQTT TLS options, and bootstrap credentials. The rendered bootstrap profile provides device identity, domain ID, MQTT credentials, and telemetry/commands channel IDs.
+In the normal runtime flow, configuration is built from environment variables plus the rendered bootstrap profile. Environment variables provide local infrastructure settings, such as HTTP port, FluxMQ URL, Node-RED URL, MQTT TLS options, and bootstrap credentials. The rendered bootstrap profile provides device identity, domain ID, MQTT credentials, and telemetry/commands channel IDs. A persistent config store (`MG_AGENT_CONFIG_PATH`) holds runtime overrides applied via MQTT `config set`.
 
-The legacy `config.toml` fallback still exists for local development, but bootstrap mode skips reading the file when `MG_AGENT_BOOTSTRAP_URL`, `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`, and `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` are all set.
+Bootstrap mode is activated when `MG_AGENT_BOOTSTRAP_URL`, `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`, and `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` are all set.
 
 Environment variables:
 
-| Variable                                 | Description                                            | Default                              |
-| ---------------------------------------- | ------------------------------------------------------ | ------------------------------------ |
-| `MG_AGENT_CONFIG_FILE`                   | Legacy fallback config file, ignored in bootstrap mode | `config.toml`                        |
-| `MG_AGENT_LOG_LEVEL`                     | Log level                                              | `info`                               |
-| `MG_AGENT_HTTP_PORT`                     | Agent HTTP port                                        | `9999`                               |
-| `MG_AGENT_PORT`                          | Alias for agent HTTP port                              |                                      |
-| `MG_AGENT_BROKER_URL`                    | FluxMQ (AMQP) broker URL                               | `amqp://guest:guest@localhost:5682/` |
-| `MG_AGENT_MQTT_URL`                      | MQTT broker URL                                        | `localhost:1883`                     |
-| `MG_AGENT_MQTT_SKIP_TLS`                 | Skip TLS verification for MQTT                         | `true`                               |
-| `MG_AGENT_MQTT_MTLS`                     | Use mTLS for MQTT                                      | `false`                              |
-| `MG_AGENT_MQTT_CA`                       | CA certificate path for mTLS                           | `ca.crt`                             |
-| `MG_AGENT_MQTT_CLIENT_CERT`              | Client certificate path for mTLS                       | `client.cert`                        |
-| `MG_AGENT_MQTT_CLIENT_KEY`               | Client private key path for mTLS                       | `client.key`                         |
-| `MG_AGENT_MQTT_QOS`                      | MQTT QoS level                                         | `0`                                  |
-| `MG_AGENT_MQTT_RETAIN`                   | MQTT retain flag                                       | `false`                              |
-| `MG_AGENT_NODERED_URL`                   | Node-RED API URL                                       | `http://localhost:1880/`             |
-| `MG_AGENT_HEARTBEAT_INTERVAL`            | Expected heartbeat interval                            | `10s`                                |
-| `MG_AGENT_TERMINAL_SESSION_TIMEOUT`      | Terminal session timeout                               | `60s`                                |
-| `MG_AGENT_BOOTSTRAP_URL`                 | Bootstrap base URL                                     |                                      |
-| `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`         | Bootstrap external ID                                  |                                      |
-| `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY`        | Bootstrap external key                                 |                                      |
-| `MG_AGENT_BOOTSTRAP_RETRIES`             | Bootstrap fetch retries                                | `5`                                  |
-| `MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS` | Bootstrap retry delay in seconds                       | `10`                                 |
-| `MG_AGENT_BOOTSTRAP_SKIP_TLS`            | Skip TLS verification for bootstrap fetch              | `false`                              |
+| Variable                                 | Description                                        | Default                              |
+| ---------------------------------------- | -------------------------------------------------- | ------------------------------------ |
+| `MG_AGENT_LOG_LEVEL`                     | Log level                                          | `info`                               |
+| `MG_AGENT_HTTP_PORT`                     | Agent HTTP port                                    | `9999`                               |
+| `MG_AGENT_PORT`                          | Alias for agent HTTP port                          |                                      |
+| `MG_AGENT_CONFIG_PATH`                   | Persistent config store path                       | `agent-config.json`                  |
+| `MG_AGENT_BROKER_URL`                    | FluxMQ (AMQP) broker URL                           | `amqp://guest:guest@localhost:5682/` |
+| `MG_AGENT_MQTT_URL`                      | MQTT broker URL                                    | `localhost:1883`                     |
+| `MG_AGENT_MQTT_SKIP_TLS`                 | Skip TLS verification for MQTT                     | `true`                               |
+| `MG_AGENT_MQTT_MTLS`                     | Use mTLS for MQTT                                  | `false`                              |
+| `MG_AGENT_MQTT_CA`                       | CA certificate path for mTLS                       | `ca.crt`                             |
+| `MG_AGENT_MQTT_CLIENT_CERT`              | Client certificate path for mTLS                   | `client.cert`                        |
+| `MG_AGENT_MQTT_CLIENT_KEY`               | Client private key path for mTLS                   | `client.key`                         |
+| `MG_AGENT_MQTT_QOS`                      | MQTT QoS level                                     | `0`                                  |
+| `MG_AGENT_MQTT_CMD_QOS`                  | MQTT QoS level for command messages                | `1`                                  |
+| `MG_AGENT_MQTT_RETAIN`                   | MQTT retain flag                                   | `false`                              |
+| `MG_AGENT_NODERED_URL`                   | Node-RED API URL                                   | `http://localhost:1880/`             |
+| `MG_AGENT_HEARTBEAT_INTERVAL`            | Expected heartbeat interval                        | `10s`                                |
+| `MG_AGENT_TELEMETRY_INTERVAL`            | Telemetry publish interval (`0s` to disable)       | `30s`                                |
+| `MG_AGENT_TELEMETRY_INCLUDE_TEMPERATURE` | Include CPU temperature in telemetry               | `true`                               |
+| `MG_AGENT_TELEMETRY_INCLUDE_NETWORK`     | Include wireless RSSI in telemetry                 | `true`                               |
+| `MG_AGENT_TELEMETRY_INCLUDE_LOAD`        | Include load averages in telemetry                 | `true`                               |
+| `MG_AGENT_TERMINAL_SESSION_TIMEOUT`      | Terminal session timeout                           | `60s`                                |
+| `MG_AGENT_COMMAND_SECRET`                | Token for MQTT command authentication              |                                      |
+| `MG_AGENT_WATCHDOG_INTERVAL`             | Health supervisor check interval (`0s` to disable) | `0s`                                 |
+| `MG_AGENT_WATCHDOG_TIMEOUT`              | Unhealthy timeout before process restart           | `60s`                                |
+| `MG_AGENT_BOOTSTRAP_URL`                 | Bootstrap base URL                                 |                                      |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`         | Bootstrap external ID                              |                                      |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY`        | Bootstrap external key                             |                                      |
+| `MG_AGENT_BOOTSTRAP_RETRIES`             | Bootstrap fetch retries                            | `5`                                  |
+| `MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS` | Bootstrap retry delay in seconds                   | `10`                                 |
+| `MG_AGENT_BOOTSTRAP_SKIP_TLS`            | Skip TLS verification for bootstrap fetch          | `false`                              |
+| `MG_AGENT_BOOTSTRAP_CACHE_PATH`          | Bootstrap cache file path                          | `/var/lib/agent/bootstrap.json`      |
+| `MG_AGENT_OTA_ENABLED`                   | Enable OTA update subsystem                        | `false`                              |
+| `MG_AGENT_OTA_BINARY_PATH`               | Path to agent binary for OTA replace               | `/usr/local/bin/agent`               |
+| `MG_AGENT_OTA_DOWNLOAD_DIR`              | Directory for OTA downloads                        | `/tmp`                               |
+| `MG_AGENT_DEVICE_DB_PATH`                | BoltDB path for downstream device registry         | `/var/lib/agent/devices.db`          |
+| `MG_AGENT_CLIENTS_URL`                   | Magistrala Clients API URL                         |                                      |
+| `MG_AGENT_CHANNELS_URL`                  | Magistrala Channels API URL                        |                                      |
+| `MG_AGENT_RULES_ENGINE_URL`              | Rules Engine API URL (optional, for auto-rules)    |                                      |
+| `MG_PAT`                                 | Provisioning API token                             |                                      |
 
 ## MQTT Message Format
 
@@ -263,7 +280,7 @@ mosquitto_pub \
   -m '[{"bn":"req-1:", "n":"exec", "vs":"ls,-la"}]'
 ```
 
-Commands are executed via `sh -c` so shell builtins and pipelines are supported. Each invocation is stateless; use `&&` to chain commands: `ls,-la,/tmp,&&,cat,/etc/os-release`.
+Commands are executed directly (not via a shell), so shell operators like `&&`, `||`, `|`, and `>` are not supported. Only allowlisted commands can be executed. Each command and its arguments are comma-separated: `ls,-la,/tmp`.
 
 ### View service config
 

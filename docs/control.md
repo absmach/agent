@@ -246,17 +246,73 @@ mosquitto_pub \
 
 ## Reset (process restart)
 
-The `reset` command performs a graceful shutdown (stops heartbeat tickers, disconnects MQTT) and then replaces the running process in-place via `syscall.Exec()`.
+The `reset` command performs a graceful shutdown and then replaces the running process in-place via `syscall.Exec()`. The agent supports multiple reset modes:
 
-> **Warning:** This restarts the agent process immediately. Use with caution in production.
+| Mode        | Behavior                                                                                  |
+| ----------- | ----------------------------------------------------------------------------------------- |
+| `graceful`  | Send goodbye heartbeat, stop service tickers, close terminals, disconnect MQTT, then exec |
+| `immediate` | Minimal cleanup, quick MQTT disconnect (100ms), then exec                                 |
+| `now`       | Alias for `immediate`                                                                     |
+| `watchdog`  | Save reset reason and delegate to the health supervisor (no exec)                         |
+
+If no mode is specified, `graceful` is used by default.
+
+> **Warning:** `graceful`, `immediate`, and `now` modes restart the agent process immediately. Use with caution in production.
+
+### Via MQTT
 
 ```bash
 mosquitto_pub \
   -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
   -u <client-id> -P <client-secret> --id "reset-$(date +%s)" \
   -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"reset","vs":""}]'
+  -m '[{"bn":"req-1:","n":"reset","vs":"graceful"}]'
 ```
+
+With token auth (when `command_secret` is set):
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "reset-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:","n":"reset","vs":"immediate"},{"n":"token","vs":"my-secret-token"}]'
+```
+
+### Via HTTP
+
+```bash
+curl -s -X POST http://localhost:9999/reset \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"graceful"}'
+```
+
+**Response (HTTP 202 Accepted):**
+
+```json
+{
+  "service": "agent",
+  "response": "reset",
+  "mode": "graceful"
+}
+```
+
+### Goodbye Heartbeat
+
+On a graceful reset, the agent publishes a goodbye heartbeat before disconnecting:
+
+```json
+[
+  { "bn": "agent:", "n": "service_type", "vs": "agent" },
+  { "n": "heartbeat", "vb": false }
+]
+```
+
+This allows downstream consumers to detect the agent going offline without waiting for a timeout.
+
+### Reset Reason
+
+The reset reason (`graceful`, `immediate`, `watchdog`) is persisted in the config store key `reset_reason` before the process exits. On the next start, the agent (or external tooling) can read this value to determine why the previous instance exited.
 
 ## Topic Map
 
