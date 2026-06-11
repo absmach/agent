@@ -86,6 +86,22 @@ type OTAConfig struct {
 	DownloadDir string `json:"download_dir"`
 }
 
+type CoAPConfig struct {
+	URL            string `json:"url"`
+	PSK            string `json:"psk"`
+	CertPath       string `json:"cert_path"`
+	PrivKeyPath    string `json:"priv_key_path"`
+	CAPath         string `json:"ca_path"`
+	SkipTLSVer     bool   `json:"skip_tls_ver"`
+	MaxObserve     uint   `json:"max_observe"`
+	MaxRetransmits uint   `json:"max_retransmits"`
+	KeepAlive      uint64 `json:"keep_alive"`
+	ContentFormat  int    `json:"content_format"`
+	Cert           string `json:"cert"`
+	Key            string `json:"key"`
+	CA             string `json:"ca"`
+}
+
 type ProvisionConfig struct {
 	ClientsURL     string `json:"clients_url"`
 	ChannelsURL    string `json:"channels_url"`
@@ -104,19 +120,23 @@ type Config struct {
 	NodeRed       NodeRedConfig   `json:"nodered"`
 	Log           LogConfig       `json:"log"`
 	MQTT          MQTTConfig      `json:"mqtt"`
+	CoAP          CoAPConfig      `json:"coap"`
+	Transport     string          `json:"transport"`
 	OTA           OTAConfig       `json:"ota"`
 	Provision     ProvisionConfig `json:"provision"`
 	DomainID      string          `json:"domain_id"`
 	CommandSecret string          `json:"-"`
 }
 
-func NewConfig(sc ServerConfig, cc ChanConfig, nc NodeRedConfig, lc LogConfig, mc MQTTConfig, hc HeartbeatConfig, tc TerminalConfig, oc OTAConfig, tlc TelemetryConfig) Config {
+func NewConfig(sc ServerConfig, cc ChanConfig, nc NodeRedConfig, lc LogConfig, mc MQTTConfig, coc CoAPConfig, transport string, hc HeartbeatConfig, tc TerminalConfig, oc OTAConfig, tlc TelemetryConfig) Config {
 	return Config{
 		Server:    sc,
 		Channels:  cc,
 		NodeRed:   nc,
 		Log:       lc,
 		MQTT:      mc,
+		CoAP:      coc,
+		Transport: transport,
 		Heartbeat: hc,
 		Terminal:  tc,
 		OTA:       oc,
