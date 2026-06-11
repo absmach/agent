@@ -8,7 +8,7 @@ DOCKERS_DEV = $(addprefix docker_dev_,$(SERVICES))
 CGO_ENABLED ?= 0
 GOARCH ?= amd64
 DOCKER_IMAGE_NAME_PREFIX ?= ghcr.io/absmach
-VERSION ?= $(shell git describe --abbrev=0 --tags 2>/dev/null || echo 'unknown')
+VERSION ?= $(shell git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0')
 COMMIT ?= $(shell git rev-parse HEAD)
 TIME ?= $(shell date +%F_%T)
 MOCKERY = $(GOBIN)/mockery
