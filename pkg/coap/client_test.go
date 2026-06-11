@@ -34,6 +34,7 @@ func TestNewClient(t *testing.T) {
 			config: Config{
 				URL:            "localhost:5684",
 				PSK:            "test-psk",
+				PSKIdentity:    "test-identity",
 				SkipTLSVer:     true,
 				MaxObserve:     8,
 				MaxRetransmits: 5,
@@ -162,41 +163,48 @@ func TestClientSend(t *testing.T) {
 			code:    codes.GET,
 			path:    "/test",
 			payload: "",
-			wantErr: false,
+			wantErr: true,
 		},
 		{
 			name:    "POST request",
 			code:    codes.POST,
 			path:    "/test",
 			payload: "test payload",
-			wantErr: false,
+			wantErr: true,
 		},
 		{
 			name:    "PUT request",
 			code:    codes.PUT,
 			path:    "/test",
 			payload: "test payload",
-			wantErr: false,
+			wantErr: true,
 		},
 		{
 			name:    "DELETE request",
 			code:    codes.DELETE,
 			path:    "/test",
 			payload: "",
-			wantErr: false,
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Note: These tests will fail if no CoAP server is running
-			// They verify the interface exists and handles errors gracefully
-			res, err := client.Send(context.Background(), tt.path, tt.code, 50, nil)
-			if err != nil {
-				t.Logf("Send() returned error (expected if no server running): %v", err)
-			}
-			if !tt.wantErr && res == nil && client.IsConnected() {
-				t.Error("Send() should return a response if connected")
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			res, err := client.Send(ctx, tt.path, tt.code, 50, nil)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("Send() expected error, got nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Send() unexpected error = %v", err)
+				}
+				if res == nil {
+					t.Error("Send() should return a non-nil response")
+				}
 			}
 		})
 	}

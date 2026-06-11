@@ -37,6 +37,7 @@ var (
 type Config struct {
 	URL            string
 	PSK            string
+	PSKIdentity    string
 	CertPath       string
 	PrivKeyPath    string
 	CAPath         string
@@ -99,8 +100,11 @@ func (c *Client) Send(ctx context.Context, path string, msgCode codes.Code, cf m
 		return nil, ErrNotConnected
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Minute)
+		defer cancel()
+	}
 
 	switch msgCode {
 	case codes.GET:
@@ -210,6 +214,14 @@ func createDTLSConfig(cfg Config) (*piondtls.Config, error) { //nolint:staticche
 	if cfg.PSK != "" {
 		dc.PSK = func(b []byte) ([]byte, error) {
 			return []byte(cfg.PSK), nil
+		}
+		dc.PSKIdentityHint = []byte(cfg.PSKIdentity)
+		dc.CipherSuites = []piondtls.CipherSuiteID{
+			piondtls.TLS_PSK_WITH_AES_128_CCM,
+			piondtls.TLS_PSK_WITH_AES_128_CCM_8,
+			piondtls.TLS_PSK_WITH_AES_256_CCM_8,
+			piondtls.TLS_PSK_WITH_AES_128_GCM_SHA256,
+			piondtls.TLS_PSK_WITH_AES_128_CBC_SHA256,
 		}
 	}
 
