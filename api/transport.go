@@ -111,6 +111,13 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 		EncodeResponse,
 		opts...,
 	).ServeHTTP)
+	r.Post("/reset", kithttp.NewServer(
+		resetEndpoint(svc),
+		decodeResetRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+
 	r.Post("/ota", kithttp.NewServer(
 		otaTriggerEndpoint(svc),
 		decodeOTATriggerRequest,
@@ -183,6 +190,14 @@ func decodeNodeRedRequest(_ context.Context, r *http.Request) (any, error) {
 
 func decodeAddDeviceRequest(_ context.Context, r *http.Request) (any, error) {
 	req := addDeviceReq{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
+	}
+	return req, nil
+}
+
+func decodeResetRequest(_ context.Context, r *http.Request) (any, error) {
+	req := resetReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
 	}

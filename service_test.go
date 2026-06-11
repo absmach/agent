@@ -1248,7 +1248,7 @@ func TestShutdown(t *testing.T) {
 				assert.Nil(t, err, fmt.Sprintf("%s: unexpected liveness error %v", tc.desc, err))
 			}
 
-			mqttClient.On("Disconnect", uint(1000)).Once()
+			mqttClient.On("Disconnect", uint(5000)).Once()
 			svc.Shutdown()
 			mqttClient.AssertExpectations(t)
 		})

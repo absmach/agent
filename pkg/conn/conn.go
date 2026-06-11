@@ -146,12 +146,25 @@ func (b *broker) registerBuiltins() {
 	})
 
 	b.RegisterHandler(reset, func(ctx context.Context, pack senml.Pack) error {
-		uuid, _ := extractCmd(pack)
-		log.Info("Reset command received, performing graceful shutdown", slog.String("uuid", uuid))
-		svc.Shutdown()
-		if err := syscall.Exec(os.Args[0], os.Args, os.Environ()); err != nil {
+		uuid, cmdStr := extractCmd(pack)
+		mode := agent.ResetGraceful
+		if cmdStr != "" {
+			mode = cmdStr
+		}
+		log.Info("Reset command received", slog.String("uuid", uuid), slog.String("mode", mode))
+		if err := svc.Reset(ctx, mode); err != nil {
 			log.Error("Reset failed", slog.Any("error", err))
 			return err
+		}
+		switch mode {
+		case agent.ResetGraceful, agent.ResetImmediate, agent.ResetNow:
+			log.Info("Re-executing agent binary", slog.String("mode", mode))
+			if err := syscall.Exec(os.Args[0], os.Args, os.Environ()); err != nil {
+				log.Error("Re-exec failed", slog.Any("error", err))
+				return err
+			}
+		case agent.ResetWatchdog:
+			log.Info("Watchdog reset delegated to health supervisor")
 		}
 		return nil
 	})
