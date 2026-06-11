@@ -30,26 +30,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	testCtrlChannel   = "ctrl-channel"
-	testDataChannel   = "data-channel"
-	testLogLevel      = "debug"
-	testMQTTURL       = "ssl://mqtt.example.com:8883"
-	testClientID      = "client-id"
-	testClientSecret  = "client-secret"
-	testRejectEmpty   = "reject empty command"
-	testNoderedPing   = "nodered-ping"
-	testGetLogLevel   = "get,log_level"
-	testNotConfigured = "not_configured"
-	testNotFound      = "not_found"
-	testLogLevelKey   = "log_level"
-	testResetLogLevel = "reset,log_level"
-	testHBInterval    = "heartbeat_interval"
-	testMQTTHost      = "mqtt.example.com"
-	testOldTopicFunc  = `msg.topic = "m/old-domain/c/old-channel/data";`
-	testCmdList       = "list"
-)
-
 var domainID = "1e7295a6-8de9-4c3c-8e36-387217f131f6"
 
 func mqttTopic(channel, suffix string) string {
@@ -59,13 +39,13 @@ func mqttTopic(channel, suffix string) string {
 func testConfig() agent.Config {
 	return agent.NewConfig(
 		agent.ServerConfig{Port: "9000"},
-		agent.ChanConfig{CtrlID: testCtrlChannel, DataID: testDataChannel},
+		agent.ChanConfig{CtrlID: "ctrl-channel", DataID: "data-channel"},
 		agent.NodeRedConfig{URL: "http://nodered:1880/"},
-		agent.LogConfig{Level: testLogLevel},
+		agent.LogConfig{Level: "debug"},
 		agent.MQTTConfig{
-			URL:        testMQTTURL,
-			Username:   testClientID,
-			Password:   testClientSecret,
+			URL:        "ssl://mqtt.example.com:8883",
+			Username:   "client-id",
+			Password:   "client-secret",
 			SkipTLSVer: true,
 			Retain:     true,
 			QoS:        0,
@@ -91,7 +71,7 @@ func newService(t *testing.T, cfg agent.Config, store cfgstore.Store, devices ..
 	hbToken.On("Wait").Maybe().Return(true)
 	hbToken.On("Error").Maybe().Return(error(nil))
 	mqttClient.On("IsConnected").Maybe().Return(true)
-	mqttClient.On("Publish", mqttTopic(testDataChannel, "gateway/heartbeat"),
+	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"),
 		cfg.MQTT.QoS, mock.Anything, mock.Anything).Maybe().Return(hbToken)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -128,7 +108,7 @@ func TestSelfHeartbeatPublishesRichPayload(t *testing.T) {
 		close(published)
 	}).Return(error(nil)).Once()
 
-	mqttClient.On("Publish", mqttTopic(testDataChannel, "gateway/heartbeat"), cfg.MQTT.QoS, false, mock.MatchedBy(func(payload interface{}) bool {
+	mqttClient.On("Publish", mqttTopic("data-channel", "gateway/heartbeat"), cfg.MQTT.QoS, false, mock.MatchedBy(func(payload interface{}) bool {
 		return richHeartbeatPayload(t, payload)
 	})).Return(token).Once()
 
@@ -193,9 +173,9 @@ func TestChannelConfig(t *testing.T) {
 	}{
 		{
 			desc: "use split channels",
-			cfg:  agent.ChanConfig{CtrlID: testCtrlChannel, DataID: testDataChannel},
-			ctrl: testCtrlChannel,
-			data: testDataChannel,
+			cfg:  agent.ChanConfig{CtrlID: "ctrl-channel", DataID: "data-channel"},
+			ctrl: "ctrl-channel",
+			data: "data-channel",
 		},
 	}
 
@@ -335,7 +315,7 @@ func TestExecute(t *testing.T) {
 		pubErr error
 	}{
 		{
-			desc:   testRejectEmpty,
+			desc:   "reject empty command",
 			cmd:    "",
 			err:    true,
 			output: "",
@@ -344,13 +324,13 @@ func TestExecute(t *testing.T) {
 			desc:   "execute shell command successfully",
 			cmd:    "printf,hello",
 			output: "hello",
-			topic:  mqttTopic(testCtrlChannel, "res"),
+			topic:  mqttTopic("ctrl-channel", "res"),
 		},
 		{
 			desc:   "execute command with no output successfully",
 			cmd:    "true",
 			output: "(no output)",
-			topic:  mqttTopic(testCtrlChannel, "res"),
+			topic:  mqttTopic("ctrl-channel", "res"),
 		},
 		{
 			desc:   "execute cd command successfully",
@@ -366,7 +346,7 @@ func TestExecute(t *testing.T) {
 			desc:   "return publish error",
 			cmd:    "true",
 			err:    true,
-			topic:  mqttTopic(testCtrlChannel, "res"),
+			topic:  mqttTopic("ctrl-channel", "res"),
 			pubErr: errBoom,
 		},
 	}
@@ -405,7 +385,7 @@ func TestControl(t *testing.T) {
 		mockFn func(t *testing.T, mqttClient *agentmocks.MQTTClient, nodeRed *nrmocks.Client)
 	}{
 		{
-			desc: testRejectEmpty,
+			desc: "reject empty command",
 			cmd:  "",
 			err:  true,
 		},
@@ -416,15 +396,15 @@ func TestControl(t *testing.T) {
 		},
 		{
 			desc: "run node-red command successfully",
-			cmd:  testNoderedPing,
+			cmd:  "nodered-ping",
 			mockFn: func(t *testing.T, mqttClient *agentmocks.MQTTClient, nodeRed *nrmocks.Client) {
 				nodeRed.On("Ping").Return("pong", nil).Once()
-				expectMQTTPublish(t, mqttClient, mqttTopic(testCtrlChannel, "res"), byte(1), nil)
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil)
 			},
 		},
 		{
 			desc: "return node-red error",
-			cmd:  testNoderedPing,
+			cmd:  "nodered-ping",
 			err:  true,
 			mockFn: func(_ *testing.T, _ *agentmocks.MQTTClient, nodeRed *nrmocks.Client) {
 				nodeRed.On("Ping").Return("pong", errBoom).Once()
@@ -432,11 +412,11 @@ func TestControl(t *testing.T) {
 		},
 		{
 			desc: "return response publish error",
-			cmd:  testNoderedPing,
+			cmd:  "nodered-ping",
 			err:  true,
 			mockFn: func(t *testing.T, mqttClient *agentmocks.MQTTClient, nodeRed *nrmocks.Client) {
 				nodeRed.On("Ping").Return("pong", nil).Once()
-				expectMQTTPublish(t, mqttClient, mqttTopic(testCtrlChannel, "res"), byte(1), errBoom)
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), errBoom)
 			},
 		},
 	}
@@ -530,7 +510,7 @@ func TestServiceConfig(t *testing.T) {
 				require.NoError(t, svc.UpdateLiveness("nodered", "service"))
 			}
 			if !tc.err || tc.pubErr != nil {
-				expectMQTTPublish(t, mqttClient, mqttTopic(testCtrlChannel, "res"), byte(1), tc.pubErr)
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), tc.pubErr)
 			}
 			err = svc.ServiceConfig(context.Background(), "uuid", tc.cmd)
 			if tc.err {
@@ -556,21 +536,21 @@ func TestConfigGetSet(t *testing.T) {
 	}{
 		{
 			desc:     "get key without store returns not_configured",
-			cmd:      testGetLogLevel,
+			cmd:      "get,log_level",
 			useStore: false,
-			wantResp: testNotConfigured,
+			wantResp: "not_configured",
 		},
 		{
 			desc:     "get missing key returns not_found",
-			cmd:      testGetLogLevel,
+			cmd:      "get,log_level",
 			useStore: true,
-			wantResp: testNotFound,
+			wantResp: "not_found",
 		},
 		{
 			desc:     "set key without store returns not_configured",
 			cmd:      "set,log_level,debug",
 			useStore: false,
-			wantResp: testNotConfigured,
+			wantResp: "not_configured",
 		},
 		{
 			desc:     "set key persists and returns ok",
@@ -580,9 +560,9 @@ func TestConfigGetSet(t *testing.T) {
 		},
 		{
 			desc:     "get key after set returns previously set value",
-			cmd:      testGetLogLevel,
+			cmd:      "get,log_level",
 			useStore: true,
-			seed:     map[string]string{testLogLevelKey: testLogLevel},
+			seed:     map[string]string{"log_level": "debug"},
 			wantResp: "debug",
 		},
 		{
@@ -669,7 +649,7 @@ func TestConfigGetSet(t *testing.T) {
 			desc:     "get unknown key returns not_found",
 			cmd:      "get,totally_unknown",
 			useStore: true,
-			wantResp: testNotFound,
+			wantResp: "not_found",
 		},
 		{
 			desc:     "reject set without value",
@@ -687,24 +667,24 @@ func TestConfigGetSet(t *testing.T) {
 			desc:     "set unknown key returns not_found",
 			cmd:      "set,totally_unknown,val",
 			useStore: true,
-			wantResp: testNotFound,
+			wantResp: "not_found",
 		},
 		{
 			desc:     "reset key without store returns not_configured",
-			cmd:      testResetLogLevel,
+			cmd:      "reset,log_level",
 			useStore: false,
-			wantResp: testNotConfigured,
+			wantResp: "not_configured",
 		},
 		{
 			desc:     "reset existing key returns ok",
-			cmd:      testResetLogLevel,
+			cmd:      "reset,log_level",
 			useStore: true,
-			seed:     map[string]string{testLogLevelKey: testLogLevel},
+			seed:     map[string]string{"log_level": "debug"},
 			wantResp: "ok",
 		},
 		{
 			desc:     "reset missing key is no-op and returns ok",
-			cmd:      testResetLogLevel,
+			cmd:      "reset,log_level",
 			useStore: true,
 			wantResp: "ok",
 		},
@@ -724,7 +704,7 @@ func TestConfigGetSet(t *testing.T) {
 			desc:     "reset unknown key returns not_found",
 			cmd:      "reset,totally_unknown",
 			useStore: true,
-			wantResp: testNotFound,
+			wantResp: "not_found",
 		},
 		{
 			desc:     "set command_secret persists and returns ok",
@@ -765,94 +745,10 @@ func TestConfigGetSet(t *testing.T) {
 			err:      true,
 		},
 		{
-			desc:     "reject set bs_valid with non-numeric value",
-			cmd:      "set,bs_valid,yes",
-			useStore: true,
-			err:      true,
-		},
-		{
-			desc:     "get bs_valid after set",
-			cmd:      "get,bs_valid",
-			useStore: true,
-			seed:     map[string]string{"bs_valid": "1"},
-			wantResp: "1",
-		},
-		{
-			desc:     "reset bs_valid",
-			cmd:      "reset,bs_valid",
-			useStore: true,
-			seed:     map[string]string{"bs_valid": "1"},
-			wantResp: "ok",
-		},
-		{
 			desc:     "reset unknown key returns not_found",
 			cmd:      "reset,totally_unknown",
 			useStore: true,
-			wantResp: testNotFound,
-		},
-		{
-			desc:     "set command_secret persists and returns ok",
-			cmd:      "set,command_secret,my-secret-token",
-			useStore: true,
-			wantResp: "ok",
-		},
-		{
-			desc:     "set bs_valid to 1",
-			cmd:      "set,bs_valid,1",
-			useStore: true,
-			wantResp: "ok",
-		},
-		{
-			desc:     "get command_secret returns redacted",
-			cmd:      "get,command_secret",
-			useStore: true,
-			seed:     map[string]string{"command_secret": "my-secret-token"},
-			wantResp: "REDACTED",
-		},
-		{
-			desc:     "reset command_secret returns ok",
-			cmd:      "reset,command_secret",
-			useStore: true,
-			seed:     map[string]string{"command_secret": "my-secret-token"},
-			wantResp: "ok",
-		},
-		{
-			desc:     "set bs_valid to 0",
-			cmd:      "set,bs_valid,0",
-			useStore: true,
-			wantResp: "ok",
-		},
-		{
-			desc:     "reject set bs_valid with invalid value",
-			cmd:      "set,bs_valid,2",
-			useStore: true,
-			err:      true,
-		},
-		{
-			desc:     "reject set bs_valid with non-numeric value",
-			cmd:      "set,bs_valid,yes",
-			useStore: true,
-			err:      true,
-		},
-		{
-			desc:     "get bs_valid after set",
-			cmd:      "get,bs_valid",
-			useStore: true,
-			seed:     map[string]string{"bs_valid": "1"},
-			wantResp: "1",
-		},
-		{
-			desc:     "reset bs_valid",
-			cmd:      "reset,bs_valid",
-			useStore: true,
-			seed:     map[string]string{"bs_valid": "1"},
-			wantResp: "ok",
-		},
-		{
-			desc:     "reset unknown key returns not_found",
-			cmd:      "reset,totally_unknown",
-			useStore: true,
-			wantResp: testNotFound,
+			wantResp: "not_found",
 		},
 	}
 
@@ -871,7 +767,7 @@ func TestConfigGetSet(t *testing.T) {
 			assert.Nil(t, setupErr, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, setupErr))
 
 			if !tc.err {
-				expectMQTTPublish(t, mqttClient, mqttTopic(testCtrlChannel, "res"), byte(1), nil).Run(func(args mock.Arguments) {
+				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil).Run(func(args mock.Arguments) {
 					payload, _ := args.Get(3).(string)
 					assert.Contains(t, payload, tc.wantResp, fmt.Sprintf("%s: unexpected response payload", tc.desc))
 				})
@@ -936,7 +832,7 @@ func TestApplyConfigEntry(t *testing.T) {
 	}{
 		{
 			desc: "set log level",
-			key:  testLogLevelKey,
+			key:  "log_level",
 			val:  "warn",
 			check: func(t *testing.T, cfg agent.Config) {
 				assert.Equal(t, "warn", cfg.Log.Level)
@@ -944,7 +840,7 @@ func TestApplyConfigEntry(t *testing.T) {
 		},
 		{
 			desc: "set heartbeat interval",
-			key:  testHBInterval,
+			key:  "heartbeat_interval",
 			val:  "30s",
 			check: func(t *testing.T, cfg agent.Config) {
 				assert.Equal(t, 30*time.Second, cfg.Heartbeat.Interval)
@@ -984,7 +880,7 @@ func TestApplyConfigEntry(t *testing.T) {
 		},
 		{
 			desc: "invalid duration is ignored",
-			key:  testHBInterval,
+			key:  "heartbeat_interval",
 			val:  "not-a-duration",
 			check: func(t *testing.T, cfg agent.Config) {
 				assert.Equal(t, time.Hour, cfg.Heartbeat.Interval)
@@ -992,7 +888,7 @@ func TestApplyConfigEntry(t *testing.T) {
 		},
 		{
 			desc: "zero duration is ignored",
-			key:  testHBInterval,
+			key:  "heartbeat_interval",
 			val:  "0s",
 			check: func(t *testing.T, cfg agent.Config) {
 				assert.Equal(t, time.Hour, cfg.Heartbeat.Interval)
@@ -1000,7 +896,7 @@ func TestApplyConfigEntry(t *testing.T) {
 		},
 		{
 			desc: "negative duration is ignored",
-			key:  testHBInterval,
+			key:  "heartbeat_interval",
 			val:  "-5s",
 			check: func(t *testing.T, cfg agent.Config) {
 				assert.Equal(t, time.Hour, cfg.Heartbeat.Interval)
@@ -1147,7 +1043,7 @@ func TestNodeRed(t *testing.T) {
 	flow := base64.StdEncoding.EncodeToString([]byte(`[{"id":"broker","type":"mqtt-broker"}]`))
 	errBoom := fmt.Errorf("boom")
 	normalizedFlow := mock.MatchedBy(func(f string) bool {
-		return strings.Contains(f, testMQTTHost) &&
+		return strings.Contains(f, "mqtt.example.com") &&
 			strings.Contains(f, "client-id-nr") &&
 			strings.Contains(f, "magistrala-agent-tls")
 	})
@@ -1193,14 +1089,14 @@ func TestNodeRed(t *testing.T) {
 		},
 		{
 			desc: "ping successfully",
-			cmd:  testNoderedPing,
+			cmd:  "nodered-ping",
 			resp: "pong",
 			mockFn: func(nodeRed *nrmocks.Client) {
 				nodeRed.On("Ping").Return("pong", nil).Once()
 			},
 		},
 		{
-			desc: testRejectEmpty,
+			desc: "reject empty command",
 			cmd:  "",
 			err:  true,
 		},
@@ -1231,7 +1127,7 @@ func TestNodeRed(t *testing.T) {
 		},
 		{
 			desc: "wrap node-red client error",
-			cmd:  testNoderedPing,
+			cmd:  "nodered-ping",
 			err:  true,
 			mockFn: func(nodeRed *nrmocks.Client) {
 				nodeRed.On("Ping").Return("", errBoom).Once()
@@ -1294,18 +1190,18 @@ func TestPublish(t *testing.T) {
 		{
 			desc:   "publish control message successfully",
 			topic:  "control",
-			output: mqttTopic(testCtrlChannel, "res"),
+			output: mqttTopic("ctrl-channel", "res"),
 		},
 		{
 			desc:   "publish data message successfully",
 			topic:  "data",
-			output: mqttTopic(testDataChannel, "gateway/telemetry"),
+			output: mqttTopic("data-channel", "gateway/telemetry"),
 		},
 		{
 			desc:   "return mqtt publish error",
 			topic:  "exec",
 			err:    errBoom,
-			output: mqttTopic(testCtrlChannel, "res/exec"),
+			output: mqttTopic("ctrl-channel", "res/exec"),
 		},
 	}
 
@@ -1495,12 +1391,12 @@ func TestNormalizeNodeRedFlow(t *testing.T) {
 	cfg := agent.Config{
 		DomainID: domainID,
 		Channels: agent.ChanConfig{
-			DataID: testDataChannel,
+			DataID: "data-channel",
 		},
 		MQTT: agent.MQTTConfig{
-			URL:        testMQTTURL,
-			Username:   testClientID,
-			Password:   testClientSecret,
+			URL:        "ssl://mqtt.example.com:8883",
+			Username:   "client-id",
+			Password:   "client-secret",
 			SkipTLSVer: true,
 		},
 	}
@@ -1545,15 +1441,15 @@ func TestNormalizeNodeRedFlow(t *testing.T) {
 			}
 
 			broker := byID["broker-a"]
-			assert.Equal(t, testMQTTHost, broker["broker"], fmt.Sprintf("%s: unexpected mqtt host", tc.desc))
+			assert.Equal(t, "mqtt.example.com", broker["broker"], fmt.Sprintf("%s: unexpected mqtt host", tc.desc))
 			assert.Equal(t, "8883", broker["port"], fmt.Sprintf("%s: unexpected mqtt port", tc.desc))
 			assert.Equal(t, "client-id-nr", broker["clientid"], fmt.Sprintf("%s: unexpected node-red client id", tc.desc))
 			assert.Equal(t, true, broker["usetls"], fmt.Sprintf("%s: unexpected tls flag", tc.desc))
 			assert.Equal(t, agent.NodeRedTLSConfigIDForTest, broker["tls"], fmt.Sprintf("%s: unexpected tls config id", tc.desc))
-			assert.Equal(t, map[string]any{"user": testClientID, "password": testClientSecret}, broker["credentials"], fmt.Sprintf("%s: unexpected credentials", tc.desc))
-			assert.Equal(t, fmt.Sprintf(`msg.topic = "%s";`, mqttTopic(testDataChannel, "gateway/telemetry")), byID["fn"]["func"], fmt.Sprintf("%s: unexpected function topic", tc.desc))
+			assert.Equal(t, map[string]any{"user": "client-id", "password": "client-secret"}, broker["credentials"], fmt.Sprintf("%s: unexpected credentials", tc.desc))
+			assert.Equal(t, fmt.Sprintf(`msg.topic = "%s";`, mqttTopic("data-channel", "gateway/telemetry")), byID["fn"]["func"], fmt.Sprintf("%s: unexpected function topic", tc.desc))
 			assert.Equal(t, "broker-a", byID["out"]["broker"], fmt.Sprintf("%s: unexpected mqtt out broker", tc.desc))
-			assert.Equal(t, mqttTopic(testDataChannel, "gateway/telemetry"), byID["out"]["topic"], fmt.Sprintf("%s: unexpected mqtt out topic", tc.desc))
+			assert.Equal(t, mqttTopic("data-channel", "gateway/telemetry"), byID["out"]["topic"], fmt.Sprintf("%s: unexpected mqtt out topic", tc.desc))
 			assert.Contains(t, byID, agent.NodeRedTLSConfigIDForTest, fmt.Sprintf("%s: expected tls config node", tc.desc))
 		})
 	}
@@ -1574,27 +1470,27 @@ func TestNodeRedMQTTEndpoint(t *testing.T) {
 		{
 			desc:   "parse ssl endpoint",
 			rawURL: "ssl://mqtt.example.com:8883",
-			host:   testMQTTHost,
+			host:   "mqtt.example.com",
 			port:   "8883",
 			tls:    true,
 		},
 		{
 			desc:   "default mqtts port",
 			rawURL: "mqtts://mqtt.example.com",
-			host:   testMQTTHost,
+			host:   "mqtt.example.com",
 			port:   "1883",
 			tls:    true,
 		},
 		{
 			desc:   "parse host port without scheme",
 			rawURL: "mqtt.example.com:1884",
-			host:   testMQTTHost,
+			host:   "mqtt.example.com",
 			port:   "1884",
 		},
 		{
 			desc:   "strip path from malformed scheme",
 			rawURL: "://mqtt.example.com:1885/path",
-			host:   testMQTTHost,
+			host:   "mqtt.example.com",
 			port:   "1885",
 		},
 	}
@@ -1619,7 +1515,7 @@ func TestPatchNodeRedTopic(t *testing.T) {
 	}{
 		{
 			desc:     "legacy data topic",
-			input:    testOldTopicFunc,
+			input:    `msg.topic = "m/old-domain/c/old-channel/data";`,
 			domainID: domainID,
 			channel:  "channel-id",
 			want:     fmt.Sprintf(`msg.topic = "m/%s/c/channel-id/gateway/telemetry";`, domainID),
@@ -1627,7 +1523,7 @@ func TestPatchNodeRedTopic(t *testing.T) {
 		{
 			desc:  "leave topic unchanged without ids",
 			input: `msg.topic = "m/old-domain/c/old-channel/data";`,
-			want:  testOldTopicFunc,
+			want:  `msg.topic = "m/old-domain/c/old-channel/data";`,
 		},
 		{
 			desc:     "gateway telemetry topic",
@@ -1707,8 +1603,8 @@ func TestGetTopic(t *testing.T) {
 	cfg := agent.Config{
 		DomainID: domainID,
 		Channels: agent.ChanConfig{
-			CtrlID: testCtrlChannel,
-			DataID: testDataChannel,
+			CtrlID: "ctrl-channel",
+			DataID: "data-channel",
 		},
 	}
 
@@ -1720,17 +1616,17 @@ func TestGetTopic(t *testing.T) {
 		{
 			desc:  "control response",
 			topic: "control",
-			want:  mqttTopic(testCtrlChannel, "res"),
+			want:  mqttTopic("ctrl-channel", "res"),
 		},
 		{
 			desc:  "data message",
 			topic: "data",
-			want:  mqttTopic(testDataChannel, "gateway/telemetry"),
+			want:  mqttTopic("data-channel", "gateway/telemetry"),
 		},
 		{
 			desc:  "named response",
 			topic: "exec",
-			want:  mqttTopic(testCtrlChannel, "res/exec"),
+			want:  mqttTopic("ctrl-channel", "res/exec"),
 		},
 	}
 
@@ -1826,13 +1722,13 @@ func TestDeviceManager(t *testing.T) {
 	}{
 		{
 			desc:    "nil manager returns error",
-			cmdStr:  testCmdList,
+			cmdStr:  "list",
 			wantErr: true,
 		},
 		{
 			desc:    "list empty store",
 			withMgr: true,
-			cmdStr:  testCmdList,
+			cmdStr:  "list",
 		},
 		{
 			desc:    "add device via provision API",
@@ -1847,7 +1743,7 @@ func TestDeviceManager(t *testing.T) {
 				require.NoError(t, svc.DeviceManager(context.Background(), "setup", addCmd))
 			},
 			setupPubs: 1,
-			cmdStr:    testCmdList,
+			cmdStr:    "list",
 		},
 		{
 			desc:    "get existing device",

@@ -19,17 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	mgFieldName        = "name"
-	mgFieldCredentials = "credentials"
-	mgFieldSecret      = "secret"
-	mgIDNotExist       = "does-not-exist"
-	mgDescMarkNotExist = "mark non-existent device returns error"
-	mgDescIfaceNotOpen = "error when interface not open"
-	mgAnyDeviceID      = "any-device-id"
-	mgErrNotOpen       = "not open"
-)
-
 // magistralaServer returns a combined httptest.Server that handles the three
 // SDK endpoints used during provisioning:
 //
@@ -56,11 +45,11 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":        "device-uuid",
-				mgFieldName: "my-device",
-				mgFieldCredentials: map[string]any{
-					"identity":    "ext-id",
-					mgFieldSecret: "device-secret",
+				"id":   "device-uuid",
+				"name": "my-device",
+				"credentials": map[string]any{
+					"identity": "ext-id",
+					"secret":   "device-secret",
 				},
 			})
 
@@ -69,8 +58,8 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":        fmt.Sprintf("channel-uuid-%d", callCount),
-				mgFieldName: fmt.Sprintf("channel-%d", callCount),
+				"id":   fmt.Sprintf("channel-uuid-%d", callCount),
+				"name": fmt.Sprintf("channel-%d", callCount),
 			})
 
 		case strings.HasSuffix(r.URL.Path, "/connect") && r.Method == http.MethodPost:
@@ -216,7 +205,7 @@ func TestManager_Add_AuthHeader(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id":          "d1",
-				mgFieldName:   "n",
+				"name":        "n",
 				"credentials": map[string]any{"secret": "k1"},
 			})
 		},
@@ -350,7 +339,7 @@ func TestManager_Remove(t *testing.T) {
 		id   string
 	}{
 		{desc: "remove existing device", id: d.ID},
-		{desc: "remove non-existent device is a no-op", id: mgIDNotExist},
+		{desc: "remove non-existent device is a no-op", id: "does-not-exist"},
 	}
 
 	for _, tc := range cases {
@@ -404,7 +393,7 @@ func TestManager_List(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id":          fmt.Sprintf("dev-%d", callCount),
-				mgFieldName:   fmt.Sprintf("device-%d", callCount),
+				"name":        fmt.Sprintf("device-%d", callCount),
 				"credentials": map[string]any{"secret": "k"},
 			})
 		},
@@ -456,7 +445,7 @@ func TestManager_MarkSeen(t *testing.T) {
 		wantErr bool
 	}{
 		{desc: "mark existing device as seen", id: d.ID},
-		{desc: mgDescMarkNotExist, id: "missing", wantErr: true},
+		{desc: "mark non-existent device returns error", id: "missing", wantErr: true},
 	}
 
 	for _, tc := range cases {
@@ -513,9 +502,9 @@ func TestManager_CloseIface(t *testing.T) {
 		errContains string
 	}{
 		{
-			desc:        mgDescIfaceNotOpen,
-			id:          mgAnyDeviceID,
-			errContains: mgErrNotOpen,
+			desc:        "error when interface not open",
+			id:          "any-device-id",
+			errContains: "not open",
 		},
 	}
 
@@ -538,7 +527,7 @@ func TestManager_ReadIface(t *testing.T) {
 	}{
 		{
 			desc:        "error when interface not open",
-			id:          mgAnyDeviceID,
+			id:          "any-device-id",
 			n:           4,
 			errContains: "not open",
 		},
@@ -563,13 +552,13 @@ func TestManager_WriteIface(t *testing.T) {
 	}{
 		{
 			desc:        "error when interface not open",
-			id:          mgAnyDeviceID,
+			id:          "any-device-id",
 			hexData:     "deadbeef",
 			errContains: "not open",
 		},
 		{
 			desc:    "error on invalid hex data",
-			id:      mgAnyDeviceID,
+			id:      "any-device-id",
 			hexData: "zzzz",
 		},
 	}

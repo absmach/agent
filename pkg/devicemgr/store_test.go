@@ -15,8 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const bleAddr1 = "AA:BB:CC:DD:EE:01"
-
 func newTestStore(t *testing.T) *devicemgr.Store {
 	t.Helper()
 	s, err := devicemgr.NewStore(filepath.Join(t.TempDir(), "devices.db"))
@@ -85,7 +83,7 @@ func TestStore_SaveAndGet(t *testing.T) {
 		},
 		{
 			desc:    "get non-existent device returns error",
-			id:      mgIDNotExist,
+			id:      "does-not-exist",
 			wantErr: true,
 		},
 	}
@@ -190,7 +188,7 @@ func TestStore_FindByAddr(t *testing.T) {
 
 	ble := devicemgr.Device{
 		ID: "ble-1", Key: "k1", ChannelID: "ch-1",
-		InterfaceType: iface.InterfaceBLE, InterfaceAddr: bleAddr1,
+		InterfaceType: iface.InterfaceBLE, InterfaceAddr: "AA:BB:CC:DD:EE:01",
 		Active: true,
 	}
 	serial := devicemgr.Device{
@@ -275,8 +273,8 @@ func TestStore_MarkSeen(t *testing.T) {
 			id:   d.ID,
 		},
 		{
-			desc:    mgDescMarkNotExist,
-			id:      mgIDNotExist,
+			desc:    "mark non-existent device returns error",
+			id:      "does-not-exist",
 			wantErr: true,
 		},
 	}
@@ -315,8 +313,8 @@ func TestStore_MarkActive(t *testing.T) {
 			id:   d.ID,
 		},
 		{
-			desc:    mgDescMarkNotExist,
-			id:      mgIDNotExist,
+			desc:    "mark non-existent device returns error",
+			id:      "does-not-exist",
 			wantErr: true,
 		},
 	}
