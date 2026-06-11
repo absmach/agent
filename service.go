@@ -953,12 +953,11 @@ func (a *agent) selfHeartbeatPayload() ([]byte, error) {
 
 func (a *agent) selfTelemetry(ctx context.Context, topic string, interval time.Duration, qos byte) {
 	publish := func() {
-		now := float64(time.Now().UnixNano()) / float64(time.Second)
-		uptime := time.Since(startTime).Seconds()
-		pack := []senml.Record{
-			{BaseName: "gw:", BaseTime: now, Name: senmlNameUptime, Unit: "s", Value: &uptime},
+		records := a.gatewayTelemetryPayload()
+		if len(records) == 0 {
+			return
 		}
-		b, err := senml.EncodeRecords(pack)
+		b, err := senml.EncodeRecords(records)
 		if err != nil {
 			a.logger.Warn("failed to encode self-telemetry", slog.Any("error", err))
 			return
@@ -1012,6 +1011,60 @@ func (a *agent) selfTelemetry(ctx context.Context, topic string, interval time.D
 			return
 		}
 	}
+}
+
+func (a *agent) gatewayTelemetryPayload() []senml.Record {
+	cfg := a.Config()
+	now := float64(time.Now().UnixNano()) / float64(time.Second)
+	uptime := time.Since(startTime).Seconds()
+
+	records := []senml.Record{
+		{BaseName: "gw:", BaseTime: now, Name: "uptime", Unit: "s", Value: &uptime},
+	}
+
+	if total, _, available, ok := readMemoryStats(); ok {
+		used := float64(total - available)
+		free := float64(available)
+		records = append(records,
+			senml.Record{Name: "heap_free", Unit: "By", Value: &free},
+			senml.Record{Name: "heap_used", Unit: "By", Value: &used},
+		)
+	}
+
+	if cfg.Telemetry.IncludeTemperature {
+		if temp, ok := readCPUTemperature(); ok {
+			records = append(records, senml.Record{Name: "temperature", Unit: "Cel", Value: &temp})
+		}
+	}
+
+	if cfg.Telemetry.IncludeNetwork {
+		if rssi, ok := readInterfaceRSSI(); ok {
+			records = append(records, senml.Record{Name: "rssi", Unit: "dB", Value: &rssi})
+		}
+	}
+
+	if cfg.Telemetry.IncludeLoad {
+		if l1, l5, l15, ok := readLoadAverage(); ok {
+			records = append(records,
+				senml.Record{Name: "load_avg_1m", Value: &l1},
+				senml.Record{Name: "load_avg_5m", Value: &l5},
+				senml.Record{Name: "load_avg_15m", Value: &l15},
+			)
+		}
+	}
+
+	if diskPct, ok := readDiskUsagePercent(); ok {
+		records = append(records, senml.Record{Name: "disk_usage_percent", Unit: "%", Value: &diskPct})
+	}
+
+	if a.devices != nil {
+		if n, err := a.devices.Count(); err == nil {
+			devicesActive := float64(n)
+			records = append(records, senml.Record{Name: "devices_active", Value: &devicesActive})
+		}
+	}
+
+	return records
 }
 
 func (a *agent) UpdateLiveness(svcname, svctype string) error {

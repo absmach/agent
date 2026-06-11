@@ -70,7 +70,10 @@ type HeartbeatConfig struct {
 }
 
 type TelemetryConfig struct {
-	Interval time.Duration `json:"interval"`
+	Interval           time.Duration `json:"interval"`
+	IncludeTemperature bool          `json:"include_temperature"`
+	IncludeNetwork     bool          `json:"include_network"`
+	IncludeLoad        bool          `json:"include_load"`
 }
 
 type TerminalConfig struct {
