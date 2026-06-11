@@ -542,10 +542,10 @@ func TestConfigGetSet(t *testing.T) {
 			wantResp: "not_configured",
 		},
 		{
-			desc:     "get missing key returns not_found",
+			desc:     "get unset key returns running config value",
 			cmd:      "get,log_level",
 			useStore: true,
-			wantResp: "not_found",
+			wantResp: "debug",
 		},
 		{
 			desc:     "set key without store returns not_configured",

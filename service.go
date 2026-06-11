@@ -445,6 +445,8 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 			resp = notConfigured
 		} else if val, ok := a.store.Get(key); ok {
 			resp = val
+		} else if fallback := a.configFallback(key); fallback != "" {
+			resp = fallback
 		} else {
 			resp = notFound
 		}
@@ -1510,6 +1512,21 @@ func (a *agent) applyLiveUpdate(key, val string) {
 		// Secret is read from Config() on each inbound message;
 		// no live subsystem needs updating.
 	}
+}
+
+func (a *agent) configFallback(key string) string {
+	cfg := a.Config()
+	switch key {
+	case keyLogLevel:
+		return cfg.Log.Level
+	case keyHeartbeatInterval:
+		return cfg.Heartbeat.Interval.String()
+	case keyTelemetryInterval:
+		return cfg.Telemetry.Interval.String()
+	case keyTerminalSessionTimeout:
+		return cfg.Terminal.SessionTimeout.String()
+	}
+	return ""
 }
 
 func (a *agent) getTopic(topic string) (t string) {
