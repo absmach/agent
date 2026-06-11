@@ -4,9 +4,8 @@
 package transport
 
 import (
-	"testing"
-
 	"log/slog"
+	"testing"
 
 	"github.com/absmach/agent"
 )

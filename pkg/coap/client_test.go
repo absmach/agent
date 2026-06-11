@@ -191,7 +191,7 @@ func TestClientSend(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Note: These tests will fail if no CoAP server is running
 			// They verify the interface exists and handles errors gracefully
-			res, err := client.Send(tt.path, tt.code, 50, nil)
+			res, err := client.Send(context.Background(), tt.path, tt.code, 50, nil)
 			if err != nil {
 				t.Logf("Send() returned error (expected if no server running): %v", err)
 			}

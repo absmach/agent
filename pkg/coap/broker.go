@@ -166,7 +166,7 @@ func (b *Broker) registerBuiltins() {
 		log.Info("Devices command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		if err := svc.DeviceManager(ctx, uuid, cmdStr); err != nil {
 			if payload, encErr := encoder.EncodeSenML(uuid, devices, err.Error()); encErr == nil {
-				if pubErr := b.publish("control", string(payload)); pubErr != nil {
+				if pubErr := b.publish(ctx, "control", string(payload)); pubErr != nil {
 					log.Warn("Failed to publish DeviceManager error response", slog.Any("error", pubErr))
 				}
 			}
@@ -287,19 +287,15 @@ func (b *Broker) handleMessage(payload []byte) {
 	}
 }
 
-func (b *Broker) publish(topic, payload string) error {
+func (b *Broker) publish(ctx context.Context, topic, payload string) error {
 	path := b.buildPath(topic)
 	reader := strings.NewReader(payload)
 	cf := message.MediaType(b.client.config.ContentFormat)
 
-	ctx := b.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	_, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	if _, err := b.client.Send(path, codes.POST, cf, reader); err != nil {
+	if _, err := b.client.Send(ctx, path, codes.POST, cf, reader); err != nil {
 		return fmt.Errorf("failed to publish to %s: %w", path, err)
 	}
 

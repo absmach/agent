@@ -38,7 +38,7 @@ func (c *CoAPPublisher) Publish(topic, payload string) error {
 		cf = 50
 	}
 
-	_, err := c.client.Send(path, codes.POST, message.MediaType(cf), strings.NewReader(payload))
+	_, err := c.client.Send(context.Background(), path, codes.POST, message.MediaType(cf), strings.NewReader(payload))
 	return err
 }
 

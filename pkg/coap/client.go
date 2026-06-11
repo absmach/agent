@@ -94,12 +94,12 @@ func NewClient(cfg Config, logger *slog.Logger) (*Client, error) {
 	return client, nil
 }
 
-func (c *Client) Send(path string, msgCode codes.Code, cf message.MediaType, payload io.ReadSeeker, opts ...message.Option) (*pool.Message, error) {
+func (c *Client) Send(ctx context.Context, path string, msgCode codes.Code, cf message.MediaType, payload io.ReadSeeker, opts ...message.Option) (*pool.Message, error) {
 	if !c.connected.Load() {
 		return nil, ErrNotConnected
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 
 	switch msgCode {
