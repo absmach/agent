@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-//go:embed dist/*
+//go:embed all:dist
 var distFS embed.FS
 
 // Handler serves the embedded Preact UI with SPA fallback to index.html.

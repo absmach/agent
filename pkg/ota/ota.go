@@ -24,6 +24,12 @@ import (
 type State int
 
 const (
+	fieldURL  = "url"
+	fieldHash = "hash"
+	fieldSize = "size"
+)
+
+const (
 	StateIdle State = iota
 	StateTriggered
 	StateDownloading
@@ -31,12 +37,6 @@ const (
 	StateReady
 	StateRestarting
 	StateAborted
-)
-
-const (
-	fieldURL  = "url"
-	fieldHash = "hash"
-	fieldSize = "size"
 )
 
 func (s State) String() string {

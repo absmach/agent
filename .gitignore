@@ -8,7 +8,7 @@ ui/dist/*
 !ui/dist/.gitkeep
 !ui/dist/assets
 ui/dist/assets/*
-!ui/dist/assets/placeholder
+!ui/dist/assets/.gitkeep
 ui/.env.local
 ui/tsconfig.tsbuildinfo
 
