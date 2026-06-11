@@ -236,6 +236,7 @@ type OTAStatusInfo struct {
 var _ Service = (*agent)(nil)
 
 type agent struct {
+	ctx                 context.Context
 	mqttClient          paho.Client
 	config              *Config
 	noderedClient       nodered.Client
@@ -252,6 +253,7 @@ type agent struct {
 	store               cfgstore.Store
 	heartbeatIntervalCh chan time.Duration
 	telemetryIntervalCh chan time.Duration
+	telemetryStarted    atomic.Bool
 	logLevel            *slog.LevelVar
 	cfgMu               sync.RWMutex
 	startupConfig       Config
@@ -265,6 +267,7 @@ type agent struct {
 // New returns agent service implementation.
 func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store cfgstore.Store, levelVar *slog.LevelVar, bootstrapCachePath string) (Service, error) {
 	ag := &agent{
+		ctx:                 ctx,
 		mqttClient:          mc,
 		noderedClient:       nc,
 		config:              cfg,
@@ -296,6 +299,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 	if cfg.Telemetry.Interval > 0 {
 		telemetryTopic := fmt.Sprintf("m/%s/c/%s/gateway/telemetry",
 			cfg.DomainID, cfg.Channels.DataChan())
+		ag.telemetryStarted.Store(true)
 		go ag.selfTelemetry(ctx, telemetryTopic, cfg.Telemetry.Interval, cfg.MQTT.QoS)
 	}
 
@@ -1365,7 +1369,7 @@ func validateSettableValue(key, val string) error {
 		}
 	case keyTelemetryInterval:
 		d, err := time.ParseDuration(val)
-		if err != nil || d < time.Second || d > time.Hour {
+		if err != nil || (d != 0 && (d < time.Second || d > time.Hour)) {
 			return errInvalidCommand
 		}
 	case keyTerminalSessionTimeout:
@@ -1490,6 +1494,13 @@ func (a *agent) applyLiveUpdate(key, val string) {
 		}
 	case keyTelemetryInterval:
 		if d, err := time.ParseDuration(val); err == nil {
+			if d > 0 && !a.telemetryStarted.Load() {
+				a.telemetryStarted.Store(true)
+				cfg := a.Config()
+				telemetryTopic := fmt.Sprintf("m/%s/c/%s/gateway/telemetry",
+					cfg.DomainID, cfg.Channels.DataChan())
+				go a.selfTelemetry(a.ctx, telemetryTopic, 0, cfg.MQTT.QoS)
+			}
 			select {
 			case a.telemetryIntervalCh <- d:
 			default:
