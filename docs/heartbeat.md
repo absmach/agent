@@ -104,26 +104,26 @@ See [control.md](control.md) for the full `config set` recipe.
 
 ```bash
 mosquitto_sub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> \
-  -t "m/<domain-id>/c/<telemetry-channel-id>/gateway/heartbeat" \
-  -v
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> \
+    -t "m/<domain-id>/c/<telemetry-channel-id>/gateway/heartbeat" \
+    -v
 ```
 
 **Expected output (repeats every interval):**
 
 ```
-m/<domain-id>/c/<telemetry-channel-id>/gateway/heartbeat [{"bn":"agent:","n":"service_type","vs":"agent","t":...},{"n":"heartbeat","vb":true,"t":...},{"n":"fw_version","vs":"0.0.0","t":...},{"n":"uptime","u":"s","v":42.5,"t":...},{"n":"heap_free","u":"By","v":...,"t":...},{"n":"devices","u":"count","v":0,"t":...},{"n":"connected","vb":true,"t":...}]
+m/e9692c28-b730-4797-8a15-2e25c08f9641/c/b465a688-c1ca-417d-a36f-71f6f1be2409/gateway/heartbeat [{"bn":"agent:","n":"service_type","vs":"agent"},{"n":"heartbeat","vb":true},{"n":"fw_version","vs":"unknown"},{"n":"uptime","u":"s","v":4580.244433353},{"n":"heap_free","u":"By","v":417792},{"n":"devices","u":"count","v":0},{"n":"connected","vb":true}]
 ```
 
 ### Trigger an on-demand ping
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "ping-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"ping", "vs":""}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "ping-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:", "n":"ping", "vs":""}]'
 ```
 
 ### Check registered services via HTTP
@@ -137,10 +137,10 @@ curl -s http://localhost:9999/services | jq .
 ```json
 [
   {
-    "name": "myservice",
-    "last_seen": "2026-06-10T12:00:00Z",
+    "name": "nodered",
+    "last_seen": "2026-06-11T13:53:18.692168817Z",
     "status": "online",
-    "type": "sensor",
+    "type": "nodered",
     "terminal": 0
   }
 ]
@@ -150,28 +150,18 @@ curl -s http://localhost:9999/services | jq .
 
 ```bash
 go run ./examples/publish/main.go \
-  -s amqp://guest:guest@localhost:5682/ \
-  heartbeat.myservice.sensor ""
+    -s amqp://guest:guest@localhost:5682/ \
+    heartbeat.myservice.sensor ""
 ```
 
 ### Change heartbeat interval at runtime
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"config", "vs":"set,heartbeat_interval,30s"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:", "n":"config", "vs":"set,heartbeat_interval,30s"}]'
 ```
 
 The agent responds on the control response topic with `"ok"` and the next heartbeat uses the new interval.
-
-## Troubleshooting
-
-| Symptom                                                   | Cause                               | Fix                                                                             |
-| --------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------- |
-| No heartbeat messages on telemetry topic                  | MQTT not connected                  | Check `connected` field via `/services`; verify MQTT credentials and broker URL |
-| Service stuck in `offline`                                | Service not publishing to FluxMQ    | Ensure service publishes to `heartbeat.<name>.<type>` on the AMQP broker        |
-| `ping` command has no response                            | Wrong topic or missing SenML format | Verify the request topic is `m/<domain-id>/c/<ctrl-chan>/req`                   |
-| Heartbeat interval change has no effect                   | Invalid duration string             | Use Go duration format: `30s`, `1m`, etc. (minimum `1s`)                        |
-| Agent logs `"failed to count devices for self-heartbeat"` | Device DB error                     | Check `MG_AGENT_DEVICE_DB_PATH` permissions                                     |
