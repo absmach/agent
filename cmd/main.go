@@ -256,7 +256,7 @@ func main() {
 	})
 
 	g.Go(func() error {
-		return StopSignalHandler(ctx, cancel, logger, "agent", srv, svc.Shutdown)
+		return StopSignalHandler(ctx, cancel, logger, "agent", srv, svc)
 	})
 
 	if wdInterval > 0 {
@@ -545,14 +545,16 @@ func loadCertificate(cnfg agent.MQTTConfig) (agent.MQTTConfig, error) {
 	return c, nil
 }
 
-func StopSignalHandler(ctx context.Context, cancel context.CancelFunc, logger *slog.Logger, svcName string, server *http.Server, shutdown func()) error {
+func StopSignalHandler(ctx context.Context, cancel context.CancelFunc, logger *slog.Logger, svcName string, server *http.Server, svc agent.Service) error {
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
 	select {
 	case sig := <-c:
 		defer cancel()
-		logger.Info("Received shutdown signal, performing graceful shutdown", slog.String("signal", sig.String()))
-		shutdown()
+		logger.Info("Received shutdown signal, performing graceful reset", slog.String("signal", sig.String()))
+		if err := svc.Reset(ctx, agent.ResetGraceful); err != nil {
+			logger.Warn("Graceful reset failed", slog.Any("error", err))
+		}
 		shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 5*time.Second)
 		defer shutdownCancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {

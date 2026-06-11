@@ -195,6 +195,24 @@ func (res markDeviceSeenRes) Empty() bool {
 	return true
 }
 
+type resetRes struct {
+	Service  string `json:"service"`
+	Response string `json:"response"`
+	Mode     string `json:"mode"`
+}
+
+func (res resetRes) Code() int {
+	return http.StatusAccepted
+}
+
+func (res resetRes) Headers() map[string]string {
+	return map[string]string{}
+}
+
+func (res resetRes) Empty() bool {
+	return false
+}
+
 type otaTriggerRes struct {
 	Status string `json:"status"`
 }

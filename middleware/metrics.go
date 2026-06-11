@@ -15,6 +15,15 @@ import (
 	"github.com/go-kit/kit/metrics"
 )
 
+func (ms *metricsMiddleware) Reset(ctx context.Context, mode string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "reset").Add(1)
+		ms.latency.With("method", "reset").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.Reset(ctx, mode)
+}
+
 var _ agent.Service = (*metricsMiddleware)(nil)
 
 type metricsMiddleware struct {

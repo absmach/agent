@@ -35,6 +35,12 @@ import (
 )
 
 const (
+	// Reset modes for the Reset method.
+	ResetGraceful  = "graceful"
+	ResetImmediate = "immediate"
+	ResetWatchdog  = "watchdog"
+	ResetNow       = "now"
+
 	Commands = "commands"
 	config   = "config"
 
@@ -198,6 +204,15 @@ type Service interface {
 
 	// OTA triggers an over-the-air binary update by downloading from url.
 	OTA(ctx context.Context, url, sha256hex string, size uint64) error
+
+	// Reset performs a reset in the given mode. Supported modes are:
+	//   - "graceful"  – clean shutdown, save state, close connections, then exec
+	//   - "immediate" – emergency reset with minimal cleanup, then exec
+	//   - "watchdog"  – notify the health supervisor to trigger a watchdog reset
+	//   - "now"       – alias for "immediate"
+	// The caller is responsible for calling syscall.Exec after a successful
+	// graceful or immediate reset (watchdog is handled by the supervisor).
+	Reset(ctx context.Context, mode string) error
 
 	// Shutdown performs a graceful shutdown: stops all service heartbeat
 	// tickers and disconnects the MQTT client.
@@ -1165,8 +1180,26 @@ func (a *agent) MarkDeviceSeen(id string) error {
 	return a.devices.MarkSeen(id)
 }
 
-func (a *agent) Shutdown() {
-	a.logger.Debug("shutting down service heartbeats")
+func (a *agent) Reset(ctx context.Context, mode string) error {
+	a.logger.Info("Reset initiated", slog.String("mode", mode))
+
+	switch mode {
+	case ResetGraceful:
+		return a.gracefulReset()
+	case ResetImmediate, ResetNow:
+		return a.immediateReset()
+	case ResetWatchdog:
+		return a.watchdogReset()
+	default:
+		return fmt.Errorf("unknown reset mode: %s", mode)
+	}
+}
+
+func (a *agent) gracefulReset() error {
+	a.saveResetReason(ResetGraceful)
+
+	a.sendGoodbyeHeartbeat()
+
 	a.svcsMu.RLock()
 	for name, svc := range a.svcs {
 		svc.Stop()
@@ -1178,9 +1211,70 @@ func (a *agent) Shutdown() {
 		a.sched.Stop()
 	}
 
+	a.closeTerminals()
+
 	a.logger.Debug("disconnecting MQTT client")
-	a.mqttClient.Disconnect(1000)
-	a.logger.Info("graceful shutdown complete")
+	a.mqttClient.Disconnect(5000)
+	a.logger.Info("graceful reset complete")
+	return nil
+}
+
+func (a *agent) immediateReset() error {
+	a.saveResetReason(ResetImmediate)
+
+	a.logger.Debug("immediate reset, disconnecting MQTT client")
+	a.mqttClient.Disconnect(100)
+	a.logger.Info("immediate reset complete")
+	return nil
+}
+
+func (a *agent) watchdogReset() error {
+	a.saveResetReason(ResetWatchdog)
+	a.logger.Info("watchdog reset requested")
+	return nil
+}
+
+func (a *agent) Shutdown() {
+	_ = a.Reset(context.Background(), ResetGraceful)
+}
+
+func (a *agent) saveResetReason(mode string) {
+	if a.store == nil {
+		return
+	}
+	if err := a.store.Set("reset_reason", mode); err != nil {
+		a.logger.Warn("Failed to save reset reason", slog.Any("error", err))
+	}
+}
+
+func (a *agent) sendGoodbyeHeartbeat() {
+	cfg := a.Config()
+	if cfg.DomainID == "" || cfg.Channels.DataChan() == "" {
+		return
+	}
+	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat", cfg.DomainID, cfg.Channels.DataChan())
+
+	svcType := "agent"
+	heartbeat := false
+	pack := []senml.Record{
+		{BaseName: "agent:", Name: "service_type", StringValue: &svcType},
+		{Name: "heartbeat", BoolValue: &heartbeat},
+	}
+	payload, err := senml.EncodeRecords(pack)
+	if err != nil {
+		a.logger.Error("Failed to encode goodbye heartbeat", slog.Any("error", err))
+		return
+	}
+	token := a.mqttClient.Publish(topic, cfg.MQTT.QoS, false, payload)
+	token.Wait()
+}
+
+func (a *agent) closeTerminals() {
+	a.termMu.Lock()
+	defer a.termMu.Unlock()
+	for uuid := range a.terminals {
+		delete(a.terminals, uuid)
+	}
 }
 
 // settableKeys is the allowlist of keys that can be remotely get/set via MQTT.

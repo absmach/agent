@@ -6,7 +6,9 @@ package api
 import (
 	"context"
 	"net/http"
+	"os"
 	"strings"
+	"syscall"
 
 	"github.com/absmach/agent"
 	"github.com/absmach/agent/pkg/nodered"
@@ -205,6 +207,36 @@ func otaTriggerEndpoint(svc agent.Service) endpoint.Endpoint {
 			_ = svc.OTA(otaCtx, req.URL, req.SHA256Hex, req.Size)
 		}()
 		return otaTriggerRes{Status: "triggered"}, nil
+	}
+}
+
+func resetEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(ctx context.Context, request any) (any, error) {
+		req := request.(resetReq)
+		if err := req.validate(); err != nil {
+			return nil, err
+		}
+		mode := req.Mode
+		if mode == "" {
+			mode = agent.ResetGraceful
+		}
+		resetCtx := context.WithoutCancel(ctx)
+		go func() {
+			if err := svc.Reset(resetCtx, mode); err != nil {
+				return
+			}
+			switch mode {
+			case agent.ResetGraceful, agent.ResetImmediate, agent.ResetNow:
+				if err := syscall.Exec(os.Args[0], os.Args, os.Environ()); err != nil {
+					panic(err)
+				}
+			}
+		}()
+		return resetRes{
+			Service:  svcName,
+			Response: "reset",
+			Mode:     mode,
+		}, nil
 	}
 }
 

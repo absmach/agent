@@ -112,6 +112,19 @@ func (req addDeviceReq) validate() error {
 	return nil
 }
 
+type resetReq struct {
+	Mode string `json:"mode"`
+}
+
+func (req resetReq) validate() error {
+	switch req.Mode {
+	case agent.ResetGraceful, agent.ResetImmediate, agent.ResetNow, agent.ResetWatchdog, "":
+		return nil
+	default:
+		return agent.ErrMalformedEntity
+	}
+}
+
 type otaTriggerReq struct {
 	URL       string `json:"url"`
 	SHA256Hex string `json:"sha256,omitempty"`

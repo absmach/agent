@@ -14,6 +14,23 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+func (lm *loggingMiddleware) Reset(ctx context.Context, mode string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.String("mode", mode),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("Reset failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("Reset completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.Reset(ctx, mode)
+}
+
 var _ agent.Service = (*loggingMiddleware)(nil)
 
 type loggingMiddleware struct {
