@@ -16,16 +16,18 @@ import (
 type CoAPPublisher struct {
 	client   *coap.Client
 	domainID string
-	channels string
+	ctrlChan string
+	dataChan string
 	topic    string
 	cf       int
 }
 
-func NewCoAPPublisher(client *coap.Client, domainID, channels, topic string, cf int) *CoAPPublisher {
+func NewCoAPPublisher(client *coap.Client, domainID, ctrlChan, dataChan, topic string, cf int) *CoAPPublisher {
 	return &CoAPPublisher{
 		client:   client,
 		domainID: domainID,
-		channels: channels,
+		ctrlChan: ctrlChan,
+		dataChan: dataChan,
 		topic:    topic,
 		cf:       cf,
 	}
@@ -48,11 +50,11 @@ func (c *CoAPPublisher) buildPath(topic string) string {
 	}
 	switch topic {
 	case TopicControl:
-		return fmt.Sprintf("/m/%s/c/%s/res", c.domainID, c.channels)
+		return fmt.Sprintf("/m/%s/c/%s/res", c.domainID, c.ctrlChan)
 	case TopicData:
-		return fmt.Sprintf("/m/%s/c/%s/gateway/telemetry", c.domainID, c.channels)
+		return fmt.Sprintf("/m/%s/c/%s/gateway/telemetry", c.domainID, c.dataChan)
 	default:
-		return fmt.Sprintf("/m/%s/c/%s/res/%s", c.domainID, c.channels, topic)
+		return fmt.Sprintf("/m/%s/c/%s/res/%s", c.domainID, c.ctrlChan, topic)
 	}
 }
 
@@ -65,6 +67,9 @@ func NewCoAPConnector(client *coap.Client) *CoAPConnector {
 }
 
 func (c *CoAPConnector) IsConnected() bool {
+	if c.client == nil {
+		return false
+	}
 	return c.client.IsConnected()
 }
 
@@ -73,10 +78,10 @@ type CoAPBroker struct {
 	publisher *CoAPPublisher
 }
 
-func NewCoAPBroker(broker *coap.Broker, client *coap.Client, domainID, channels, topic string, cf int) *CoAPBroker {
+func NewCoAPBroker(broker *coap.Broker, client *coap.Client, domainID, ctrlChan, dataChan, topic string, cf int) *CoAPBroker {
 	return &CoAPBroker{
 		broker:    broker,
-		publisher: NewCoAPPublisher(client, domainID, channels, topic, cf),
+		publisher: NewCoAPPublisher(client, domainID, ctrlChan, dataChan, topic, cf),
 	}
 }
 
