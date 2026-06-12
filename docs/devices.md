@@ -2,19 +2,6 @@
 
 The device manager subsystem allows the agent to provision, register, and manage downstream devices connected via physical interfaces (serial, I2C, Modbus RTU/TCP, USB). Each device is provisioned as a Magistrala client with its own channel, and data from the device is forwarded to Magistrala over MQTT.
 
-## Overview
-
-```
-┌──────────────┐    MQTT     ┌──────────────┐   physical    ┌──────────────┐
-│  Magistrala  │ ◄────────── │    Agent     │ ◄──────────── │  Downstream  │
-│   (cloud)    │ ──────────► │  DeviceMgr   │ ────────────► │   Device     │
-└──────────────┘  commands   └──────────────┘  read/write   └──────────────┘
-                                │
-                                ▼
-                           BoltDB store
-                        (device registry)
-```
-
 ## Architecture
 
 The device manager is split into three layers:
@@ -61,18 +48,20 @@ When `add` is called, the agent:
 4. Optionally creates a **save_senml rule** via the Rules Engine API (if `MG_AGENT_RULES_ENGINE_URL` is configured)
 5. Saves the device to the local **BoltDB store**
 
+If any step fails, the agent rolls back all previously created resources (client, channel) before returning the error.
+
 The device's Magistrala credentials (client ID/key) and channel ID are persisted locally so the agent can reconnect on restart.
 
 ## Device Telemetry Scheduler
 
 When a device has a valid channel ID, the agent launches a background goroutine that:
 
-1. Creates a dedicated MQTT connection using the device's credentials
+1. Creates a dedicated MQTT connection using the device's credentials (client ID as both MQTT client ID and username, device secret as password)
 2. Opens the physical interface
 3. Reads data in a loop (4096-byte buffer)
 4. Publishes raw data to `m/<domain-id>/c/<device-channel-id>/msg`
 
-Reconnection uses exponential backoff (1s to 30s).
+Reconnection uses exponential backoff (1s to 30s). TLS settings are inherited from the gateway's MQTT configuration.
 
 ## Configuration
 
@@ -95,96 +84,113 @@ Reconnection uses exponential backoff (1s to 30s).
 
 ## MQTT Test Recipes
 
+Subscribe to command responses before sending commands:
+
+```bash
+mosquitto_sub \
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> \
+    -t "m/<domain-id>/c/<commands-channel-id>/res" \
+    -v
+```
+
 ### List all devices
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"devices","vs":"list"}]'
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"devices","vs":"list"}]'
 ```
 
 **Response:**
 
 ```json
-[{"bn":"req-1:","n":"list","vs":"[{\"id\":\"...\",\"name\":\"sensor-1\",...}]","t":...}]
+[{ "bn": "req-1", "n": "list", "t": 1781259205.3925076, "vs": "null" }]
 ```
 
 ### Add a device
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"devices","vs":"add,{\"name\":\"temp-sensor\",\"external_id\":\"ext-001\",\"external_key\":\"ext-key-001\",\"iface_type\":\"serial\",\"iface_addr\":\"/dev/ttyS0\"}"}]'
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"devices","vs":"add,{\"name\":\"temp-sensor\",\"external_id\":\"ext-001\",\"external_key\":\"ext-key-001\",\"iface_type\":\"serial\",\"iface_addr\":\"/dev/ttyS0\"}"}]'
 ```
 
 **Response:**
 
 ```json
-[{"bn":"req-1:","n":"add","vs":"{\"id\":\"...\",\"name\":\"temp-sensor\",\"channel_id\":\"...\",...}","t":...}]
+[
+  {
+    "bn": "req-1",
+    "n": "add",
+    "t": 1781259547.2528343,
+    "vs": "{\"id\":\"63bdb473-02e6-457b-bb9a-773a18ab40a7\",\"key\":\"ext-key-001\",\"channel_id\":\"e90c8f2d-8063-4762-971a-f3628460423f\",\"interface_type\":\"serial\",\"interface_addr\":\"/dev/ttyS0\",\"name\":\"temp-sensor\",\"active\":false,\"last_seen\":\"0001-01-01T00:00:00Z\"}"
+  }
+]
 ```
 
 ### Get a specific device
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"devices","vs":"get,<device-id>"}]'
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"devices","vs":"get,<device-id>"}]'
 ```
 
 ### Remove a device
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"devices","vs":"remove,<device-id>"}]'
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"devices","vs":"remove,<device-id>"}]'
 ```
 
 ### Mark a device as seen
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"devices","vs":"seen,<device-id>"}]'
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"devices","vs":"seen,<device-id>"}]'
 ```
 
 ### Open a device interface
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"devices","vs":"open,<device-id>"}]'
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"devices","vs":"open,<device-id>"}]'
 ```
 
 ### Close a device interface
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"devices","vs":"close,<device-id>"}]'
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"devices","vs":"close,<device-id>"}]'
 ```
 
 ### Read bytes from a device
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"devices","vs":"read,<device-id>,64"}]'
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"devices","vs":"read,<device-id>,64"}]'
 ```
 
 **Response:**
@@ -197,10 +203,10 @@ mosquitto_pub \
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"devices","vs":"write,<device-id>,48656c6c6f"}]'
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"devices","vs":"write,<device-id>,48656c6c6f"}]'
 ```
 
 **Response:**
@@ -213,25 +219,91 @@ mosquitto_pub \
 
 ```bash
 mosquitto_sub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> \
-  -t "m/<domain-id>/c/<device-channel-id>/msg" \
-  -v
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> \
+    -t "m/<domain-id>/c/<device-channel-id>/msg" \
+    -v
 ```
 
-## HTTP API
+## Testing with Virtual Serial Ports
 
-| Method   | Path                 | Description         |
-| -------- | -------------------- | ------------------- |
-| `GET`    | `/devices`           | List all devices    |
-| `GET`    | `/devices/{id}`      | Get a device        |
-| `POST`   | `/devices`           | Add a device        |
-| `DELETE` | `/devices/{id}`      | Remove a device     |
-| `POST`   | `/devices/{id}/seen` | Mark device as seen |
+When running the agent in a Docker container (Alpine-based), you can use `socat` to create virtual serial port pairs for testing without real hardware.
 
-### Add a device via HTTP
+### Set up virtual serial ports
+
+Inside the agent container:
 
 ```bash
+apk add socat
+
+# Create a linked virtual serial port pair
+socat -d -d pty,raw,echo=0,link=/dev/ttyV0 pty,raw,echo=0,link=/dev/ttyV1 &
+```
+
+The agent connects to `/dev/ttyV0` and you interact with `/dev/ttyV1`.
+
+### Add a virtual device
+
+```bash
+mosquitto_pub \
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"devices","vs":"add,{\"name\":\"dummy-sensor\",\"external_id\":\"ext-dummy\",\"external_key\":\"ext-dummy-key\",\"iface_type\":\"serial\",\"iface_addr\":\"/dev/ttyV0\"}"}]'
+```
+
+### Send data to the device (from the container)
+
+```bash
+echo "HELLO" > /dev/ttyV1
+```
+
+### Open a device interface
+
+```bash
+mosquitto_pub \
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"devices","vs":"open,<device-id>"}]'
+```
+
+### Read data from the device (via MQTT)
+
+```bash
+mosquitto_pub \
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"devices","vs":"read,<device-id>,64"}]'
+```
+
+### Write data to the device (via MQTT)
+
+```bash
+# "HELLO" in hex = 48454c4c4f
+mosquitto_pub \
+    -h localhost -p 1883 \
+    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"devices","vs":"write,<device-id>,48454c4c4f"}]'
+```
+
+Verify on the other end:
+
+```bash
+cat /dev/ttyV1
+```
+
+### Test management flow without hardware
+
+The `list`, `add`, `get`, `remove`, and `seen` subcommands work without physical hardware. You can test these via the HTTP API:
+
+```bash
+# List devices
+curl -s http://localhost:9999/devices | jq .
+
+# Add a device
 curl -s -X POST http://localhost:9999/devices \
   -H 'Content-Type: application/json' \
   -d '{
@@ -243,19 +315,12 @@ curl -s -X POST http://localhost:9999/devices \
   }'
 ```
 
-### List devices via HTTP
+## HTTP API
 
-```bash
-curl -s http://localhost:9999/devices | jq .
-```
-
-## Troubleshooting
-
-| Symptom                                       | Cause                                             | Fix                                                           |
-| --------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------- |
-| `add` returns error                           | Provisioning API unreachable or invalid token     | Check `MG_AGENT_PROVISION_URL` and `MG_AGENT_PROVISION_TOKEN` |
-| Agent logs `"device manager disabled"`        | Device database path not configured               | Set `MG_AGENT_DEVICE_DB_PATH`                                 |
-| `open` returns `"not implemented"`            | BLE or Zigbee interface type                      | Use a supported interface type (serial, modbus-rtu, etc.)     |
-| `read`/`write` returns `"interface not open"` | Interface was not opened before read/write        | Send `open` command first                                     |
-| Device telemetry not appearing on channel     | Physical interface not connected or misconfigured | Verify device address and interface type                      |
-| Device data stops flowing after disconnect    | Scheduler goroutine exited                        | Check agent logs for reconnection attempts                    |
+| Method   | Path                 | Description         |
+| -------- | -------------------- | ------------------- |
+| `GET`    | `/devices`           | List all devices    |
+| `GET`    | `/devices/{id}`      | Get a device        |
+| `POST`   | `/devices`           | Add a device        |
+| `DELETE` | `/devices/{id}`      | Remove a device     |
+| `POST`   | `/devices/{id}/seen` | Mark device as seen |
