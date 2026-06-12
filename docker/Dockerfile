@@ -33,7 +33,6 @@ RUN apk update && apk add make && \
     -o build/magistrala-$SVC cmd/main.go && \
     mv build/magistrala-$SVC /exe
 
-FROM scratch
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+FROM alpine:3.24
 COPY --from=builder /exe /
 ENTRYPOINT ["/exe"]
