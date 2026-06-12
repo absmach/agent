@@ -75,6 +75,8 @@ const (
 
 	senmlNameUptime = "uptime"
 	notAllowed      = "not_allowed"
+
+	provisionTimeout = 30 * time.Second
 )
 
 var (
@@ -1602,7 +1604,9 @@ func (a *agent) DeviceManager(ctx context.Context, uuid, cmdStr string) error {
 			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
 		}
 		ifaceType := iface.ParseInterfaceType(addReq.IfaceType)
-		d, aerr := a.devices.Add(ctx, addReq.Name, addReq.ExternalID, addReq.ExternalKey, ifaceType, addReq.IfaceAddr)
+		addCtx, cancel := context.WithTimeout(ctx, provisionTimeout)
+		d, aerr := a.devices.Add(addCtx, addReq.Name, addReq.ExternalID, addReq.ExternalKey, ifaceType, addReq.IfaceAddr)
+		cancel()
 		if aerr != nil {
 			return errors.Wrap(errDeviceManagerFailed, aerr)
 		}
