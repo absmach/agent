@@ -76,6 +76,10 @@ services:
       MG_AGENT_OTA_DOWNLOAD_DIR: ${MG_AGENT_OTA_DOWNLOAD_DIR}
       MG_AGENT_DEVICE_DB_PATH: ${MG_AGENT_DEVICE_DB_PATH}
       MG_AGENT_CONFIG_PATH: ${MG_AGENT_CONFIG_PATH}
+      MG_AGENT_CLIENTS_URL: ${MG_AGENT_CLIENTS_URL}
+      MG_AGENT_CHANNELS_URL: ${MG_AGENT_CHANNELS_URL}
+      MG_AGENT_RULES_ENGINE_URL: ${MG_AGENT_RULES_ENGINE_URL}
+      MG_PAT: ${MG_PAT}
     volumes:
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
       - agent-data:/var/lib/agent
