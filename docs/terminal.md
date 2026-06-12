@@ -2,18 +2,6 @@
 
 The terminal subsystem provides interactive shell sessions tunneled over MQTT. Each session spawns a bash PTY (pseudo-terminal) on the agent host, and bidirectional I/O is carried in SenML messages. This enables remote terminal access from Magistrala.
 
-## Overview
-
-```
-┌──────────────┐    MQTT req     ┌──────────────┐    PTY     ┌──────┐
-│  Magistrala  │ ─────────────── │    Agent     │ ────────── │ bash │
-│   (cloud)    │                 │  terminal    │            │ PTY  │
-│              │ ◄── MQTT res ── │  sessions    │ ◄──────── │      │
-└──────────────┘                 └──────────────┘            └──────┘
-```
-
-Each terminal session is identified by a UUID (the `bn` prefix). Multiple concurrent sessions are supported.
-
 ## Architecture
 
 The agent maintains a map of active terminal sessions. Each session:
@@ -93,10 +81,10 @@ Output from the PTY is published as SenML on the control response topic under `t
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"config", "vs":"set,terminal_session_timeout,120s"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:", "n":"config", "vs":"set,terminal_session_timeout,120s"}]'
 ```
 
 ## Topic Map
@@ -108,6 +96,24 @@ mosquitto_pub \
 
 ## MQTT Test Recipes
 
+### Subscribe to terminal output
+
+Open a separate terminal to watch session output:
+
+```bash
+mosquitto_sub \
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> \
+    -t "m/<domain-id>/c/<commands-channel-id>/res/term/#" \
+    -v
+```
+
+**Expected output:**
+
+```
+m/e9692c28-b730-4797-8a15-2e25c08f9641/c/bc9a0af7-6d0f-4806-aa5a-61d68c0a7cf7/res/term/term-1781257973 [{"bn":"term-1781257973","n":"term","t":1781257978.7125685,"vs":"/ # \u001b[6n"}]
+```
+
 ### Open a terminal session
 
 ```bash
@@ -115,41 +121,23 @@ UUID="term-$(date +%s)"
 
 # "open" → base64 = b3Blbg==
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "$UUID" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m "[{\"bn\":\"$UUID:\", \"n\":\"term\", \"vs\":\"b3Blbg==\"}]"
-```
-
-### Subscribe to terminal output
-
-Open a separate terminal to watch session output:
-
-```bash
-mosquitto_sub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> \
-  -t "m/<domain-id>/c/<commands-channel-id>/res/term/#" \
-  -v
-```
-
-**Expected output:**
-
-```
-m/<domain-id>/c/<ctrl-chan>/res/term/term-1749552000 [{"bn":"term-1749552000:","n":"term","vs":"bash-5.2$ ","t":...}]
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "$UUID" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m "[{\"bn\":\"$UUID:\", \"n\":\"term\", \"vs\":\"b3Blbg==\"}]"
 ```
 
 ### Send a command (e.g. `ls`)
 
 ```bash
-UUID="term-1749552000"
+UUID="term-1781257973"
 
 # "char,ls\n" → base64 = Y2hhcixscwo=
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "$UUID" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m "[{\"bn\":\"$UUID:\", \"n\":\"term\", \"vs\":\"Y2hhcixscwo=\"}]"
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "$UUID" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m "[{\"bn\":\"$UUID:\", \"n\":\"term\", \"vs\":\"Y2hhcixscwo=\"}]"
 ```
 
 The subscriber terminal will show the `ls` output followed by a new shell prompt.
@@ -164,10 +152,10 @@ echo -n "char,uname -a" | base64
 # Y2hhcix1bmFtZSAtYQ==
 
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "$UUID" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m "[{\"bn\":\"$UUID:\", \"n\":\"term\", \"vs\":\"Y2hhcix1bmFtZSAtYQo=\"}]"
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "$UUID" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m "[{\"bn\":\"$UUID:\", \"n\":\"term\", \"vs\":\"Y2hhcix1bmFtZSAtYQo=\"}]"
 ```
 
 ### Close a terminal session
@@ -177,10 +165,10 @@ UUID="term-1749552000"
 
 # "close" → base64 = Y2xvc2U=
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "$UUID" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m "[{\"bn\":\"$UUID:\", \"n\":\"term\", \"vs\":\"Y2xvc2U=\"}]"
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "$UUID" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m "[{\"bn\":\"$UUID:\", \"n\":\"term\", \"vs\":\"Y2xvc2U=\"}]"
 ```
 
 ### Helper: base64-encode terminal commands
@@ -197,15 +185,4 @@ printf "char,ls -la\n" | base64
 
 ### Use the Agent UI terminal
 
-Open `http://localhost:3002`, navigate to the **Execute Command** panel, and type shell commands. The UI handles base64 encoding and session management automatically.
-
-## Troubleshooting
-
-| Symptom                                          | Cause                                         | Fix                                                                                   |
-| ------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `open` succeeds but no output appears            | PTY read error or publish failure             | Check agent logs for `"Error sending data"`                                           |
-| Session closes immediately after opening         | Idle timeout too short                        | Increase `MG_AGENT_TERMINAL_SESSION_TIMEOUT`                                          |
-| `"no such terminal session"` on close            | Session already timed out or was never opened | Open a new session first                                                              |
-| Command sent but no output                       | Missing newline (`\n`) in the char payload    | Use `printf "char,<cmd>\n" \| base64` to include the newline                          |
-| Agent logs `"failed to create terminal session"` | PTY or bash not available                     | Ensure `bash` is installed and `/dev/pts` is mounted (in Docker: `--device /dev/pts`) |
-| Multiple sessions conflict                       | Same UUID used for different sessions         | Use a unique UUID per session                                                         |
+Open `http://localhost:9999`, navigate to the **Execute** panel, and type shell commands. The UI handles base64 encoding and session management automatically.
