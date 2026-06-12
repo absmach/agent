@@ -2,18 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  ArrowUpDown,
   Bluetooth,
   Cable,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Cpu,
   Loader2,
   Plus,
   RefreshCw,
+  Search,
   Trash2,
   Usb,
   Wifi,
 } from "lucide-react";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,36 +34,27 @@ interface Device {
   channel_id: string;
 }
 
+type SortKey = "active" | "name" | "last_seen";
+
+const PAGE_SIZE = 20;
+
 const IFACE_OPTIONS = [
   { value: "ble", label: "BLE", addrPlaceholder: "AA:BB:CC:DD:EE:FF" },
   { value: "serial", label: "Serial", addrPlaceholder: "/dev/ttyUSB0" },
   { value: "i2c", label: "I2C", addrPlaceholder: "0x68" },
   { value: "usb", label: "USB", addrPlaceholder: "/dev/bus/usb/001/002" },
-  {
-    value: "zigbee",
-    label: "Zigbee",
-    addrPlaceholder: "00:11:22:33:44:55:66:77",
-  },
+  { value: "zigbee", label: "Zigbee", addrPlaceholder: "00:11:22:33:44:55:66:77" },
   { value: "modbus-rtu", label: "Modbus RTU", addrPlaceholder: "/dev/ttyUSB0" },
-  {
-    value: "modbus-tcp",
-    label: "Modbus TCP",
-    addrPlaceholder: "192.168.1.10:502",
-  },
+  { value: "modbus-tcp", label: "Modbus TCP", addrPlaceholder: "192.168.1.10:502" },
 ];
 
 function ifaceIcon(type: string) {
   switch (type) {
-    case "ble":
-      return <Bluetooth className="h-3.5 w-3.5" />;
-    case "serial":
-      return <Cable className="h-3.5 w-3.5" />;
-    case "usb":
-      return <Usb className="h-3.5 w-3.5" />;
-    case "zigbee":
-      return <Wifi className="h-3.5 w-3.5" />;
-    default:
-      return <Cpu className="h-3.5 w-3.5" />;
+    case "ble":     return <Bluetooth className="h-3.5 w-3.5" />;
+    case "serial":  return <Cable className="h-3.5 w-3.5" />;
+    case "usb":     return <Usb className="h-3.5 w-3.5" />;
+    case "zigbee":  return <Wifi className="h-3.5 w-3.5" />;
+    default:        return <Cpu className="h-3.5 w-3.5" />;
   }
 }
 
@@ -88,11 +83,36 @@ async function extractError(res: Response): Promise<string> {
   }
 }
 
+function sortDevices(devices: Device[], key: SortKey, asc: boolean): Device[] {
+  return [...devices].sort((a, b) => {
+    let cmp = 0;
+    switch (key) {
+      case "active":
+        cmp = (b.active ? 1 : 0) - (a.active ? 1 : 0);
+        break;
+      case "name":
+        cmp = a.name.localeCompare(b.name);
+        break;
+      case "last_seen": {
+        const ta = a.last_seen && !a.last_seen.startsWith("0001") ? new Date(a.last_seen).getTime() : 0;
+        const tb = b.last_seen && !b.last_seen.startsWith("0001") ? new Date(b.last_seen).getTime() : 0;
+        cmp = tb - ta;
+        break;
+      }
+    }
+    return asc ? cmp : -cmp;
+  });
+}
+
 export function DevicesPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("active");
+  const [sortAsc, setSortAsc] = useState(true);
+  const [page, setPage] = useState(0);
 
   const [form, setForm] = useState({
     name: "",
@@ -112,6 +132,7 @@ export function DevicesPage() {
       if (!res.ok) throw new Error(await extractError(res));
       const data = await res.json();
       setDevices(data.devices ?? []);
+      setPage(0);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -122,6 +143,39 @@ export function DevicesPage() {
   useEffect(() => {
     load();
   }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const base = q
+      ? devices.filter(
+          (d) =>
+            d.name.toLowerCase().includes(q) ||
+            d.interface_addr.toLowerCase().includes(q) ||
+            d.interface_type.toLowerCase().includes(q) ||
+            d.id.toLowerCase().includes(q),
+        )
+      : devices;
+    return sortDevices(base, sortKey, sortAsc);
+  }, [devices, query, sortKey, sortAsc]);
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const pageDevices = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const activeCount = devices.filter((d) => d.active).length;
+
+  function cycleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortAsc((a) => !a);
+    } else {
+      setSortKey(key);
+      setSortAsc(true);
+    }
+    setPage(0);
+  }
+
+  function handleQueryChange(e: Event) {
+    setQuery((e.target as HTMLInputElement).value);
+    setPage(0);
+  }
 
   async function handleAdd(e: Event) {
     e.preventDefault();
@@ -134,15 +188,10 @@ export function DevicesPage() {
         body: JSON.stringify(form),
       });
       if (!res.ok) throw new Error(await extractError(res));
+      const added: Device = await res.json();
+      setDevices((prev) => [added, ...prev]);
       setShowAdd(false);
-      setForm({
-        name: "",
-        ext_id: "",
-        ext_key: "",
-        interface_type: "ble",
-        interface_addr: "",
-      });
-      await load();
+      setForm({ name: "", ext_id: "", ext_key: "", interface_type: "ble", interface_addr: "" });
     } catch (e) {
       setAddError(String(e));
     } finally {
@@ -152,16 +201,11 @@ export function DevicesPage() {
 
   async function handleRemove(id: string) {
     const name = devices.find((d) => d.id === id)?.name ?? id;
-    if (
-      !confirm(
-        `Remove device "${name}"? This will deprovision it from Magistrala.`,
-      )
-    )
-      return;
+    if (!confirm(`Remove device "${name}"? This will deprovision it from Magistrala.`)) return;
     try {
       const res = await fetch(`/devices/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(await extractError(res));
-      setDevices((d) => d.filter((x) => x.id !== id));
+      setDevices((prev) => prev.filter((x) => x.id !== id));
     } catch (e) {
       setError(String(e));
     }
@@ -169,31 +213,38 @@ export function DevicesPage() {
 
   async function handleSeen(id: string) {
     try {
-      await fetch(`/devices/${id}/seen`, { method: "POST" });
-      await load();
+      const res = await fetch(`/devices/${id}/seen`, { method: "POST" });
+      if (!res.ok) throw new Error(await extractError(res));
+      // Update only the affected device in-place rather than re-fetching everything.
+      setDevices((prev) =>
+        prev.map((d) => (d.id === id ? { ...d, last_seen: new Date().toISOString() } : d)),
+      );
     } catch (e) {
       setError(String(e));
     }
   }
 
+  const sortLabel: Record<SortKey, string> = {
+    active: "Status",
+    name: "Name",
+    last_seen: "Last seen",
+  };
+
   return (
     <div className="space-y-[22px]">
+      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-[1.35rem] font-bold leading-tight tracking-tight">
-            Devices
-          </h1>
+          <h1 className="text-[1.35rem] font-bold leading-tight tracking-tight">Devices</h1>
           <p className="mt-1 text-[0.825rem] text-muted-foreground">
-            Downstream devices registered with this gateway.
+            {devices.length === 0
+              ? "No devices registered."
+              : `${devices.length} device${devices.length !== 1 ? "s" : ""} · ${activeCount} active`}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
-            {loading ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3 w-3" />
-            )}
+            {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
             Refresh
           </Button>
           <Button size="sm" onClick={() => setShowAdd((s) => !s)}>
@@ -203,6 +254,7 @@ export function DevicesPage() {
         </div>
       </div>
 
+      {/* Add form */}
       {showAdd && (
         <Card>
           <CardHeader>
@@ -219,12 +271,7 @@ export function DevicesPage() {
                   id="dev-name"
                   placeholder="my-sensor"
                   value={form.name}
-                  onInput={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      name: (e.target as HTMLInputElement).value,
-                    }))
-                  }
+                  onInput={(e) => setForm((f) => ({ ...f, name: (e.target as HTMLInputElement).value }))}
                   required
                 />
               </div>
@@ -234,16 +281,11 @@ export function DevicesPage() {
                   id="dev-iface"
                   value={form.interface_type}
                   onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      interface_type: (e.target as HTMLSelectElement).value,
-                    }))
+                    setForm((f) => ({ ...f, interface_type: (e.target as HTMLSelectElement).value }))
                   }
                 >
                   {IFACE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
+                    <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </Select>
               </div>
@@ -251,80 +293,47 @@ export function DevicesPage() {
                 <Label htmlFor="dev-addr">Interface address</Label>
                 <Input
                   id="dev-addr"
-                  placeholder={
-                    IFACE_OPTIONS.find((o) => o.value === form.interface_type)
-                      ?.addrPlaceholder ?? ""
-                  }
+                  placeholder={IFACE_OPTIONS.find((o) => o.value === form.interface_type)?.addrPlaceholder ?? ""}
                   value={form.interface_addr}
                   onInput={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      interface_addr: (e.target as HTMLInputElement).value,
-                    }))
+                    setForm((f) => ({ ...f, interface_addr: (e.target as HTMLInputElement).value }))
                   }
                 />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="dev-extid">
                   External ID{" "}
-                  <span className="text-muted-foreground font-normal">
-                    (unique identifier on your network)
-                  </span>
+                  <span className="text-muted-foreground font-normal">(unique identifier on your network)</span>
                 </Label>
                 <Input
                   id="dev-extid"
                   placeholder="e.g. device serial number or MAC"
                   value={form.ext_id}
-                  onInput={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      ext_id: (e.target as HTMLInputElement).value,
-                    }))
-                  }
+                  onInput={(e) => setForm((f) => ({ ...f, ext_id: (e.target as HTMLInputElement).value }))}
                   required
                 />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="dev-extkey">
                   External key{" "}
-                  <span className="text-muted-foreground font-normal">
-                    (used to authenticate the provisioning request)
-                  </span>
+                  <span className="text-muted-foreground font-normal">(used to authenticate the provisioning request)</span>
                 </Label>
                 <Input
                   id="dev-extkey"
                   type="password"
                   placeholder="pre-shared secret or password"
                   value={form.ext_key}
-                  onInput={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      ext_key: (e.target as HTMLInputElement).value,
-                    }))
-                  }
+                  onInput={(e) => setForm((f) => ({ ...f, ext_key: (e.target as HTMLInputElement).value }))}
                   required
                 />
               </div>
-              {addError && (
-                <p className="sm:col-span-2 text-sm text-destructive">
-                  {addError}
-                </p>
-              )}
+              {addError && <p className="sm:col-span-2 text-sm text-destructive">{addError}</p>}
               <div className="flex gap-2 sm:col-span-2">
                 <Button type="submit" size="sm" disabled={adding}>
-                  {adding ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Plus className="h-3 w-3" />
-                  )}
+                  {adding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
                   Register
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowAdd(false)}
-                >
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowAdd(false)}>
                   Cancel
                 </Button>
               </div>
@@ -339,20 +348,58 @@ export function DevicesPage() {
         </div>
       )}
 
+      {/* Search + sort toolbar */}
+      {devices.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, address, or type…"
+              value={query}
+              onInput={handleQueryChange}
+              className="pl-8 h-8 text-sm"
+            />
+          </div>
+          <div className="flex items-center gap-1 text-[0.75rem] text-muted-foreground">
+            <ArrowUpDown className="h-3 w-3" />
+            Sort:
+          </div>
+          {(["active", "name", "last_seen"] as SortKey[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => cycleSort(k)}
+              className={`rounded px-2 py-1 text-[0.75rem] font-medium border transition-colors ${
+                sortKey === k
+                  ? "bg-accent text-accent-foreground border-border"
+                  : "text-muted-foreground border-transparent hover:bg-accent/50"
+              }`}
+            >
+              {sortLabel[k]}{sortKey === k ? (sortAsc ? " ↑" : " ↓") : ""}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Device list */}
       <Card>
         <div>
-          {devices.length === 0 ? (
+          {filtered.length === 0 ? (
             <div className="px-6 py-11 text-center text-muted-foreground">
               <Cpu className="mx-auto mb-2.5 h-9 w-9 opacity-25" />
-              <h3 className="mb-1 text-[0.85rem] font-semibold text-foreground">
-                No devices registered
-              </h3>
-              <p className="text-[0.775rem]">
-                Add a downstream device to get started.
-              </p>
+              {devices.length === 0 ? (
+                <>
+                  <h3 className="mb-1 text-[0.85rem] font-semibold text-foreground">No devices registered</h3>
+                  <p className="text-[0.775rem]">Add a downstream device to get started.</p>
+                </>
+              ) : (
+                <h3 className="mb-1 text-[0.85rem] font-semibold text-foreground">
+                  No devices match "{query}"
+                </h3>
+              )}
             </div>
           ) : (
-            devices.map((d) => (
+            pageDevices.map((d) => (
               <div
                 key={d.id}
                 className="flex items-center gap-[13px] border-b px-[18px] py-[13px] last:border-b-0"
@@ -371,9 +418,7 @@ export function DevicesPage() {
                     <button
                       type="button"
                       title="Copy channel ID"
-                      onClick={() =>
-                        navigator.clipboard.writeText(d.channel_id)
-                      }
+                      onClick={() => navigator.clipboard.writeText(d.channel_id)}
                       className="mt-0.5 flex items-center gap-1 font-mono text-[0.65rem] text-muted-foreground/60 hover:text-muted-foreground"
                     >
                       <Copy className="h-2.5 w-2.5" />
@@ -410,6 +455,36 @@ export function DevicesPage() {
             ))
           )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t px-4 py-2.5">
+            <span className="text-[0.75rem] text-muted-foreground">
+              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="rounded p-1 text-muted-foreground hover:bg-accent disabled:opacity-30"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="px-2 text-[0.75rem]">
+                {page + 1} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1}
+                className="rounded p-1 text-muted-foreground hover:bg-accent disabled:opacity-30"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

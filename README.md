@@ -219,6 +219,11 @@ Environment variables:
 | `MG_AGENT_BOOTSTRAP_RETRIES`             | Bootstrap fetch retries                                | `5`                                  |
 | `MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS` | Bootstrap retry delay in seconds                       | `10`                                 |
 | `MG_AGENT_BOOTSTRAP_SKIP_TLS`            | Skip TLS verification for bootstrap fetch              | `false`                              |
+| `MG_AGENT_CLIENTS_URL`                   | Magistrala Clients API URL for device provisioning     |                                      |
+| `MG_AGENT_CHANNELS_URL`                  | Magistrala Channels API URL for device provisioning    |                                      |
+| `MG_AGENT_RULES_ENGINE_URL`              | Magistrala Rules Engine URL (optional, for save_senml) |                                      |
+| `MG_PAT`                                 | Magistrala Personal Access Token for provisioning      |                                      |
+| `MG_AGENT_DEVICE_DB_PATH`                | BoltDB file path for the device registry               | `/var/lib/agent/devices.db`          |
 
 ## MQTT Message Format
 
@@ -239,6 +244,7 @@ The `n` field selects the subsystem. Supported subsystems:
 | `config`  | View runtime config or save export service config |
 | `term`    | Terminal session control                          |
 | `nodered` | Node-RED flow management                          |
+| `devices` | Downstream device registry management             |
 
 ## Sending Commands
 
@@ -330,6 +336,143 @@ mosquitto_pub \
 In both cases `flows` is the flow JSON **base64-encoded**. The agent automatically patches the MQTT `clientid` inside the deployed flows to `<client-id>-nr` to prevent Node-RED from conflicting with the agent's own MQTT session.
 
 See [docs/nodered.md](docs/nodered.md) for the full setup guide, Docker Compose stack, and provisioning instructions.
+
+## Device Manager
+
+The agent maintains a registry of downstream devices (Serial/Modbus, I2C, BLE, USB CDC) backed by a persistent BoltDB file. Each device is provisioned as a Magistrala Client and Channel pair, enabling it to publish telemetry independently through the gateway's MQTT connection.
+
+### Configuration
+
+| Variable                    | Description                                            | Default                     |
+| --------------------------- | ------------------------------------------------------ | --------------------------- |
+| `MG_AGENT_CLIENTS_URL`      | Magistrala Clients API base URL                        |                             |
+| `MG_AGENT_CHANNELS_URL`     | Magistrala Channels API base URL                       |                             |
+| `MG_AGENT_RULES_ENGINE_URL` | Magistrala Rules Engine URL (creates `save_senml` rule)|                             |
+| `MG_PAT`                    | Magistrala Personal Access Token                       |                             |
+| `MG_AGENT_DEVICE_DB_PATH`   | BoltDB path for the device registry                    | `/var/lib/agent/devices.db` |
+
+When `MG_PAT` is set via bootstrap config, it is stored in the config store and does not need to be set as an env var on subsequent restarts.
+
+### REST API
+
+#### Add a device
+
+Provisions a new Magistrala Client + Channel for the device and persists it to the registry. The returned `id` and `key` are the device's Magistrala credentials.
+
+```bash
+curl -s -X POST http://localhost:9999/devices \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name":           "temperature-sensor-01",
+    "ext_id":         "sensor-hw-id-001",
+    "ext_key":        "sensor-hw-secret-001",
+    "interface_type": "serial",
+    "interface_addr": "/dev/ttyUSB0"
+  }'
+```
+
+Supported `interface_type` values: `serial`, `i2c`, `ble`, `usb`, `modbus_rtu`, `modbus_tcp`.
+
+Response (`201 Created`):
+
+```json
+{
+  "id":             "<magistrala-client-id>",
+  "key":            "<magistrala-client-secret>",
+  "channel_id":     "<magistrala-channel-id>",
+  "name":           "temperature-sensor-01",
+  "interface_type": "serial",
+  "interface_addr": "/dev/ttyUSB0",
+  "active":         false,
+  "last_seen":      "0001-01-01T00:00:00Z"
+}
+```
+
+#### List devices
+
+```bash
+curl -s http://localhost:9999/devices
+```
+
+Response (`200 OK`):
+
+```json
+{
+  "devices": [
+    {
+      "id":             "<magistrala-client-id>",
+      "key":            "<magistrala-client-secret>",
+      "channel_id":     "<magistrala-channel-id>",
+      "name":           "temperature-sensor-01",
+      "interface_type": "serial",
+      "interface_addr": "/dev/ttyUSB0",
+      "active":         true,
+      "last_seen":      "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+#### Get a device
+
+```bash
+curl -s http://localhost:9999/devices/<device-id>
+```
+
+#### Remove a device
+
+```bash
+curl -s -X DELETE http://localhost:9999/devices/<device-id>
+```
+
+Stops the device telemetry goroutine and removes the device from the local registry. The Magistrala Client and Channel are **not** deleted from Magistrala.
+
+#### Mark device seen
+
+Manually update the `last_seen` timestamp (useful for devices that communicate out-of-band):
+
+```bash
+curl -s -X POST http://localhost:9999/devices/<device-id>/seen
+```
+
+### MQTT Commands (via Magistrala)
+
+The `devices` subsystem is invoked via `n: "devices"` on the commands channel. The `vs` field carries a subcommand, optionally followed by a comma-separated argument or a JSON payload.
+
+```bash
+mosquitto_pub \
+  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
+  -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
+  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -m '[{"bn":"req-1:", "n":"devices", "vs":"<subcommand>[,<args>]"}]'
+```
+
+Supported subcommands:
+
+| Subcommand | `vs` format | Description |
+| ---------- | ----------- | ----------- |
+| `list` | `list` | Return JSON array of all devices |
+| `get` | `get,<device-id>` | Return JSON for one device |
+| `add` | `add,{"name":"...","external_id":"...","external_key":"...","iface_type":"...","iface_addr":"..."}` | Provision and register a device |
+| `remove` | `remove,<device-id>` | Deregister a device |
+| `seen` | `seen,<device-id>` | Mark device last-seen |
+| `open` | `open,<device-id>` | Open the physical interface |
+| `close` | `close,<device-id>` | Close the physical interface |
+| `read` | `read,<device-id>,<n-bytes>` | Read n bytes from interface (reply as hex) |
+| `write` | `write,<device-id>,<hex-data>` | Write hex bytes to interface |
+
+Responses are published to `m/<domain-id>/c/<commands-channel-id>/res`.
+
+### Telemetry Scheduling
+
+Once registered, each device with a non-empty `channel_id` gets a dedicated telemetry goroutine. The goroutine:
+
+1. Opens a separate MQTT connection authenticated as the device (using its Magistrala `id`/`key`).
+2. Opens the physical interface (`/dev/ttyUSB0`, I2C bus, etc.).
+3. Reads bytes from the interface and publishes raw payloads to `m/<domain-id>/c/<device-channel-id>/msg`.
+4. Marks the device as `active` and updates `last_seen` after each successful publish.
+
+The goroutine reconnects with exponential backoff (1 s → 30 s) after any failure. Goroutines are restored from the persistent registry on agent restart, so devices survive process restarts without re-provisioning.
 
 ## Heartbeat Service
 
