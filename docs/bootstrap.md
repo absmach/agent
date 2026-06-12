@@ -2,25 +2,6 @@
 
 The bootstrap subsystem handles profile-based provisioning. At startup, the agent fetches a rendered bootstrap profile from the Magistrala Bootstrap service, which provides device identity, MQTT credentials, channel IDs, and provision configuration. The profile is cached locally so subsequent starts skip the HTTP fetch.
 
-## Overview
-
-```
-┌──────────────┐   1. GET /clients/bootstrap   ┌──────────────┐
-│    Agent     │ ─────────────────────────────── │  Bootstrap   │
-│   (startup)  │ ◄─── rendered profile JSON ──── │   Service    │
-└──────┬───────┘                                └──────────────┘
-       │
-       │ 2. Extract device_id, domain_id,
-       │    mqtt credentials, channel IDs
-       │
-       │ 3. Connect to MQTT broker
-       ▼
-┌──────────────┐
-│  MQTT Broker │
-│ (Magistrala) │
-└──────────────┘
-```
-
 ## Bootstrap Flow
 
 1. **Agent starts** with `MG_AGENT_BOOTSTRAP_URL`, `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`, and `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` set.
@@ -111,10 +92,10 @@ Bootstrap-derived fields persisted in the store:
 ### Automated (recommended)
 
 ```bash
-export MG_AGENT_BOOTSTRAP_EXTERNAL_ID='01:6:0:sb:sa'
-export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY='secret'
-export MG_DOMAIN_ID=<domain-id>
-export MG_PAT=<personal-access-token>
+export MG_AGENT_BOOTSTRAP_EXTERNAL_ID="<device-external-id>"
+export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="<device-external-key>"
+export MG_DOMAIN_ID="<domain-id>"
+export MG_PAT="<personal-access-token>"
 make run_provision
 ```
 
@@ -129,13 +110,13 @@ The provisioning script creates:
 ### Cloud provisioning
 
 ```bash
-MG_API=https://cloud.magistrala.absmach.eu/api \
-MG_AGENT_MQTT_URL=ssl://messaging.magistrala.absmach.eu:8883 \
-MG_AGENT_MQTT_SKIP_TLS=false \
-MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<device-external-id> \
-MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<device-external-key> \
-MG_DOMAIN_ID=<domain-id> \
-MG_PAT=<pat> \
+export MG_API="https://cloud.magistrala.absmach.eu/api"
+export MG_AGENT_MQTT_URL=ssl://messaging.magistrala.absmach.eu:8883
+export MG_AGENT_MQTT_SKIP_TLS=false
+export MG_AGENT_BOOTSTRAP_EXTERNAL_ID="<device-external-id>"
+export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="<device-external-key>"
+export MG_DOMAIN_ID="<domain-id>"
+export MG_PAT="<pat>"
 make run_provision
 ```
 
@@ -153,10 +134,8 @@ curl -s 'http://localhost:9013/clients/bootstrap/<external-id>' \
 
 ```json
 {
-  "content": "{\"device_id\":\"...\",\"external_id\":\"...\",\"domain_id\":\"...\",\"mqtt\":{...},\"telemetry\":{...},\"commands\":{...}}",
-  "client_key": "",
-  "client_cert": "",
-  "ca_cert": ""
+  "id": "fa846d56-3100-44aa-8385-3a88cb437a5a",
+  "content": "{\n  \"commands\": {\n    \"channel_id\": \"bc9a0af7-6d0f-4806-aa5a-61d68c0a7cf7\"\n  },\n  \"device_id\": \"fa846d56-3100-44aa-8385-3a88cb437a5a\",\n  \"domain_id\": \"e9692c28-b730-4797-8a15-2e25c08f9641\",\n  \"external_id\": \"019eb690777d7452ba898a66f5cc9cb8\",\n  \"mqtt\": {\n    \"client_id\": \"ffec2491-0de1-4051-9e75-ad2e2d241627\",\n    \"secret\": \"30c775d7-3504-42c6-976c-52c02474bf2f\",\n    \"url\": \"ssl://host.docker.internal:8883\"\n  },\n  \"provision\": {\n    \"channels_url\": \"http://channels:9005\",\n    \"clients_url\": \"http://clients:9006\",\n    \"rules_engine_url\": \"http://rules:9008\",\n    \"token\": \"pat_TurQa8bRR72vtZguCtIIe8ZTeaSkqkinkhLxSqPo7bw=_PoOG@UuEadfD!F7TcWYzsDKSxLB%3mzlh1M\\u0026MmLIky0M8A2Ui9f9J^4DuzZ@O0rjCA-cvgjbuFjOofOwreHL-j\\u0026CcgffH7FzwoDC\"\n  },\n  \"telemetry\": {\n    \"channel_id\": \"b465a688-c1ca-417d-a36f-71f6f1be2409\",\n    \"topic\": \"\\u003cno value\\u003e\"\n  }\n}"
 }
 ```
 
@@ -164,10 +143,10 @@ curl -s 'http://localhost:9013/clients/bootstrap/<external-id>' \
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"config", "vs":"set,bs_valid,0"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:", "n":"config", "vs":"set,bs_valid,0"}]'
 ```
 
 This sets `bs_valid` to `0` and deletes the cached bootstrap profile. On the **next restart**, the agent will re-fetch the profile from the bootstrap service.
@@ -176,10 +155,10 @@ This sets `bs_valid` to `0` and deletes the cached bootstrap profile. On the **n
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"config", "vs":"get,bs_valid"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:", "n":"config", "vs":"get,bs_valid"}]'
 ```
 
 **Response:** `1` (valid cache) or `0` (cache invalidated).
@@ -187,9 +166,9 @@ mosquitto_pub \
 ### Run agent without Docker
 
 ```bash
-MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<external-id> \
-MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<external-key> \
-MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/clients/bootstrap \
+export MG_AGENT_BOOTSTRAP_EXTERNAL_ID="<external-id>"
+export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="<external-key>"
+export MG_AGENT_BOOTSTRAP_URL="http://localhost:9013/clients/bootstrap"
 build/magistrala-agent
 ```
 
@@ -210,14 +189,3 @@ If bootstrap data is already cached:
   "msg": "Bootstrap data already present, skipping bootstrap fetch"
 }
 ```
-
-## Troubleshooting
-
-| Symptom                                                    | Cause                                              | Fix                                                                                                      |
-| ---------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Agent exits with `"bootstrap configuration is incomplete"` | Missing one of the three bootstrap env vars        | Set all of `MG_AGENT_BOOTSTRAP_URL`, `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`, `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` |
-| Agent exits with `"Fetching bootstrap failed"`             | Bootstrap service unreachable or credentials wrong | Verify the bootstrap URL, external ID, and key; check network connectivity                               |
-| Agent exits with `"missing required runtime fields"`       | Bootstrap profile is incomplete                    | Ensure the provisioning script created the profile with all required fields                              |
-| Agent keeps re-fetching bootstrap on every restart         | `bs_valid` was set to `0` or cache file is missing | Check `MG_AGENT_BOOTSTRAP_CACHE_PATH` exists and is writable                                             |
-| mTLS fails after bootstrap                                 | Client cert/key not in profile                     | Ensure the bootstrap profile includes `client_cert` and `ca_cert` fields                                 |
-| `"Failed to persist domain_id"`                            | Config store file not writable                     | Check permissions on `MG_AGENT_CONFIG_PATH`                                                              |
