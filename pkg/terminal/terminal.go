@@ -5,7 +5,6 @@ package terminal
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -49,7 +48,7 @@ func NewSession(uuid string, timeout time.Duration, publish func(channel, payloa
 		publish:      publish,
 		timeout:      timeout,
 		resetTimeout: timeout,
-		topic:        fmt.Sprintf("term/%s", uuid),
+		topic:        "term/" + uuid,
 		done:         make(chan bool),
 	}
 
@@ -66,11 +65,21 @@ func NewSession(uuid string, timeout time.Duration, publish func(channel, payloa
 
 	// Copy output to mqtt
 	go func() {
-		n, err := io.Copy(t, t.ptmx)
-		if err != nil {
-			t.logger.Error(fmt.Sprintf("Error sending data: %s", err))
+		buf := make([]byte, 4096)
+		for {
+			nr, readErr := t.ptmx.Read(buf)
+			if nr > 0 {
+				if _, writeErr := t.Write(buf[:nr]); writeErr != nil {
+					t.logger.Error("Error sending terminal data", slog.Any("error", writeErr))
+				}
+			}
+			if readErr != nil {
+				if readErr != io.EOF {
+					t.logger.Error("PTY read error", slog.Any("error", readErr))
+				}
+				return
+			}
 		}
-		t.logger.Debug(fmt.Sprintf("Data being sent: %d", n))
 	}()
 
 	t.timer = time.NewTicker(1 * time.Second)
@@ -111,12 +120,14 @@ func (t *term) IsDone() chan bool {
 func (t *term) Write(p []byte) (int, error) {
 	t.resetCounter(t.resetTimeout)
 	n := len(p)
+	t.logger.Info("Terminal output", slog.Int("bytes", n), slog.String("uuid", t.uuid))
 	payload, err := senml.EncodeString(t.uuid, terminal, string(p))
 	if err != nil {
 		return n, err
 	}
 
 	if err := t.publish(t.topic, string(payload)); err != nil {
+		t.logger.Error("Terminal publish failed", slog.Any("error", err), slog.String("uuid", t.uuid))
 		return n, err
 	}
 	return n, nil
@@ -125,7 +136,7 @@ func (t *term) Write(p []byte) (int, error) {
 func (t *term) Send(p []byte) error {
 	in := bytes.NewReader(p)
 	nr, err := io.Copy(t.ptmx, in)
-	t.logger.Debug(fmt.Sprintf("Written to ptmx: %d", nr))
+	t.logger.Info("Terminal input", slog.Int("bytes", int(nr)), slog.String("uuid", t.uuid))
 	if err != nil {
 		return errors.New(err.Error())
 	}

@@ -47,7 +47,7 @@ const (
 	view = "view"
 	save = "save"
 
-	char    = "c"
+	char    = "char"
 	open    = "open"
 	close   = "close"
 	control = "control"
