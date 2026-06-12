@@ -13,145 +13,50 @@
 
 Magistrala IoT Agent is a communication, execution and software management agent for the [Magistrala][magistrala] IoT platform. It runs on edge devices and bridges local services (Node-RED, terminal) with a Magistrala deployment over MQTT. That Magistrala deployment can be local or cloud-hosted. A built-in web UI is included for local management.
 
-## MQTT and Local Messaging
+## Features
 
-The agent uses two messaging paths:
-
-- **MQTT** is used for the Magistrala-facing control and data plane. The agent connects to the MQTT broker from the rendered bootstrap profile or environment config, subscribes for commands on `m/<domain-id>/c/<commands-channel-id>/req`, and publishes responses on the commands channel plus data messages on the telemetry channel. This MQTT broker can be a local Magistrala deployment or Magistrala Cloud.
-- **FluxMQ over AMQP** is used for local gateway service messaging. The agent subscribes to local heartbeat messages on the FluxMQ-backed message bus so nearby services can report liveness without the agent polling them.
+- **MQTT command & control** — remote shell execution, config management, process reset over [SenML][senml] JSON via Magistrala MQTT
+- **Node-RED integration** — deploy, fetch, and manage Node-RED flows over MQTT or HTTP
+- **Interactive terminal** — full PTY sessions tunneled over MQTT
+- **Periodic telemetry** — uptime, memory, CPU temperature, disk usage, load averages, wireless RSSI
+- **Heartbeat & liveness** — self-heartbeat to Magistrala + local service tracking via AMQP
+- **Downstream device management** — provision, register, and manage serial/I2C/Modbus devices
+- **OTA updates** — remote binary update with SHA-256 verification
+- **Health supervisor** — process watchdog with systemd integration
+- **Bootstrap provisioning** — profile-based startup from Magistrala Bootstrap service
 
 ## Install
 
 ```bash
 git clone https://github.com/absmach/agent
 cd agent
-```
-
-Build the binary:
-
-```bash
 make all
 ```
 
 The binary is written to `build/magistrala-agent`.
 
-## Running with Docker
-
-The recommended way to run agent is with the provided Docker Compose stack, which also starts Node-RED, FluxMQ, and the Agent UI.
+## Quick Start with Docker
 
 ### 1. Provision Magistrala resources
 
-If you have a running Magistrala instance, provision the required client, channels, bootstrap profile/enrollment, profile bindings, and `save_senml` rule.
-
-Export the provisioning values first:
-
 ```bash
-export MG_AGENT_BOOTSTRAP_EXTERNAL_ID='01:6:0:sb:sa'
-export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY='secret'
-export MG_DOMAIN_ID="<domain-id>"
-export MG_PAT="<personal-access-token>"
+export MG_AGENT_BOOTSTRAP_EXTERNAL_ID='<external-id>'
+export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY='<external-key>'
+export MG_DOMAIN_ID='<domain-id>'
+export MG_PAT='<personal-access-token>'
 make run_provision
 ```
 
-Use your real PAT in the shell, but do not commit it to files. The provisioning script no longer writes a runtime `config.toml`; it creates a Bootstrap Profile and Enrollment. At startup, the agent and Node-RED fetch the rendered bootstrap profile and use that as the runtime config source.
+The PAT must have scopes for `bootstrap:create`, `rules:create`, `clients:create`, `channels:create`, and connect permissions in the target domain. See [docs/bootstrap.md](docs/bootstrap.md) for details and cloud provisioning.
 
-The PAT used for provisioning must be able to create bootstrap configs, rules, clients, and channels in the target domain. In practice the provisioning flow expects scopes like:
-
-- `bootstrap:create`
-- `bootstrap:update`
-- `rules:create`
-- `clients:create`
-- `clients:view`
-- `clients:connect_to_channel`
-- `channels:create`
-- `channels:view`
-- `channels:connect_client`
-
-all scoped to the target `domain_id`.
-
-The provisioning script uses sensible defaults for local Docker:
-
-- MQTT: `ssl://host.docker.internal:8883`
-- Bootstrap API: `http://localhost:9013`
-
-Override them before provisioning when needed, for example:
-
-```bash
-export MG_AGENT_BOOTSTRAP_EXTERNAL_ID="<device-external-id>"
-export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="<device-external-key>"
-export MG_DOMAIN_ID="<domain-id>"
-export MG_PAT="<personal-access-token>"
-export MG_AGENT_MQTT_URL=ssl://messaging.magistrala.absmach.eu:8883
-export MG_AGENT_MQTT_SKIP_TLS=false
-make run_provision
-```
-
-Using `MG_API=https://cloud.magistrala.absmach.eu/api` points provisioning at Magistrala Cloud. Setting `MG_AGENT_MQTT_URL=ssl://messaging.magistrala.absmach.eu:8883` points the agent at the cloud MQTT broker instead of the local Docker default.
-
-**Alternatively**, create a Client, telemetry Channel, commands Channel, Bootstrap Profile, Enrollment, profile bindings, and Rule Engine rule manually via the Magistrala UI or API, then set bootstrap runtime env vars in `docker/.env`.
-
-For bootstrap mode, the runtime env values are:
-
-```env
-MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<external-id>
-MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<external-key>
-MG_AGENT_BOOTSTRAP_URL=http://bootstrap:9013/clients/bootstrap
-```
-
-You can fetch the rendered bootstrap response directly:
-
-```bash
-curl -s 'http://localhost:9013/clients/bootstrap/01:6:0:sb:sa' \
-  -H 'accept: */*' \
-  -H 'Authorization: Client secret'
-```
-
-The bootstrap endpoint returns a wrapper object. The agent parses the JSON string in `content`:
-
-```json
-{
-  "content": "{\"device_id\":\"<client-id>\",\"external_id\":\"01:6:0:sb:sa\",\"domain_id\":\"<domain-id>\",\"mqtt\":{\"url\":\"ssl://host.docker.internal:8883\",\"client_id\":\"<client-id>\",\"secret\":\"<client-secret>\"},\"telemetry\":{\"channel_id\":\"<telemetry-channel-id>\",\"topic\":\"m/<domain-id>/c/<telemetry-channel-id>/msg\"},\"commands\":{\"channel_id\":\"<commands-channel-id>\"}}",
-  "client_key": "",
-  "client_cert": "",
-  "ca_cert": ""
-}
-```
-
-Decoded, the rendered profile content looks like:
-
-```json
-{
-  "device_id": "<client-id>",
-  "external_id": "01:6:0:sb:sa",
-  "domain_id": "<domain-id>",
-  "mqtt": {
-    "url": "ssl://host.docker.internal:8883",
-    "client_id": "<client-id>",
-    "secret": "<client-secret>"
-  },
-  "telemetry": {
-    "channel_id": "<telemetry-channel-id>",
-    "topic": "m/<domain-id>/c/<telemetry-channel-id>/msg"
-  },
-  "commands": {
-    "channel_id": "<commands-channel-id>"
-  }
-}
-```
-
-### 2. Build the dev Docker image
+### 2. Build and start
 
 ```bash
 make all && make dockers_dev
-```
-
-### 3. Start the stack
-
-```bash
 make run
 ```
 
-Starts: Agent (:9999), Node-RED (:1880), Agent UI (:3002).
+Starts: Agent + UI (:9999), Node-RED (:1880).
 
 ### Stopping
 
@@ -162,24 +67,14 @@ make clean_volumes
 
 ## Agent UI
 
-A web-based management UI is included and served at `http://localhost:3002`. It provides:
+A web-based management UI at `http://localhost:9999` provides:
 
-- **Configuration** — view the effective runtime config (`server`, `channels`, `mqtt`, `nodered`, `log`)
-- **Node-RED** — ping, get state, fetch flows, deploy flows (replaces all running flows), and add a single flow tab (non-destructive) from a local JSON file
+- **Configuration** — view the effective runtime config
+- **Node-RED** — ping, get state, fetch/deploy/add flows from a local JSON file
 - **Services** — view registered heartbeat services
-- **Execute Command** — run shell commands on the edge device and see terminal-style output
-
-The UI is built with [Elm](https://elm-lang.org/) and served via nginx as a Docker container.
-
-To build the UI image:
-
-```bash
-make dockers_dev
-```
+- **Execute Command** — run shell commands on the edge device
 
 ## Running without Docker
-
-Start FluxMQ (or use an existing Magistrala FluxMQ instance), then run the agent with bootstrap env vars:
 
 ```bash
 MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<external-id> \
@@ -188,198 +83,42 @@ MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/clients/bootstrap \
 build/magistrala-agent
 ```
 
-### Config
+## Configuration
 
-In the normal runtime flow, configuration is built from environment variables plus the rendered bootstrap profile. Environment variables provide local infrastructure settings, such as HTTP port, FluxMQ URL, Node-RED URL, MQTT TLS options, and bootstrap credentials. The rendered bootstrap profile provides device identity, domain ID, MQTT credentials, and telemetry/commands channel IDs. A persistent config store (`MG_AGENT_CONFIG_PATH`) holds runtime overrides applied via MQTT `config set`.
+Configuration comes from environment variables plus the rendered bootstrap profile. Environment variables provide local infrastructure settings (HTTP port, FluxMQ URL, Node-RED URL, MQTT TLS). The bootstrap profile provides device identity, MQTT credentials, and channel IDs. A persistent config store (`MG_AGENT_CONFIG_PATH`) holds runtime overrides applied via MQTT `config set`.
 
-Bootstrap mode is activated when `MG_AGENT_BOOTSTRAP_URL`, `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`, and `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` are all set.
+Key variables:
 
-Environment variables:
+| Variable                          | Description                              | Default                              |
+| --------------------------------- | ---------------------------------------- | ------------------------------------ |
+| `MG_AGENT_HTTP_PORT`              | Agent HTTP port                          | `9999`                               |
+| `MG_AGENT_MQTT_URL`               | MQTT broker URL                          | `localhost:1883`                     |
+| `MG_AGENT_NODERED_URL`            | Node-RED API URL                         | `http://localhost:1880/`             |
+| `MG_AGENT_BROKER_URL`             | FluxMQ (AMQP) broker URL                 | `amqp://guest:guest@localhost:5682/` |
+| `MG_AGENT_HEARTBEAT_INTERVAL`     | Heartbeat interval                       | `10s`                                |
+| `MG_AGENT_TELEMETRY_INTERVAL`     | Telemetry interval (`0s` to disable)     | `30s`                                |
+| `MG_AGENT_LOG_LEVEL`              | Log level                                | `info`                               |
+| `MG_AGENT_BOOTSTRAP_URL`          | Bootstrap base URL                       |                                      |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`  | Bootstrap external ID                    |                                      |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` | Bootstrap external key                   |                                      |
 
-| Variable                                 | Description                                        | Default                              |
-| ---------------------------------------- | -------------------------------------------------- | ------------------------------------ |
-| `MG_AGENT_LOG_LEVEL`                     | Log level                                          | `info`                               |
-| `MG_AGENT_HTTP_PORT`                     | Agent HTTP port                                    | `9999`                               |
-| `MG_AGENT_PORT`                          | Alias for agent HTTP port                          |                                      |
-| `MG_AGENT_CONFIG_PATH`                   | Persistent config store path                       | `agent-config.json`                  |
-| `MG_AGENT_BROKER_URL`                    | FluxMQ (AMQP) broker URL                           | `amqp://guest:guest@localhost:5682/` |
-| `MG_AGENT_MQTT_URL`                      | MQTT broker URL                                    | `localhost:1883`                     |
-| `MG_AGENT_MQTT_SKIP_TLS`                 | Skip TLS verification for MQTT                     | `true`                               |
-| `MG_AGENT_MQTT_MTLS`                     | Use mTLS for MQTT                                  | `false`                              |
-| `MG_AGENT_MQTT_CA`                       | CA certificate path for mTLS                       | `ca.crt`                             |
-| `MG_AGENT_MQTT_CLIENT_CERT`              | Client certificate path for mTLS                   | `client.cert`                        |
-| `MG_AGENT_MQTT_CLIENT_KEY`               | Client private key path for mTLS                   | `client.key`                         |
-| `MG_AGENT_MQTT_QOS`                      | MQTT QoS level                                     | `0`                                  |
-| `MG_AGENT_MQTT_CMD_QOS`                  | MQTT QoS level for command messages                | `1`                                  |
-| `MG_AGENT_MQTT_RETAIN`                   | MQTT retain flag                                   | `false`                              |
-| `MG_AGENT_NODERED_URL`                   | Node-RED API URL                                   | `http://localhost:1880/`             |
-| `MG_AGENT_HEARTBEAT_INTERVAL`            | Expected heartbeat interval                        | `10s`                                |
-| `MG_AGENT_TELEMETRY_INTERVAL`            | Telemetry publish interval (`0s` to disable)       | `30s`                                |
-| `MG_AGENT_TELEMETRY_INCLUDE_TEMPERATURE` | Include CPU temperature in telemetry               | `true`                               |
-| `MG_AGENT_TELEMETRY_INCLUDE_NETWORK`     | Include wireless RSSI in telemetry                 | `true`                               |
-| `MG_AGENT_TELEMETRY_INCLUDE_LOAD`        | Include load averages in telemetry                 | `true`                               |
-| `MG_AGENT_TERMINAL_SESSION_TIMEOUT`      | Terminal session timeout                           | `60s`                                |
-| `MG_AGENT_COMMAND_SECRET`                | Token for MQTT command authentication              |                                      |
-| `MG_AGENT_WATCHDOG_INTERVAL`             | Health supervisor check interval (`0s` to disable) | `0s`                                 |
-| `MG_AGENT_WATCHDOG_TIMEOUT`              | Unhealthy timeout before process restart           | `60s`                                |
-| `MG_AGENT_BOOTSTRAP_URL`                 | Bootstrap base URL                                 |                                      |
-| `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`         | Bootstrap external ID                              |                                      |
-| `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY`        | Bootstrap external key                             |                                      |
-| `MG_AGENT_BOOTSTRAP_RETRIES`             | Bootstrap fetch retries                            | `5`                                  |
-| `MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS` | Bootstrap retry delay in seconds                   | `10`                                 |
-| `MG_AGENT_BOOTSTRAP_SKIP_TLS`            | Skip TLS verification for bootstrap fetch          | `false`                              |
-| `MG_AGENT_BOOTSTRAP_CACHE_PATH`          | Bootstrap cache file path                          | `/var/lib/agent/bootstrap.json`      |
-| `MG_AGENT_OTA_ENABLED`                   | Enable OTA update subsystem                        | `false`                              |
-| `MG_AGENT_OTA_BINARY_PATH`               | Path to agent binary for OTA replace               | `/usr/local/bin/agent`               |
-| `MG_AGENT_OTA_DOWNLOAD_DIR`              | Directory for OTA downloads                        | `/tmp`                               |
-| `MG_AGENT_DEVICE_DB_PATH`                | BoltDB path for downstream device registry         | `/var/lib/agent/devices.db`          |
-| `MG_AGENT_CLIENTS_URL`                   | Magistrala Clients API URL                         |                                      |
-| `MG_AGENT_CHANNELS_URL`                  | Magistrala Channels API URL                        |                                      |
-| `MG_AGENT_RULES_ENGINE_URL`              | Rules Engine API URL (optional, for auto-rules)    |                                      |
-| `MG_PAT`                                 | Provisioning API token                             |                                      |
+Per-feature env vars are documented in each feature doc below.
 
-## MQTT Message Format
+## Documentation
 
-Agent uses MQTT against the configured Magistrala MQTT broker. It subscribes to `m/<domain-id>/c/<commands-channel-id>/req`.
+Per-feature documentation with configuration, MQTT topic maps, and copy-paste test recipes:
 
-All messages use [SenML][senml] JSON array format:
-
-```json
-[{ "bn": "<uuid>:", "n": "<subsystem>", "vs": "<command>[,<args>]" }]
-```
-
-The `n` field selects the subsystem. Supported subsystems:
-
-| `n`       | Description                                       |
-| --------- | ------------------------------------------------- |
-| `control` | Node-RED commands                                 |
-| `exec`    | Execute a shell command                           |
-| `config`  | View runtime config or save export service config |
-| `term`    | Terminal session control                          |
-| `nodered` | Node-RED flow management                          |
-
-## Sending Commands
-
-### Execute a shell command
-
-Commands are passed as a comma-separated string: `command,arg1,arg2`. Commands with no arguments work as-is:
-
-```bash
-# No-arg command
-mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"exec", "vs":"pwd"}]'
-
-# With arguments
-mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"exec", "vs":"ls,-la"}]'
-```
-
-Commands are executed directly (not via a shell), so shell operators like `&&`, `||`, `|`, and `>` are not supported. Only allowlisted commands can be executed. Each command and its arguments are comma-separated: `ls,-la,/tmp`.
-
-### View service config
-
-```bash
-mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:", "n":"config", "vs":"view"}]'
-```
-
-Responses are published to `m/<domain-id>/c/<commands-channel-id>/res`.
-
-## Node-RED Integration
-
-Agent can manage Node-RED flows running on the same device. Flows can be deployed either via the Node-RED UI directly, via the agent's HTTP API (local), or from Magistrala over MQTT.
-
-### Via HTTP (local)
-
-First, base64-encode the flow JSON:
-
-```bash
-FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
-```
-
-Then send it to the agent. The agent decodes the flows, patches the MQTT client ID, and forwards them to Node-RED on its behalf:
-
-```bash
-curl -s -X POST http://localhost:9999/nodered \
-  -H 'Content-Type: application/json' \
-  -d "{\"command\":\"nodered-deploy\",\"flows\":\"$FLOWS\"}"
-```
-
-Other commands (no `flows` field needed):
-
-```bash
-# Fetch current flows
-curl -s -X POST http://localhost:9999/nodered \
-  -H 'Content-Type: application/json' \
-  -d '{"command":"nodered-flows"}'
-
-# Ping Node-RED
-curl -s -X POST http://localhost:9999/nodered \
-  -H 'Content-Type: application/json' \
-  -d '{"command":"nodered-ping"}'
-
-# Get flow state
-curl -s -X POST http://localhost:9999/nodered \
-  -H 'Content-Type: application/json' \
-  -d '{"command":"nodered-state"}'
-```
-
-### Via MQTT (from Magistrala)
-
-```bash
-FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
-
-mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "deploy-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-deploy,$FLOWS\"}]"
-```
-
-In both cases `flows` is the flow JSON **base64-encoded**. The agent automatically patches the MQTT `clientid` inside the deployed flows to `<client-id>-nr` to prevent Node-RED from conflicting with the agent's own MQTT session.
-
-See [docs/nodered.md](docs/nodered.md) for the full setup guide, Docker Compose stack, and provisioning instructions.
-
-## Heartbeat Service
-
-Services running on the same host can publish to `heartbeat.<service-name>.<service-type>` to register with the agent.
-
-```bash
-go run ./examples/publish/main.go -s amqp://guest:guest@localhost:5682/ heartbeat.myservice.sensor ""
-```
-
-Check registered services:
-
-```bash
-curl -s http://localhost:9999/services
-```
-
-## How to Save Export Config via Agent
-
-Agent can push an export service config file from Magistrala to the gateway via MQTT. Bootstrap mode does not update the agent runtime config this way.
-
-```bash
-mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m "[{\"bn\":\"req-1:\", \"n\":\"config\", \"vs\":\"<config_file_path>,<file_content_base64>\"}]"
-```
-
-Generate the base64 payload from a JSON export config file:
-
-```bash
-base64 -w 0 export.json
-```
+| Document                     | Description                                                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| [control.md](docs/control.md)     | Command dispatch, runtime config get/set/reset, token authentication, exec subsystem, test recipes          |
+| [nodered.md](docs/nodered.md)     | Node-RED integration, flow deployment, provisioning, HTTP and MQTT management, test recipes                 |
+| [telemetry.md](docs/telemetry.md) | Periodic uptime telemetry, payload format, runtime configuration, test recipes                              |
+| [heartbeat.md](docs/heartbeat.md) | Self-heartbeat and service liveness tracking, interval configuration, test recipes                          |
+| [terminal.md](docs/terminal.md)   | Interactive terminal sessions over MQTT, session lifecycle, PTY management, test recipes                    |
+| [devices.md](docs/devices.md)     | Downstream device provisioning, physical interfaces, device CRUD, telemetry scheduler, test recipes         |
+| [bootstrap.md](docs/bootstrap.md) | Profile-based provisioning flow, environment variables, cache management, test recipes                      |
+| [ota.md](docs/ota.md)             | Over-the-air binary updates, trigger payload, download/verify/replace cycle, status reporting, test recipes |
+| [health.md](docs/health.md)       | Health supervisor, systemd watchdog integration, MQTT connection monitoring, health check endpoints         |
 
 ## License
 

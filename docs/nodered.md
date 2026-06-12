@@ -22,7 +22,7 @@ make all && make dockers_dev
 make run
 ```
 
-This starts: Agent (:9999), Node-RED (:1880), Agent UI (:9999).
+This starts: Agent + UI (:9999), Node-RED (:1880).
 
 ### 3. Verify services
 
@@ -129,7 +129,7 @@ docker compose up -d
 
 ### Via Agent UI
 
-Open `http://localhost:3002` in a browser. The **Node-RED** panel lets you:
+Open `http://localhost:9999` in a browser. The **Node-RED** panel lets you:
 
 - **Ping** — check that Node-RED is reachable
 - **State** — get the current runtime state
