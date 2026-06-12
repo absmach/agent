@@ -7,7 +7,6 @@ updates:
     directory: "./.github/workflows"
     schedule:
       interval: "monthly"
-      day: "monday"
     groups:
       gh-dependency:
         patterns:
@@ -17,7 +16,6 @@ updates:
     directory: "."
     schedule:
       interval: "monthly"
-      day: "monday"
     groups:
       go-dependency:
         patterns:
@@ -27,7 +25,6 @@ updates:
     directory: "./docker"
     schedule:
       interval: "monthly"
-      day: "monday"
     groups:
       docker-dependency:
         patterns:
@@ -37,8 +34,16 @@ updates:
     directory: "./docker"
     schedule:
       interval: "monthly"
-      day: "monday"
     groups:
       docker-compose-dependency:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "./ui"
+    schedule:
+      interval: "monthly"
+    groups:
+      npm-dependency:
         patterns:
           - "*"
