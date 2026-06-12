@@ -53,7 +53,11 @@ func NewSession(uuid string, timeout time.Duration, publish func(channel, payloa
 		done:         make(chan bool),
 	}
 
-	c := exec.Command("bash")
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/sh"
+	}
+	c := exec.Command(shell)
 	ptmx, err := pty.Start(c)
 	if err != nil {
 		return t, errors.New(err.Error())
