@@ -61,7 +61,8 @@ func TestNewSession(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	sess.Send([]byte("echo hello\n"))
+	err = sess.Send([]byte("echo hello\n"))
+	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
 	assert.Greater(t, pub.messagesLen(), 0, "expected PTY output to be published")

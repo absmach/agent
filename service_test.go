@@ -1034,10 +1034,10 @@ func TestTerminal(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-		if tc.emptyPath {
-			t.Setenv("PATH", "")
-			t.Setenv("SHELL", "/no/such/shell")
-		}
+			if tc.emptyPath {
+				t.Setenv("PATH", "")
+				t.Setenv("SHELL", "/no/such/shell")
+			}
 			svc, _, _, err := newService(t, testConfig(), nil)
 			require.NoError(t, err)
 			err = svc.Terminal("uuid", tc.cmd)
