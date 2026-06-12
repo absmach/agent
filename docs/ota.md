@@ -120,50 +120,50 @@ If a hash is provided or the sidecar is found, the downloaded file's SHA-256 mus
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"ota","vs":""},{"n":"url","vs":"https://example.com/agent-v2"},{"n":"hash","vs":"abcdef1234567890..."},{"n":"size","v":8388608}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"ota","vs":""},{"n":"url","vs":"https://example.com/agent-v2"},{"n":"hash","vs":"abcdef1234567890..."},{"n":"size","v":8388608}]'
 ```
 
 ### Trigger OTA via OTA config topic
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/ota/cfg" \
-  -m '[{"n":"url","vs":"https://example.com/agent-v2"},{"n":"hash","vs":"abcdef1234567890..."}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/ota/cfg" \
+    -m '[{"n":"url","vs":"https://example.com/agent-v2"},{"n":"hash","vs":"abcdef1234567890..."}]'
 ```
 
 ### Abort an in-progress OTA
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
-  -m '[{"bn":"req-1:","n":"ota","vs":"abort"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"ota","vs":"abort"}]'
 ```
 
 ### Trigger OTA with token auth (when command_secret is set)
 
 ```bash
 mosquitto_pub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
-  -t "m/<domain-id>/c/<commands-channel-id>/ota/cfg" \
-  -m '[{"n":"url","vs":"https://example.com/agent-v2"},{"n":"hash","vs":"abcdef1234567890..."},{"n":"token","vs":"my-secret-token"}]'
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/ota/cfg" \
+    -m '[{"n":"url","vs":"https://example.com/agent-v2"},{"n":"hash","vs":"abcdef1234567890..."},{"n":"token","vs":"my-secret-token"}]'
 ```
 
 ### Subscribe to OTA status updates
 
 ```bash
 mosquitto_sub \
-  -h <mqtt-host> -p 8883 --capath /etc/ssl/certs \
-  -u <client-id> -P <client-secret> \
-  -t "m/<domain-id>/c/<commands-channel-id>/ota/status" \
-  -v
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> \
+    -t "m/<domain-id>/c/<commands-channel-id>/ota/status" \
+    -v
 ```
 
 **Expected output:**
@@ -203,16 +203,3 @@ curl -s -X POST http://localhost:9999/ota \
     "size": 8388608
   }'
 ```
-
-## Troubleshooting
-
-| Symptom                                                           | Cause                                                     | Fix                                                       |
-| ----------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------- |
-| Agent logs `"OTA is disabled"`                                    | `MG_AGENT_OTA_ENABLED=false`                              | Set `MG_AGENT_OTA_ENABLED=true`                           |
-| Agent logs `"OTA already in progress"`                            | A previous OTA is still running                           | Wait for it to finish or check `/ota/status`              |
-| Agent logs `"ota verify: no hash provided and sidecar not found"` | Neither `hash` field nor sidecar `<url>.sha256` available | Provide the `hash` field or host a `.sha256` sidecar file |
-| Agent logs `"sha256 mismatch"`                                    | Downloaded binary doesn't match expected hash             | Verify the binary on the file server hasn't changed       |
-| Agent logs `"server returned HTTP 404"`                           | Binary URL is wrong                                       | Check the `url` field                                     |
-| Agent logs `"download exceeded expected size"`                    | `size` field set too low or binary is corrupt             | Verify the actual binary size                             |
-| Agent logs `"ota download: ... context canceled"`                 | Agent was shut down during download                       | Re-trigger the OTA after restart                          |
-| Binary replaced but agent doesn't come back                       | New binary crashes on startup                             | Check the binary is valid for the target architecture     |
