@@ -884,63 +884,6 @@ func (_c *Service_Ping_Call) RunAndReturn(run func() error) *Service_Ping_Call {
 	return _c
 }
 
-// Reset provides a mock function for the type Service
-func (_mock *Service) Reset(ctx context.Context, mode string) error {
-	ret := _mock.Called(ctx, mode)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Reset")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(ctx, mode)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// Service_Reset_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Reset'
-type Service_Reset_Call struct {
-	*mock.Call
-}
-
-// Reset is a helper method to define mock.On call
-//   - ctx context.Context
-//   - mode string
-func (_e *Service_Expecter) Reset(ctx interface{}, mode interface{}) *Service_Reset_Call {
-	return &Service_Reset_Call{Call: _e.mock.On("Reset", ctx, mode)}
-}
-
-func (_c *Service_Reset_Call) Run(run func(ctx context.Context, mode string)) *Service_Reset_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *Service_Reset_Call) Return(err error) *Service_Reset_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *Service_Reset_Call) RunAndReturn(run func(ctx context.Context, mode string) error) *Service_Reset_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Publish provides a mock function for the type Service
 func (_mock *Service) Publish(topic string, payload string) error {
 	ret := _mock.Called(topic, payload)
@@ -1045,6 +988,126 @@ func (_c *Service_RemoveDevice_Call) Return(err error) *Service_RemoveDevice_Cal
 }
 
 func (_c *Service_RemoveDevice_Call) RunAndReturn(run func(id string) error) *Service_RemoveDevice_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Reset provides a mock function for the type Service
+func (_mock *Service) Reset(ctx context.Context, mode string) error {
+	ret := _mock.Called(ctx, mode)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Reset")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, mode)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Service_Reset_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Reset'
+type Service_Reset_Call struct {
+	*mock.Call
+}
+
+// Reset is a helper method to define mock.On call
+//   - ctx context.Context
+//   - mode string
+func (_e *Service_Expecter) Reset(ctx interface{}, mode interface{}) *Service_Reset_Call {
+	return &Service_Reset_Call{Call: _e.mock.On("Reset", ctx, mode)}
+}
+
+func (_c *Service_Reset_Call) Run(run func(ctx context.Context, mode string)) *Service_Reset_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *Service_Reset_Call) Return(err error) *Service_Reset_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_Reset_Call) RunAndReturn(run func(ctx context.Context, mode string) error) *Service_Reset_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Route provides a mock function for the type Service
+func (_mock *Service) Route(ctx context.Context, uuid string, cmdStr string) error {
+	ret := _mock.Called(ctx, uuid, cmdStr)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Route")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = returnFunc(ctx, uuid, cmdStr)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Service_Route_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Route'
+type Service_Route_Call struct {
+	*mock.Call
+}
+
+// Route is a helper method to define mock.On call
+//   - ctx context.Context
+//   - uuid string
+//   - cmdStr string
+func (_e *Service_Expecter) Route(ctx interface{}, uuid interface{}, cmdStr interface{}) *Service_Route_Call {
+	return &Service_Route_Call{Call: _e.mock.On("Route", ctx, uuid, cmdStr)}
+}
+
+func (_c *Service_Route_Call) Run(run func(ctx context.Context, uuid string, cmdStr string)) *Service_Route_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *Service_Route_Call) Return(err error) *Service_Route_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_Route_Call) RunAndReturn(run func(ctx context.Context, uuid string, cmdStr string) error) *Service_Route_Call {
 	_c.Call.Return(run)
 	return _c
 }
