@@ -11,6 +11,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { AgentStatus } from "@/components/agent-status";
+import { PageHeader } from "@/components/page-header";
 import { UI_BASE } from "@/routes";
 
 const stats = [
@@ -69,15 +70,11 @@ const features = [
 
 export function HomePage() {
   return (
-    <div className="space-y-[22px]">
-      <div>
-        <h1 className="text-[1.35rem] font-bold leading-tight tracking-tight">
-          Overview
-        </h1>
-        <p className="mt-1 text-[0.825rem] text-muted-foreground">
-          Magistrala gateway agent status and local control tools.
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Overview"
+        subtitle="Magistrala gateway agent status and local control tools."
+      />
 
       <AgentStatus />
 
@@ -85,17 +82,15 @@ export function HomePage() {
         {stats.map((stat) => (
           <div
             key={stat.label}
-            className="rounded-xl border bg-card px-[18px] py-[15px] shadow-sm"
+            className="rounded-xl border bg-card px-4 py-3.5 shadow-sm"
           >
-            <div className="mb-2 text-[0.65rem] font-bold uppercase tracking-[0.07em] text-muted-foreground">
+            <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
               {stat.label}
             </div>
-            <div className="text-[1.4rem] font-bold leading-none tracking-tight">
+            <div className="text-2xl font-bold leading-none tracking-tight">
               {stat.value}
             </div>
-            <div className="mt-1 text-[0.7rem] text-muted-foreground">
-              {stat.sub}
-            </div>
+            <div className="mt-1 text-xs text-muted-foreground">{stat.sub}</div>
           </div>
         ))}
       </section>
@@ -105,18 +100,18 @@ export function HomePage() {
           <a
             key={title}
             href={href}
-            className="group rounded-xl border bg-card p-[18px] text-left text-card-foreground no-underline shadow-sm transition hover:-translate-y-px hover:border-primary hover:shadow-md hover:ring-4 hover:ring-accent"
+            className="group rounded-xl border bg-card p-4 text-left text-card-foreground no-underline shadow-sm transition hover:-translate-y-px hover:border-primary hover:shadow-md hover:ring-4 hover:ring-accent"
           >
-            <span className="mb-3 flex h-[38px] w-[38px] items-center justify-center rounded-lg bg-accent text-primary">
-              <Icon className="h-5 w-5" />
+            <span className="mb-3 flex size-9 items-center justify-center rounded-lg bg-accent text-primary">
+              <Icon className="size-5" />
             </span>
             <h2 className="mb-1 text-sm font-semibold">{title}</h2>
-            <p className="mb-3 text-[0.775rem] leading-relaxed text-muted-foreground">
+            <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
               {description}
             </p>
-            <span className="flex items-center gap-2 border-t pt-2.5 text-[0.72rem] text-muted-foreground">
+            <span className="flex items-center gap-2 border-t pt-2.5 text-xs text-muted-foreground">
               {foot}
-              <ArrowRight className="ml-auto h-3.5 w-3.5 text-primary transition group-hover:translate-x-0.5" />
+              <ArrowRight className="ml-auto size-3.5 text-primary transition group-hover:translate-x-0.5" />
             </span>
           </a>
         ))}

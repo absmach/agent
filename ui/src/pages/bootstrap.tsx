@@ -1,5 +1,12 @@
+// Copyright (c) Abstract Machines
+// SPDX-License-Identifier: Apache-2.0
+
 import { Loader2, RefreshCw, Server } from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
+import { EmptyState } from "@/components/empty-state";
+import { ErrorAlert } from "@/components/error-alert";
+import { PageHeader } from "@/components/page-header";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -56,53 +63,40 @@ export function BootstrapPage() {
   }, []);
 
   return (
-    <div className="space-y-[22px]">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-[1.35rem] font-bold leading-tight tracking-tight">
-            Bootstrap
-          </h1>
-          <p className="mt-1 text-[0.825rem] text-muted-foreground">
-            Profile-based provisioning status and configuration.
-          </p>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={fetchBootstrap}
-          disabled={loading}
-        >
-          {loading ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3 w-3" />
-          )}
-          Refresh
-        </Button>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Bootstrap"
+        subtitle="Profile-based provisioning status and configuration."
+        actions={
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={fetchBootstrap}
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3" />
+            )}
+            Refresh
+          </Button>
+        }
+      />
 
-      {error && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      <ErrorAlert error={error} />
 
       <Card>
         <CardHeader>
           <CardTitle>
-            <Server className="h-4 w-4" />
+            <Server className="size-4" />
             Bootstrap Status
             {info && (
-              <span
-                className={`ml-auto flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-semibold ${
-                  info.active
-                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950"
-                    : "bg-amber-50 text-amber-700 dark:bg-amber-950"
-                }`}
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                {info.active ? "Active" : "Not Configured"}
-              </span>
+              <StatusBadge
+                status={info.active ? "active" : "pending"}
+                label={info.active ? "Active" : "Not Configured"}
+                className="ml-auto"
+              />
             )}
           </CardTitle>
         </CardHeader>
@@ -128,10 +122,11 @@ export function BootstrapPage() {
               />
             </div>
           ) : (
-            <div className="py-8 text-center text-muted-foreground">
-              <Server className="mx-auto mb-2 h-8 w-8 opacity-25" />
-              <p className="text-[0.775rem]">Bootstrap info not available.</p>
-            </div>
+            <EmptyState
+              icon={<Server className="size-8" />}
+              title="No bootstrap data"
+              description="Bootstrap info not available."
+            />
           )}
         </CardContent>
       </Card>
@@ -142,10 +137,10 @@ export function BootstrapPage() {
 function DetailField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
-      <div className="mt-0.5 break-all font-mono text-[0.8rem]">{value}</div>
+      <div className="mt-0.5 break-all font-mono text-sm">{value}</div>
     </div>
   );
 }

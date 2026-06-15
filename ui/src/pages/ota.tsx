@@ -12,17 +12,19 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
+import { ErrorAlert } from "@/components/error-alert";
+import { PageHeader } from "@/components/page-header";
+import { StatusBadge, type StatusValue } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/toaster";
 
 interface OTAStatus {
   busy: boolean;
   last_error?: string;
 }
-
-type BadgeState = "idle" | "running" | "error" | "done";
 
 interface ReleaseAsset {
   name: string;
@@ -37,39 +39,16 @@ interface ReleaseCheck {
   error?: string;
 }
 
-function statusBadge(
+function statusToBadge(
   status: OTAStatus,
   submitted: boolean,
-): { label: string; className: string; state: BadgeState } {
-  if (status.busy) {
-    return {
-      label: "Running",
-      className: "bg-blue-500/15 text-blue-300",
-      state: "running",
-    };
-  }
-  if (status.last_error) {
-    return {
-      label: "Failed",
-      className: "bg-red-500/15 text-red-300",
-      state: "error",
-    };
-  }
-  if (submitted) {
-    return {
-      label: "Triggered",
-      className: "bg-emerald-500/15 text-emerald-300",
-      state: "done",
-    };
-  }
-  return {
-    label: "Idle",
-    className: "bg-zinc-500/15 text-zinc-300",
-    state: "idle",
-  };
+): { label: string; state: StatusValue } {
+  if (status.busy) return { label: "Running", state: "running" };
+  if (status.last_error) return { label: "Failed", state: "error" };
+  if (submitted) return { label: "Triggered", state: "triggered" };
+  return { label: "Idle", state: "inactive" };
 }
 
-// Compare two semver strings (strips leading "v"). Returns true if b > a.
 function isNewer(current: string, latest: string): boolean {
   const parse = (v: string) =>
     v
@@ -83,12 +62,12 @@ function isNewer(current: string, latest: string): boolean {
   return lc > cc;
 }
 
-// Keep only assets that look like plain binaries (no .sha256, .zip, .tar.gz, .txt, .json).
 function isBinaryAsset(name: string): boolean {
   return !/\.(sha256|zip|tar\.gz|tgz|txt|json|deb|rpm|apk)$/i.test(name);
 }
 
 export function OTAPage() {
+  const { toast } = useToast();
   const [status, setStatus] = useState<OTAStatus>({ busy: false });
   const [submitted, setSubmitted] = useState(false);
   const [pollFailCount, setPollFailCount] = useState(0);
@@ -114,7 +93,6 @@ export function OTAPage() {
 
   useEffect(() => {
     pollStatus();
-    // Only poll while an update is in flight; clear the interval once idle.
     const id = setInterval(async () => {
       await pollStatus();
       setStatus((s) => {
@@ -188,76 +166,65 @@ export function OTAPage() {
         let msg = `HTTP ${res.status}`;
         try {
           const txt = await res.text();
-          const body = JSON.parse(txt);
-          if (body?.error) msg = body.error;
+          const parsed = JSON.parse(txt);
+          if (parsed?.error) msg = parsed.error;
           else if (txt) msg = txt;
         } catch {
-          // body is not JSON — msg stays as HTTP status
+          // body is not JSON
         }
         throw new Error(msg);
       }
       setSubmitted(true);
+      toast({ message: "OTA update triggered", variant: "success" });
       await pollStatus();
     } catch (e) {
       setTriggerError(String(e));
+      toast({ message: String(e), variant: "error" });
     } finally {
       setTriggering(false);
     }
   }
 
-  const badge = statusBadge(status, submitted);
+  const badge = statusToBadge(status, submitted);
 
   return (
-    <div className="space-y-[22px]">
-      <div>
-        <h1 className="text-[1.35rem] font-bold leading-tight tracking-tight">
-          OTA Update
-        </h1>
-        <p className="mt-1 text-[0.825rem] text-muted-foreground">
-          Trigger an over-the-air binary update for this gateway agent.
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="OTA Update"
+        subtitle="Trigger an over-the-air binary update for this gateway agent."
+      />
 
-      {/* Status card */}
       <Card>
         <CardHeader>
           <CardTitle>
-            <Zap className="h-4 w-4" />
+            <Zap className="size-4" />
             Update status
-            <span
-              className={`ml-auto flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-semibold ${badge.className}`}
-            >
-              {badge.state === "running" && (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              )}
-              {badge.state === "error" && <AlertCircle className="h-3 w-3" />}
-              {badge.state === "done" && <CheckCircle2 className="h-3 w-3" />}
-              {badge.state === "idle" && (
-                <span className="h-1.5 w-1.5 rounded-full bg-current" />
-              )}
-              {badge.label}
-            </span>
-            <button
-              type="button"
+            <StatusBadge
+              status={badge.state}
+              label={badge.label}
+              pulse={badge.state === "running"}
+              className="ml-auto"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
               onClick={pollStatus}
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] hover:bg-white/5"
               title="Refresh status"
             >
-              <RefreshCw className="h-3 w-3" />
-            </button>
+              <RefreshCw className="size-3" />
+            </Button>
           </CardTitle>
         </CardHeader>
         {status.last_error && (
           <CardContent>
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 font-mono text-xs text-destructive">
-              {status.last_error}
-            </div>
+            <ErrorAlert error={status.last_error} />
           </CardContent>
         )}
         {status.busy && (
           <CardContent>
-            <div className="flex items-center gap-2 text-[0.825rem] text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin text-primary" />
               OTA update in progress — the agent will restart automatically when
               ready.
             </div>
@@ -265,40 +232,39 @@ export function OTAPage() {
         )}
         {pollFailCount >= 3 && (
           <CardContent>
-            <div className="flex items-center gap-1.5 text-[0.75rem] text-amber-500/80">
-              <WifiOff className="h-3 w-3 shrink-0" />
+            <div className="flex items-center gap-1.5 text-xs text-amber-500">
+              <WifiOff className="size-3 shrink-0" />
               Unable to reach agent — showing last known status
             </div>
           </CardContent>
         )}
       </Card>
 
-      {/* Release check card */}
       <Card>
         <CardHeader>
           <CardTitle>
-            <Sparkles className="h-4 w-4" />
+            <Sparkles className="size-4" />
             Latest release
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="flex flex-col gap-3">
           {release.state === "idle" && (
-            <p className="text-[0.825rem] text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Check GitHub for the latest published release and pick a binary to
               pre-fill the update form.
             </p>
           )}
 
           {release.state === "checking" && (
-            <div className="flex items-center gap-2 text-[0.825rem] text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
               Fetching latest release from GitHub…
             </div>
           )}
 
           {release.state === "up-to-date" && (
-            <div className="flex items-center gap-2 text-[0.825rem] text-emerald-500">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <div className="flex items-center gap-2 text-sm text-success">
+              <CheckCircle2 className="size-4 shrink-0" />
               {release.latestVersion === "none" ? (
                 "No releases have been published yet."
               ) : (
@@ -315,9 +281,9 @@ export function OTAPage() {
           )}
 
           {release.state === "update-available" && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-[0.825rem] text-amber-500">
-                <AlertCircle className="h-4 w-4 shrink-0" />
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 text-sm text-amber-500">
+                <AlertCircle className="size-4 shrink-0" />
                 <span>
                   <span className="font-mono font-semibold">
                     {release.latestVersion}
@@ -327,8 +293,8 @@ export function OTAPage() {
                 </span>
               </div>
               {release.assets && release.assets.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-[0.75rem] text-muted-foreground">
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-xs text-muted-foreground">
                     Select a binary to pre-fill the URL below:
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -337,7 +303,7 @@ export function OTAPage() {
                         key={asset.browser_download_url}
                         type="button"
                         onClick={() => setUrl(asset.browser_download_url)}
-                        className="rounded-md border px-2.5 py-1 font-mono text-[0.72rem] text-muted-foreground hover:border-primary hover:bg-accent hover:text-foreground"
+                        className="rounded-md border px-2.5 py-1 font-mono text-xs text-muted-foreground transition-colors hover:border-primary hover:bg-accent hover:text-foreground"
                       >
                         {asset.name}
                       </button>
@@ -348,33 +314,27 @@ export function OTAPage() {
             </div>
           )}
 
-          {release.state === "error" && (
-            <div className="flex items-start gap-2 text-[0.825rem] text-destructive">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{release.error}</span>
-            </div>
-          )}
+          {release.state === "error" && <ErrorAlert error={release.error} />}
 
           {release.state !== "checking" && (
             <Button variant="outline" size="sm" onClick={checkForUpdates}>
-              <RefreshCw className="h-3 w-3" />
+              <RefreshCw className="size-3" />
               {release.state === "idle" ? "Check for updates" : "Check again"}
             </Button>
           )}
         </CardContent>
       </Card>
 
-      {/* Trigger form */}
       <Card>
         <CardHeader>
           <CardTitle>
-            <Download className="h-4 w-4" />
+            <Download className="size-4" />
             Trigger update
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleTrigger} className="space-y-4">
-            <div className="space-y-1.5">
+          <form onSubmit={handleTrigger} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor="ota-url">Binary URL</Label>
               <Input
                 id="ota-url"
@@ -384,15 +344,17 @@ export function OTAPage() {
                 onInput={(e) => setUrl((e.target as HTMLInputElement).value)}
                 required
               />
-              <p className="text-[0.75rem] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Direct download URL for the new agent binary. Must be reachable
                 from this gateway.
               </p>
             </div>
-            <div className="space-y-1.5">
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor="ota-sha256">
                 SHA-256 checksum{" "}
-                <span className="text-muted-foreground">(optional)</span>
+                <span className="font-normal text-muted-foreground">
+                  (optional)
+                </span>
               </Label>
               <Input
                 id="ota-sha256"
@@ -400,24 +362,22 @@ export function OTAPage() {
                 value={sha256}
                 onInput={(e) => setSha256((e.target as HTMLInputElement).value)}
               />
-              <p className="text-[0.75rem] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Hex-encoded SHA-256 of the binary. The agent will abort if the
                 digest does not match.
               </p>
             </div>
-            {triggerError && (
-              <p className="text-sm text-destructive">{triggerError}</p>
-            )}
+            <ErrorAlert error={triggerError} />
             <Button type="submit" disabled={triggering || status.busy}>
               {triggering ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
               ) : (
-                <Download className="h-4 w-4" />
+                <Download className="size-4" />
               )}
               {triggering ? "Triggering…" : "Trigger OTA update"}
             </Button>
             {status.busy && (
-              <p className="text-[0.775rem] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Another OTA update is already running. Wait for it to complete
                 before triggering a new one.
               </p>

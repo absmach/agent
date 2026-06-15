@@ -1,3 +1,6 @@
+// Copyright (c) Abstract Machines
+// SPDX-License-Identifier: Apache-2.0
+
 import {
   Activity,
   CheckCircle2,
@@ -9,6 +12,10 @@ import {
   Wifi,
 } from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
+import { EmptyState } from "@/components/empty-state";
+import { ErrorAlert } from "@/components/error-alert";
+import { PageHeader } from "@/components/page-header";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -52,59 +59,46 @@ export function TelemetryPage() {
   const enabled = telemetry?.interval && telemetry.interval !== "0s";
 
   return (
-    <div className="space-y-[22px]">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-[1.35rem] font-bold leading-tight tracking-tight">
-            Telemetry
-          </h1>
-          <p className="mt-1 text-[0.825rem] text-muted-foreground">
-            Periodic gateway telemetry configuration and reader status.
-          </p>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={fetchTelemetry}
-          disabled={loading}
-        >
-          {loading ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3 w-3" />
-          )}
-          Refresh
-        </Button>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Telemetry"
+        subtitle="Periodic gateway telemetry configuration and reader status."
+        actions={
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={fetchTelemetry}
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3" />
+            )}
+            Refresh
+          </Button>
+        }
+      />
 
-      {error && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      <ErrorAlert error={error} />
 
       <Card>
         <CardHeader>
           <CardTitle>
-            <Activity className="h-4 w-4" />
+            <Activity className="size-4" />
             Telemetry Status
-            <span
-              className={`ml-auto flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-semibold ${
-                enabled
-                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950"
-                  : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800"
-              }`}
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-current" />
-              {enabled ? "Enabled" : "Disabled"}
-            </span>
+            <StatusBadge
+              status={enabled ? "enabled" : "disabled"}
+              label={enabled ? "Enabled" : "Disabled"}
+              className="ml-auto"
+            />
           </CardTitle>
         </CardHeader>
         <CardContent>
           {telemetry ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex items-center gap-3 rounded-lg border px-4 py-3">
-                <Clock className="h-5 w-5 text-muted-foreground" />
+                <Clock className="size-5 text-muted-foreground" />
                 <div>
                   <div className="text-xs font-medium text-muted-foreground">
                     Publish Interval
@@ -115,7 +109,7 @@ export function TelemetryPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-lg border px-4 py-3">
-                <Cpu className="h-5 w-5 text-muted-foreground" />
+                <Cpu className="size-5 text-muted-foreground" />
                 <div>
                   <div className="text-xs font-medium text-muted-foreground">
                     CPU Temperature
@@ -126,7 +120,7 @@ export function TelemetryPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-lg border px-4 py-3">
-                <Wifi className="h-5 w-5 text-muted-foreground" />
+                <Wifi className="size-5 text-muted-foreground" />
                 <div>
                   <div className="text-xs font-medium text-muted-foreground">
                     Network RSSI
@@ -137,7 +131,7 @@ export function TelemetryPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-lg border px-4 py-3">
-                <Disc className="h-5 w-5 text-muted-foreground" />
+                <Disc className="size-5 text-muted-foreground" />
                 <div>
                   <div className="text-xs font-medium text-muted-foreground">
                     Load Average
@@ -149,10 +143,11 @@ export function TelemetryPage() {
               </div>
             </div>
           ) : (
-            <div className="py-8 text-center text-muted-foreground">
-              <Activity className="mx-auto mb-2 h-8 w-8 opacity-25" />
-              <p className="text-[0.775rem]">Telemetry config not available.</p>
-            </div>
+            <EmptyState
+              icon={<Activity className="size-8" />}
+              title="No telemetry data"
+              description="Telemetry config not available."
+            />
           )}
         </CardContent>
       </Card>
@@ -161,12 +156,12 @@ export function TelemetryPage() {
         <Card>
           <CardHeader>
             <CardTitle>
-              <Activity className="h-4 w-4" />
+              <Activity className="size-4" />
               Telemetry Readers
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <ReaderRow
                 name="Uptime"
                 desc="Go runtime time since start"
@@ -220,19 +215,16 @@ function ReaderRow({
   return (
     <div className="flex items-center gap-3 rounded-lg border px-4 py-2.5">
       <CheckCircle2
-        className={`h-4 w-4 shrink-0 ${active ? "text-emerald-500" : "text-zinc-300"}`}
+        className={`size-4 shrink-0 ${active ? "text-success" : "text-muted-foreground/40"}`}
       />
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium">{name}</div>
-        <div className="font-mono text-[0.7rem] text-muted-foreground">
-          {desc}
-        </div>
+        <div className="font-mono text-xs text-muted-foreground">{desc}</div>
       </div>
-      <span
-        className={`text-[0.65rem] font-semibold ${active ? "text-emerald-500" : "text-zinc-400"}`}
-      >
-        {active ? "● Active" : "○ Inactive"}
-      </span>
+      <StatusBadge
+        status={active ? "active" : "inactive"}
+        label={active ? "Active" : "Inactive"}
+      />
     </div>
   );
 }

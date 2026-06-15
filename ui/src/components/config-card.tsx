@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { useToast } from "@/components/ui/toaster";
 
 interface Config {
   httpPort: string;
@@ -54,17 +55,19 @@ function SecretField({
   value: string;
   onInput: (e: Event) => void;
 }) {
+  const { toast } = useToast();
   const [visible, setVisible] = useState(false);
   const [copied, setCopied] = useState(false);
 
   async function copy() {
     await navigator.clipboard.writeText(value);
     setCopied(true);
+    toast({ message: "Copied to clipboard", variant: "success" });
     setTimeout(() => setCopied(false), 1500);
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{label}</Label>
       <div className="relative flex items-center">
         <Input
@@ -83,9 +86,9 @@ function SecretField({
             title={visible ? "Hide" : "Show"}
           >
             {visible ? (
-              <EyeOff className="h-3.5 w-3.5" />
+              <EyeOff className="size-3.5" />
             ) : (
-              <Eye className="h-3.5 w-3.5" />
+              <Eye className="size-3.5" />
             )}
           </button>
           <button
@@ -95,9 +98,9 @@ function SecretField({
             title="Copy to clipboard"
           >
             {copied ? (
-              <Check className="h-3.5 w-3.5 text-emerald-400" />
+              <Check className="size-3.5 text-success" />
             ) : (
-              <Copy className="h-3.5 w-3.5" />
+              <Copy className="size-3.5" />
             )}
           </button>
         </div>
@@ -179,7 +182,7 @@ export function ConfigCard() {
     type = "text",
   ) {
     return (
-      <div className="space-y-1.5">
+      <div className="flex flex-col gap-1.5">
         <Label htmlFor={id}>{label}</Label>
         <Input
           id={id}
@@ -201,7 +204,7 @@ export function ConfigCard() {
     <Card>
       <CardHeader>
         <CardTitle>
-          <Settings className="h-4 w-4" />
+          <Settings className="size-4" />
           Configuration
         </CardTitle>
       </CardHeader>
@@ -237,7 +240,7 @@ export function ConfigCard() {
           )}
           {field("mqttURL", "MQTT URL", "Magistrala MQTT broker URL")}
           {field("nodeRedURL", "Node-RED URL", "Node-RED API URL")}
-          <div className="space-y-1.5">
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="logLevel">Log Level</Label>
             <Select
               id="logLevel"
@@ -268,16 +271,16 @@ export function ConfigCard() {
 
         {status && (
           <div
-            className={`mt-4 flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+            className={`mt-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm ${
               status.ok
-                ? "bg-success/10 text-success border border-success/20"
-                : "bg-destructive/10 text-destructive border border-destructive/20"
+                ? "border-success/30 bg-success/10 text-success"
+                : "border-destructive/30 bg-destructive/10 text-destructive"
             }`}
           >
             {status.ok ? (
-              <CheckCircle className="h-4 w-4 shrink-0" />
+              <CheckCircle className="size-4 shrink-0" />
             ) : (
-              <XCircle className="h-4 w-4 shrink-0" />
+              <XCircle className="size-4 shrink-0" />
             )}
             {status.message}
           </div>

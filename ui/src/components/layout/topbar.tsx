@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
+import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
 import { UI_BASE } from "@/routes";
 
@@ -110,7 +111,7 @@ export function Topbar() {
   return (
     <div ref={menuRef} className="sticky top-0 z-50">
       {/* Main bar */}
-      <nav className="flex h-[52px] items-stretch border-b border-[var(--nav-border)] bg-[var(--nav-bg)] px-3 sm:px-5">
+      <nav className="flex h-13 items-stretch border-b border-(--nav-border) bg-(--nav-bg) px-3 sm:px-5">
         {/* Logo */}
         <a
           href={`${UI_BASE}/`}
@@ -131,7 +132,7 @@ export function Topbar() {
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-1.5 whitespace-nowrap border-b-2 border-transparent px-3 text-[0.8rem] font-medium text-white/55 transition-colors hover:text-white/85",
+                "flex items-center gap-1.5 whitespace-nowrap border-b-2 border-transparent px-3 text-xs font-medium text-white/55 transition-colors hover:text-white/85",
                 isActive(href) && "border-primary text-white",
               )}
             >
@@ -143,29 +144,17 @@ export function Topbar() {
 
         {/* Right side: status + theme + hamburger */}
         <div className="ml-auto flex items-center gap-2.5 pl-3">
-          <div
-            className={cn(
-              "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-semibold",
-              isOnline
-                ? "bg-emerald-500/15 text-emerald-300"
-                : "bg-red-500/15 text-red-300",
-            )}
-          >
-            <span
-              className={cn(
-                "h-1.5 w-1.5 rounded-full bg-current",
-                status === "checking" && "animate-pulse",
-              )}
-            />
-            <span className="hidden xs:inline">
-              {isOnline ? "Connected" : "Disconnected"}
-            </span>
-          </div>
+          <StatusBadge
+            status={isOnline ? "online" : "offline"}
+            label={isOnline ? "Connected" : "Disconnected"}
+            pulse={status === "checking"}
+            className="bg-white/10 text-white/80"
+          />
 
           <button
             type="button"
             onClick={toggleTheme}
-            className="flex h-[30px] w-[30px] items-center justify-center rounded-md bg-white/10 text-white/65 transition-colors hover:bg-white/15 hover:text-white"
+            className="flex h-7.5 w-7.5 items-center justify-center rounded-md bg-white/10 text-white/65 transition-colors hover:bg-white/15 hover:text-white"
             title="Toggle theme"
             aria-label="Toggle theme"
           >
@@ -180,7 +169,7 @@ export function Topbar() {
           <button
             type="button"
             onClick={() => setMenuOpen((o) => !o)}
-            className="flex h-[30px] w-[30px] items-center justify-center rounded-md bg-white/10 text-white/65 transition-colors hover:bg-white/15 hover:text-white lg:hidden"
+            className="flex h-7.5 w-7.5 items-center justify-center rounded-md bg-white/10 text-white/65 transition-colors hover:bg-white/15 hover:text-white lg:hidden"
             aria-label="Toggle menu"
           >
             {menuOpen ? (
@@ -194,13 +183,13 @@ export function Topbar() {
 
       {/* Mobile dropdown */}
       {menuOpen && (
-        <div className="absolute inset-x-0 top-full border-b border-[var(--nav-border)] bg-[var(--nav-bg)] shadow-lg lg:hidden">
+        <div className="absolute inset-x-0 top-full border-b border-(--nav-border) bg-(--nav-bg) shadow-lg lg:hidden">
           {navItems.map(({ href, label, icon: Icon }) => (
             <a
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-3 border-l-2 border-transparent px-5 py-3 text-[0.85rem] font-medium text-white/60 transition-colors hover:bg-white/5 hover:text-white/90",
+                "flex items-center gap-3 border-l-2 border-transparent px-5 py-3 text-sm font-medium text-white/60 transition-colors hover:bg-white/5 hover:text-white/90",
                 isActive(href) && "border-primary bg-white/5 text-white",
               )}
             >

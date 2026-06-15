@@ -1,5 +1,11 @@
-import { AlertCircle, Terminal, Wifi, WifiOff, X } from "lucide-react";
+// Copyright (c) Abstract Machines
+// SPDX-License-Identifier: Apache-2.0
+
+import { Terminal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { ErrorAlert } from "@/components/error-alert";
+import { PageHeader } from "@/components/page-header";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -89,57 +95,42 @@ export function TerminalPage() {
   }
 
   return (
-    <div className="space-y-[22px]">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-[1.35rem] font-bold leading-tight tracking-tight">
-            Terminal
-          </h1>
-          <p className="mt-1 text-[0.825rem] text-muted-foreground">
-            Interactive shell session via WebSocket.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {connected ? (
-            <>
-              <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[0.7rem] font-semibold text-emerald-300">
-                <Wifi className="h-3 w-3" />
-                Connected
-              </span>
-              <Button variant="outline" size="sm" onClick={disconnect}>
-                <X className="h-3 w-3" />
-                Disconnect
-              </Button>
-            </>
-          ) : (
-            <>
-              <span className="flex items-center gap-1.5 rounded-full bg-zinc-500/15 px-2.5 py-1 text-[0.7rem] font-semibold text-zinc-400">
-                <WifiOff className="h-3 w-3" />
-                Disconnected
-              </span>
-              <Button size="sm" onClick={connect}>
-                <Terminal className="h-3 w-3" />
-                Connect
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Terminal"
+        subtitle="Interactive shell session via WebSocket."
+        actions={
+          <div className="flex items-center gap-2">
+            {connected ? (
+              <>
+                <StatusBadge status="online" label="Connected" />
+                <Button variant="outline" size="sm" onClick={disconnect}>
+                  <X className="size-3" />
+                  Disconnect
+                </Button>
+              </>
+            ) : (
+              <>
+                <StatusBadge status="offline" label="Disconnected" />
+                <Button size="sm" onClick={connect}>
+                  <Terminal className="size-3" />
+                  Connect
+                </Button>
+              </>
+            )}
+          </div>
+        }
+      />
 
-      {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {error}
-        </div>
-      )}
+      <ErrorAlert error={error} />
 
       <Card>
         <div>
           <div className="flex items-center gap-2 bg-zinc-800 px-4 py-2.5">
             <div className="flex gap-1.5">
-              <span className="h-3 w-3 rounded-full bg-red-500" />
-              <span className="h-3 w-3 rounded-full bg-yellow-400" />
-              <span className="h-3 w-3 rounded-full bg-green-500" />
+              <span className="size-3 rounded-full bg-red-500" />
+              <span className="size-3 rounded-full bg-yellow-400" />
+              <span className="size-3 rounded-full bg-green-500" />
             </div>
             <span className="mx-auto font-mono text-xs text-zinc-400">
               magistrala-agent — interactive shell
@@ -180,7 +171,7 @@ export function TerminalPage() {
             <div className="mb-2" ref={bottomRef} />
             {connected && (
               <div className="flex items-center gap-2">
-                <span className="text-green-400 select-none">$</span>
+                <span className="select-none text-green-400">$</span>
                 <input
                   ref={inputRef}
                   type="text"

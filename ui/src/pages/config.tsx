@@ -11,6 +11,9 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { ConfigCard } from "@/components/config-card";
+import { EmptyState } from "@/components/empty-state";
+import { ErrorAlert } from "@/components/error-alert";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -138,23 +141,18 @@ export function ConfigPage() {
   }
 
   return (
-    <div className="space-y-[22px]">
-      <div>
-        <h1 className="text-[1.35rem] font-bold leading-tight tracking-tight">
-          Configuration
-        </h1>
-        <p className="mt-1 text-[0.825rem] text-muted-foreground">
-          View and update the agent runtime settings.
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Configuration"
+        subtitle="View and update the agent runtime settings."
+      />
 
       <ConfigCard />
 
-      {/* Runtime Config */}
       <Card>
         <CardHeader>
           <CardTitle>
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className="size-4" />
             Runtime Configuration
           </CardTitle>
           <Button
@@ -164,23 +162,19 @@ export function ConfigPage() {
             disabled={runtimeLoading}
           >
             {runtimeLoading ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Loader2 className="size-3 animate-spin" />
             ) : (
-              <RefreshCw className="h-3 w-3" />
+              <RefreshCw className="size-3" />
             )}
             Refresh
           </Button>
         </CardHeader>
         <CardContent>
-          {runtimeError && (
-            <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              {runtimeError}
-            </div>
-          )}
+          {runtimeError && <ErrorAlert error={runtimeError} className="mb-4" />}
           {runtimeConfig ? (
             <div className="grid gap-4 sm:grid-cols-2">
               {RUNTIME_KEYS.map(({ key, label, type, options }) => (
-                <div key={key} className="space-y-1.5">
+                <div key={key} className="flex flex-col gap-1.5">
                   <Label htmlFor={`rt-${key}`}>{label}</Label>
                   <div className="flex gap-2">
                     {type === "select" && options ? (
@@ -221,20 +215,20 @@ export function ConfigPage() {
                       className="shrink-0"
                     >
                       {savingKey === key ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <Loader2 className="size-3 animate-spin" />
                       ) : (
-                        <Save className="h-3 w-3" />
+                        <Save className="size-3" />
                       )}
                     </Button>
                   </div>
                   {saveStatus?.key === key && (
                     <div
-                      className={`flex items-center gap-1.5 text-xs ${saveStatus.ok ? "text-emerald-500" : "text-destructive"}`}
+                      className={`flex items-center gap-1.5 text-xs ${saveStatus.ok ? "text-success" : "text-destructive"}`}
                     >
                       {saveStatus.ok ? (
-                        <CheckCircle2 className="h-3 w-3" />
+                        <CheckCircle2 className="size-3" />
                       ) : (
-                        <AlertCircle className="h-3 w-3" />
+                        <AlertCircle className="size-3" />
                       )}
                       {saveStatus.msg}
                     </div>
@@ -243,26 +237,24 @@ export function ConfigPage() {
               ))}
             </div>
           ) : (
-            <div className="py-8 text-center text-muted-foreground">
-              <RefreshCw className="mx-auto mb-2 h-8 w-8 opacity-25" />
-              <p className="text-[0.775rem]">
-                Click refresh to load runtime config.
-              </p>
-            </div>
+            <EmptyState
+              icon={<RefreshCw className="size-8" />}
+              title="No runtime config"
+              description="Click refresh to load runtime config."
+            />
           )}
         </CardContent>
       </Card>
 
-      {/* Reset */}
       <Card>
         <CardHeader>
           <CardTitle>
-            <Power className="h-4 w-4" />
+            <Power className="size-4" />
             Reset Agent
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="mb-3 text-[0.825rem] text-muted-foreground">
+          <p className="mb-3 text-sm text-muted-foreground">
             Restart the agent process. This will disconnect all services
             momentarily.
           </p>
@@ -272,11 +264,11 @@ export function ConfigPage() {
               size="sm"
               onClick={() => setResetModal(true)}
             >
-              <Power className="h-3 w-3" />
+              <Power className="size-3" />
               Reset Agent
             </Button>
           ) : (
-            <div className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+            <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
               <p className="text-sm font-medium text-destructive">
                 Are you sure you want to reset the agent?
               </p>
@@ -305,9 +297,9 @@ export function ConfigPage() {
                   disabled={resetting}
                 >
                   {resetting ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <Loader2 className="size-3 animate-spin" />
                   ) : (
-                    <Power className="h-3 w-3" />
+                    <Power className="size-3" />
                   )}
                   {resetting ? "Resetting…" : "Confirm Reset"}
                 </Button>

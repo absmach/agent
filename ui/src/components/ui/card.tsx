@@ -23,7 +23,7 @@ export function CardHeader({
   return (
     <div
       className={cn(
-        "flex items-center justify-between border-b px-[18px] py-3.5",
+        "flex items-center justify-between border-b px-4 py-3",
         className,
       )}
       {...props}
@@ -38,7 +38,7 @@ export function CardTitle({
   return (
     <h3
       className={cn(
-        "flex items-center gap-2 text-[0.825rem] font-semibold leading-none tracking-tight [&>svg]:text-primary",
+        "flex items-center gap-2 text-sm font-semibold leading-none tracking-tight [&>svg]:text-primary",
         className,
       )}
       {...props}
@@ -59,7 +59,7 @@ export function CardContent({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("p-[18px]", className)} {...props} />;
+  return <div className={cn("p-4", className)} {...props} />;
 }
 
 export function CardFooter({

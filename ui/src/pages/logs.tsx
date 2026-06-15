@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useRef, useState } from "preact/hooks";
+import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 
 type Level = "DEBUG" | "INFO" | "WARN" | "ERROR" | "unknown";
 
@@ -64,44 +66,35 @@ export function LogsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold">Agent Logs</h1>
-          <p className="text-sm text-[var(--muted)]">
+          <p className="text-sm text-muted-foreground">
             Live log stream from the agent process
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span
-            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-semibold ${
-              connected
-                ? "bg-emerald-500/15 text-emerald-300"
-                : "bg-red-500/15 text-red-300"
-            }`}
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-current" />
-            {connected ? "Streaming" : "Disconnected"}
-          </span>
-          <button
-            type="button"
+          <StatusBadge
+            status={connected ? "online" : "offline"}
+            label={connected ? "Streaming" : "Disconnected"}
+            pulse={connected}
+          />
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setPaused((p) => !p)}
-            className="rounded-md border border-[var(--border)] bg-[var(--card-bg)] px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors"
           >
             {paused ? "Resume" : "Pause"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setLines([])}
-            className="rounded-md border border-[var(--border)] bg-[var(--card-bg)] px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors"
-          >
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setLines([])}>
             Clear
-          </button>
+          </Button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden rounded-xl border border-[var(--border)] shadow-sm">
+      <div className="flex-1 overflow-hidden rounded-xl border border-border shadow-sm">
         <div className="flex items-center gap-2 bg-zinc-800 px-4 py-2.5">
           <div className="flex gap-1.5">
-            <span className="h-3 w-3 rounded-full bg-red-500" />
-            <span className="h-3 w-3 rounded-full bg-yellow-400" />
-            <span className="h-3 w-3 rounded-full bg-green-500" />
+            <span className="size-3 rounded-full bg-red-500" />
+            <span className="size-3 rounded-full bg-yellow-400" />
+            <span className="size-3 rounded-full bg-green-500" />
           </div>
           <span className="mx-auto font-mono text-xs text-zinc-400">
             magistrala-agent — logs
