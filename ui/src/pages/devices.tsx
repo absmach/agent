@@ -7,13 +7,27 @@ import {
   Copy,
   Cpu,
   Loader2,
+  LogIn,
+  LogOut,
+  MessageSquare,
   Plus,
   RefreshCw,
   Trash2,
+  Upload,
   Usb,
   Wifi,
 } from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -150,14 +164,10 @@ export function DevicesPage() {
     }
   }
 
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
   async function handleRemove(id: string) {
-    const name = devices.find((d) => d.id === id)?.name ?? id;
-    if (
-      !confirm(
-        `Remove device "${name}"? This will deprovision it from Magistrala.`,
-      )
-    )
-      return;
+    setRemovingId(null);
     try {
       const res = await fetch(`/devices/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(await extractError(res));
@@ -173,6 +183,69 @@ export function DevicesPage() {
       await load();
     } catch (e) {
       setError(String(e));
+    }
+  }
+
+  async function handleOpen(id: string) {
+    try {
+      const res = await fetch(`/devices/${id}/open`, { method: "POST" });
+      if (!res.ok) throw new Error(await extractError(res));
+      setError("");
+    } catch (e) {
+      setError(`Open failed: ${e}`);
+    }
+  }
+
+  async function handleClose(id: string) {
+    try {
+      const res = await fetch(`/devices/${id}/close`, { method: "POST" });
+      if (!res.ok) throw new Error(await extractError(res));
+      setError("");
+    } catch (e) {
+      setError(`Close failed: ${e}`);
+    }
+  }
+
+  async function handleRead(id: string) {
+    try {
+      const res = await fetch(`/devices/${id}/read`, { method: "POST" });
+      if (!res.ok) throw new Error(await extractError(res));
+      const data = await res.json();
+      const dataStr =
+        typeof data.data === "string" ? data.data : JSON.stringify(data.data);
+      setError("");
+      setReadResult({ id, data: dataStr });
+    } catch (e) {
+      setError(`Read failed: ${e}`);
+    }
+  }
+
+  const [readResult, setReadResult] = useState<{
+    id: string;
+    data: string;
+  } | null>(null);
+  const [writeDeviceId, setWriteDeviceId] = useState<string | null>(null);
+  const [writeData, setWriteData] = useState("");
+
+  async function handleWrite(id: string) {
+    if (writeDeviceId !== id) {
+      setWriteDeviceId(id);
+      setWriteData("");
+      return;
+    }
+    if (!writeData.trim()) return;
+    try {
+      const res = await fetch(`/devices/${id}/write`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: writeData }),
+      });
+      if (!res.ok) throw new Error(await extractError(res));
+      setWriteDeviceId(null);
+      setWriteData("");
+      setError("");
+    } catch (e) {
+      setError(`Write failed: ${e}`);
     }
   }
 
@@ -390,27 +463,128 @@ export function DevicesPage() {
                 >
                   ● {d.active ? "Active" : "Inactive"}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleSeen(d.id)}
-                  className="rounded-lg border px-2.5 py-1 text-[0.75rem] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
-                  title="Mark as seen"
-                >
-                  Ping
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleRemove(d.id)}
-                  className="rounded-lg border border-destructive/30 px-2 py-1 text-destructive hover:bg-destructive/10"
-                  title="Remove device"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleOpen(d.id)}
+                    className="rounded-lg border px-2 py-1 text-[0.7rem] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    title="Open interface"
+                  >
+                    <LogIn className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleClose(d.id)}
+                    className="rounded-lg border px-2 py-1 text-[0.7rem] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    title="Close interface"
+                  >
+                    <LogOut className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRead(d.id)}
+                    className="rounded-lg border px-2 py-1 text-[0.7rem] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    title="Read from interface"
+                  >
+                    <MessageSquare className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleWrite(d.id)}
+                    className="rounded-lg border px-2 py-1 text-[0.7rem] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    title="Write to interface"
+                  >
+                    <Upload className="h-3 w-3" />
+                  </button>
+                  {writeDeviceId === d.id && (
+                    <Input
+                      value={writeData}
+                      onInput={(e) =>
+                        setWriteData((e.target as HTMLInputElement).value)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleWrite(d.id);
+                        if (e.key === "Escape") setWriteDeviceId(null);
+                      }}
+                      placeholder="data to write…"
+                      className="h-7 w-28 text-[0.7rem]"
+                      autoFocus
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleSeen(d.id)}
+                    className="rounded-lg border px-2.5 py-1 text-[0.75rem] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    title="Mark as seen"
+                  >
+                    Ping
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRemovingId(d.id)}
+                    className="rounded-lg border border-destructive/30 px-2 py-1 text-destructive hover:bg-destructive/10"
+                    title="Remove device"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             ))
           )}
         </div>
       </Card>
+
+      <AlertDialog
+        open={!!readResult}
+        onOpenChange={(v) => {
+          if (!v) setReadResult(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Read from{" "}
+              {readResult?.id ? `${readResult.id.slice(0, 8)}…` : "device"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Raw data read from the device interface.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-3 font-mono text-xs text-foreground">
+            {readResult?.data}
+          </pre>
+          <AlertDialogAction onClick={() => setReadResult(null)}>
+            Close
+          </AlertDialogAction>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!removingId}
+        onOpenChange={(v) => {
+          if (!v) setRemovingId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove device</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove device "
+              {devices.find((d) => d.id === removingId)?.name ?? removingId}"?
+              This will deprovision it from Magistrala.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => removingId && handleRemove(removingId)}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

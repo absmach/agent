@@ -1430,3 +1430,324 @@ func (_c *Service_UpdateLiveness_Call) RunAndReturn(run func(svcname string, svc
 	_c.Call.Return(run)
 	return _c
 }
+
+// OpenDevice provides a mock function for the type Service
+func (_mock *Service) OpenDevice(ctx context.Context, id string) error {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for OpenDevice")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Service_OpenDevice_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OpenDevice'
+type Service_OpenDevice_Call struct {
+	*mock.Call
+}
+
+// OpenDevice is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+func (_e *Service_Expecter) OpenDevice(ctx interface{}, id interface{}) *Service_OpenDevice_Call {
+	return &Service_OpenDevice_Call{Call: _e.mock.On("OpenDevice", ctx, id)}
+}
+
+func (_c *Service_OpenDevice_Call) Run(run func(ctx context.Context, id string)) *Service_OpenDevice_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(
+			args.Get(0).(context.Context),
+			args.Get(1).(string),
+		)
+	})
+	return _c
+}
+
+func (_c *Service_OpenDevice_Call) Return(err error) *Service_OpenDevice_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_OpenDevice_Call) RunAndReturn(run func(ctx context.Context, id string) error) *Service_OpenDevice_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CloseDevice provides a mock function for the type Service
+func (_mock *Service) CloseDevice(id string) error {
+	ret := _mock.Called(id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CloseDevice")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string) error); ok {
+		r0 = returnFunc(id)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Service_CloseDevice_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CloseDevice'
+type Service_CloseDevice_Call struct {
+	*mock.Call
+}
+
+// CloseDevice is a helper method to define mock.On call
+//   - id string
+func (_e *Service_Expecter) CloseDevice(id interface{}) *Service_CloseDevice_Call {
+	return &Service_CloseDevice_Call{Call: _e.mock.On("CloseDevice", id)}
+}
+
+func (_c *Service_CloseDevice_Call) Run(run func(id string)) *Service_CloseDevice_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(
+			args.Get(0).(string),
+		)
+	})
+	return _c
+}
+
+func (_c *Service_CloseDevice_Call) Return(err error) *Service_CloseDevice_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_CloseDevice_Call) RunAndReturn(run func(id string) error) *Service_CloseDevice_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ReadDevice provides a mock function for the type Service
+func (_mock *Service) ReadDevice(id string, n int) ([]byte, error) {
+	ret := _mock.Called(id, n)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ReadDevice")
+	}
+
+	var r0 []byte
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(string, int) ([]byte, error)); ok {
+		return returnFunc(id, n)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string, int) []byte); ok {
+		r0 = returnFunc(id, n)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]byte)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string, int) error); ok {
+		r1 = returnFunc(id, n)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// Service_ReadDevice_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReadDevice'
+type Service_ReadDevice_Call struct {
+	*mock.Call
+}
+
+// ReadDevice is a helper method to define mock.On call
+//   - id string
+//   - n int
+func (_e *Service_Expecter) ReadDevice(id interface{}, n interface{}) *Service_ReadDevice_Call {
+	return &Service_ReadDevice_Call{Call: _e.mock.On("ReadDevice", id, n)}
+}
+
+func (_c *Service_ReadDevice_Call) Run(run func(id string, n int)) *Service_ReadDevice_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(
+			args.Get(0).(string),
+			args.Get(1).(int),
+		)
+	})
+	return _c
+}
+
+func (_c *Service_ReadDevice_Call) Return(data []byte, err error) *Service_ReadDevice_Call {
+	_c.Call.Return(data, err)
+	return _c
+}
+
+func (_c *Service_ReadDevice_Call) RunAndReturn(run func(id string, n int) ([]byte, error)) *Service_ReadDevice_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// WriteDevice provides a mock function for the type Service
+func (_mock *Service) WriteDevice(id, hexData string) (int, error) {
+	ret := _mock.Called(id, hexData)
+
+	if len(ret) == 0 {
+		panic("no return value specified for WriteDevice")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(string, string) (int, error)); ok {
+		return returnFunc(id, hexData)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string, string) int); ok {
+		r0 = returnFunc(id, hexData)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(string, string) error); ok {
+		r1 = returnFunc(id, hexData)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// Service_WriteDevice_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WriteDevice'
+type Service_WriteDevice_Call struct {
+	*mock.Call
+}
+
+// WriteDevice is a helper method to define mock.On call
+//   - id string
+//   - hexData string
+func (_e *Service_Expecter) WriteDevice(id interface{}, hexData interface{}) *Service_WriteDevice_Call {
+	return &Service_WriteDevice_Call{Call: _e.mock.On("WriteDevice", id, hexData)}
+}
+
+func (_c *Service_WriteDevice_Call) Run(run func(id string, hexData string)) *Service_WriteDevice_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(
+			args.Get(0).(string),
+			args.Get(1).(string),
+		)
+	})
+	return _c
+}
+
+func (_c *Service_WriteDevice_Call) Return(n int, err error) *Service_WriteDevice_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *Service_WriteDevice_Call) RunAndReturn(run func(id string, hexData string) (int, error)) *Service_WriteDevice_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetRuntimeConfig provides a mock function for the type Service
+func (_mock *Service) GetRuntimeConfig(key string) (string, error) {
+	ret := _mock.Called(key)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRuntimeConfig")
+	}
+
+	var r0 string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(string) (string, error)); ok {
+		return returnFunc(key)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string) string); ok {
+		r0 = returnFunc(key)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
+		r1 = returnFunc(key)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// Service_GetRuntimeConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRuntimeConfig'
+type Service_GetRuntimeConfig_Call struct {
+	*mock.Call
+}
+
+// GetRuntimeConfig is a helper method to define mock.On call
+//   - key string
+func (_e *Service_Expecter) GetRuntimeConfig(key interface{}) *Service_GetRuntimeConfig_Call {
+	return &Service_GetRuntimeConfig_Call{Call: _e.mock.On("GetRuntimeConfig", key)}
+}
+
+func (_c *Service_GetRuntimeConfig_Call) Run(run func(key string)) *Service_GetRuntimeConfig_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(
+			args.Get(0).(string),
+		)
+	})
+	return _c
+}
+
+func (_c *Service_GetRuntimeConfig_Call) Return(val string, err error) *Service_GetRuntimeConfig_Call {
+	_c.Call.Return(val, err)
+	return _c
+}
+
+func (_c *Service_GetRuntimeConfig_Call) RunAndReturn(run func(key string) (string, error)) *Service_GetRuntimeConfig_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetRuntimeConfig provides a mock function for the type Service
+func (_mock *Service) SetRuntimeConfig(ctx context.Context, key string, value string) error {
+	ret := _mock.Called(ctx, key, value)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetRuntimeConfig")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = returnFunc(ctx, key, value)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Service_SetRuntimeConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetRuntimeConfig'
+type Service_SetRuntimeConfig_Call struct {
+	*mock.Call
+}
+
+// SetRuntimeConfig is a helper method to define mock.On call
+//   - ctx context.Context
+//   - key string
+//   - value string
+func (_e *Service_Expecter) SetRuntimeConfig(ctx interface{}, key interface{}, value interface{}) *Service_SetRuntimeConfig_Call {
+	return &Service_SetRuntimeConfig_Call{Call: _e.mock.On("SetRuntimeConfig", ctx, key, value)}
+}
+
+func (_c *Service_SetRuntimeConfig_Call) Run(run func(ctx context.Context, key string, value string)) *Service_SetRuntimeConfig_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(
+			args.Get(0).(context.Context),
+			args.Get(1).(string),
+			args.Get(2).(string),
+		)
+	})
+	return _c
+}
+
+func (_c *Service_SetRuntimeConfig_Call) Return(err error) *Service_SetRuntimeConfig_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_SetRuntimeConfig_Call) RunAndReturn(run func(ctx context.Context, key string, value string) error) *Service_SetRuntimeConfig_Call {
+	_c.Call.Return(run)
+	return _c
+}

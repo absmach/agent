@@ -384,3 +384,81 @@ func (lm *loggingMiddleware) MarkDeviceSeen(id string) (err error) {
 	}(time.Now())
 	return lm.svc.MarkDeviceSeen(id)
 }
+
+func (lm *loggingMiddleware) OpenDevice(ctx context.Context, id string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("id", id)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("OpenDevice failed.", args...)
+			return
+		}
+		lm.logger.Info("OpenDevice completed.", args...)
+	}(time.Now())
+	return lm.svc.OpenDevice(ctx, id)
+}
+
+func (lm *loggingMiddleware) CloseDevice(id string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("id", id)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("CloseDevice failed.", args...)
+			return
+		}
+		lm.logger.Info("CloseDevice completed.", args...)
+	}(time.Now())
+	return lm.svc.CloseDevice(id)
+}
+
+func (lm *loggingMiddleware) ReadDevice(id string, n int) (data []byte, err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("id", id), slog.Int("n", n)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("ReadDevice failed.", args...)
+			return
+		}
+		lm.logger.Info("ReadDevice completed.", args...)
+	}(time.Now())
+	return lm.svc.ReadDevice(id, n)
+}
+
+func (lm *loggingMiddleware) WriteDevice(id, hexData string) (n int, err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("id", id)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("WriteDevice failed.", args...)
+			return
+		}
+		lm.logger.Info("WriteDevice completed.", args...)
+	}(time.Now())
+	return lm.svc.WriteDevice(id, hexData)
+}
+
+func (lm *loggingMiddleware) GetRuntimeConfig(key string) (val string, err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("key", key)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("GetRuntimeConfig failed.", args...)
+			return
+		}
+		lm.logger.Info("GetRuntimeConfig completed.", args...)
+	}(time.Now())
+	return lm.svc.GetRuntimeConfig(key)
+}
+
+func (lm *loggingMiddleware) SetRuntimeConfig(ctx context.Context, key, value string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("key", key), slog.String("value", value)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("SetRuntimeConfig failed.", args...)
+			return
+		}
+		lm.logger.Info("SetRuntimeConfig completed.", args...)
+	}(time.Now())
+	return lm.svc.SetRuntimeConfig(ctx, key, value)
+}

@@ -5,10 +5,13 @@ import {
   Activity,
   Cpu,
   Download,
+  HeartPulse,
   Home,
+  Info,
   Menu,
   Moon,
   Network,
+  Radio,
   ScrollText,
   Settings,
   Sun,
@@ -30,6 +33,9 @@ const navItems = [
   { href: `${UI_BASE}/exec`, label: "Execute", icon: Terminal },
   { href: `${UI_BASE}/ota`, label: "OTA", icon: Download },
   { href: `${UI_BASE}/logs`, label: "Logs", icon: ScrollText },
+  { href: `${UI_BASE}/health`, label: "Health", icon: HeartPulse },
+  { href: `${UI_BASE}/telemetry`, label: "Telemetry", icon: Radio },
+  { href: `${UI_BASE}/bootstrap`, label: "Bootstrap", icon: Info },
 ];
 
 type Status = "checking" | "online" | "offline";

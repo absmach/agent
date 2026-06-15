@@ -118,6 +118,44 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 		opts...,
 	).ServeHTTP)
 
+	r.Get("/config/runtime", kithttp.NewServer(
+		runtimeConfigGetEndpoint(svc),
+		decodeRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Post("/config/runtime", kithttp.NewServer(
+		runtimeConfigSetEndpoint(svc),
+		decodeRuntimeConfigRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+
+	r.Post("/devices/{id}/open", kithttp.NewServer(
+		openDeviceEndpoint(svc),
+		decodeIDFromPath,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Post("/devices/{id}/close", kithttp.NewServer(
+		closeDeviceEndpoint(svc),
+		decodeIDFromPath,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Post("/devices/{id}/read", kithttp.NewServer(
+		readDeviceEndpoint(svc),
+		decodeDeviceReadRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Post("/devices/{id}/write", kithttp.NewServer(
+		writeDeviceEndpoint(svc),
+		decodeDeviceWriteRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+
 	r.Post("/ota", kithttp.NewServer(
 		otaTriggerEndpoint(svc),
 		decodeOTATriggerRequest,
@@ -133,6 +171,7 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health", magistrala.Health("agent", instanceID))
+	r.Get("/terminal/ws", terminalWSHandler(logger))
 	if stream != nil {
 		r.Handle("/logs", logstream.SSEHandler(stream))
 	}
@@ -209,5 +248,33 @@ func decodeOTATriggerRequest(_ context.Context, r *http.Request) (any, error) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
 	}
+	return req, nil
+}
+
+func decodeRuntimeConfigRequest(_ context.Context, r *http.Request) (any, error) {
+	req := runtimeConfigReq{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
+	}
+	return req, nil
+}
+
+func decodeDeviceReadRequest(_ context.Context, r *http.Request) (any, error) {
+	id := chi.URLParam(r, "id")
+	req := decodeIDPayload{ID: id}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
+	}
+	req.ID = id
+	return req, nil
+}
+
+func decodeDeviceWriteRequest(_ context.Context, r *http.Request) (any, error) {
+	id := chi.URLParam(r, "id")
+	req := decodeIDPayload{ID: id}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
+	}
+	req.ID = id
 	return req, nil
 }

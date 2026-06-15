@@ -2,21 +2,6 @@
 
 The OTA subsystem allows remote binary updates of the agent via MQTT. A trigger message causes the agent to download a new binary, verify its integrity, replace the running binary, and restart the process in-place.
 
-## Overview
-
-```
-┌──────────────┐  MQTT trigger   ┌──────────────┐  HTTP GET    ┌──────────────┐
-│  Magistrala  │ ──────────────► │    Agent     │ ──────────── │  File Server │
-│   (cloud)    │                 │   OTA Run    │ ◄─────────── │  (binary +   │
-│              │ ◄── progress ── │              │   download   │   .sha256)   │
-└──────────────┘                 └──────┬───────┘              └──────────────┘
-                                        │
-                                   verify + replace
-                                        │
-                                   syscall.Exec()
-                                   (process replaced)
-```
-
 ## State Machine
 
 The OTA update goes through these states:

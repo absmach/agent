@@ -61,12 +61,18 @@ const (
 
 	export = "export"
 
-	keyLogLevel               = "log_level"
-	keyHeartbeatInterval      = "heartbeat_interval"
-	keyTelemetryInterval      = "telemetry_interval"
-	keyTerminalSessionTimeout = "terminal_session_timeout"
-	keyCommandSecret          = "command_secret"
-	keyBsValid                = "bs_valid"
+	KeyLogLevel               = "log_level"
+	KeyHeartbeatInterval      = "heartbeat_interval"
+	KeyTelemetryInterval      = "telemetry_interval"
+	KeyTerminalSessionTimeout = "terminal_session_timeout"
+	KeyCommandSecret          = "command_secret"
+	KeyBsValid                = "bs_valid"
+	keyLogLevel               = KeyLogLevel
+	keyHeartbeatInterval      = KeyHeartbeatInterval
+	keyTelemetryInterval      = KeyTelemetryInterval
+	keyTerminalSessionTimeout = KeyTerminalSessionTimeout
+	keyCommandSecret          = KeyCommandSecret
+	keyBsValid                = KeyBsValid
 	keyDomainID               = "domain_id"
 	keyChannelsCtrlID         = "channels_ctrl_id"
 	keyChannelsDataID         = "channels_data_id"
@@ -246,6 +252,24 @@ type Service interface {
 
 	// OTAAbort cancels an in-progress OTA update. It returns an error if no OTA is running.
 	OTAAbort() error
+
+	// OpenDevice opens the physical interface for a registered downstream device.
+	OpenDevice(ctx context.Context, id string) error
+
+	// CloseDevice closes the physical interface for a registered downstream device.
+	CloseDevice(id string) error
+
+	// ReadDevice reads up to n bytes from the open interface of the given device.
+	ReadDevice(id string, n int) ([]byte, error)
+
+	// WriteDevice sends hex-encoded data to the open interface of the given device.
+	WriteDevice(id, hexData string) (int, error)
+
+	// GetRuntimeConfig returns the value of a single runtime-configurable key.
+	GetRuntimeConfig(key string) (string, error)
+
+	// SetRuntimeConfig sets a runtime-configurable key to the given value.
+	SetRuntimeConfig(ctx context.Context, key, value string) error
 
 	DeviceService
 }
@@ -1960,4 +1984,76 @@ func (a *agent) DeviceManager(ctx context.Context, uuid, cmdStr string) error {
 	}
 
 	return a.processResponse(uuid, sub, resp)
+}
+
+func (a *agent) OpenDevice(ctx context.Context, id string) error {
+	if a.devices == nil {
+		return errDeviceManagerDisabled
+	}
+	return a.devices.OpenIface(id)
+}
+
+func (a *agent) CloseDevice(id string) error {
+	if a.devices == nil {
+		return errDeviceManagerDisabled
+	}
+	return a.devices.CloseIface(id)
+}
+
+func (a *agent) ReadDevice(id string, n int) ([]byte, error) {
+	if a.devices == nil {
+		return nil, errDeviceManagerDisabled
+	}
+	return a.devices.ReadIface(id, n)
+}
+
+func (a *agent) WriteDevice(id, hexData string) (int, error) {
+	if a.devices == nil {
+		return 0, errDeviceManagerDisabled
+	}
+	return a.devices.WriteIface(id, hexData)
+}
+
+func (a *agent) GetRuntimeConfig(key string) (string, error) {
+	if !settableKeys[key] {
+		return "", errInvalidCommand
+	}
+	if a.store == nil {
+		return "", errors.New(notConfigured)
+	}
+	if val, ok := a.store.Get(key); ok {
+		if credentialKeys[key] {
+			return notAllowed, nil
+		}
+		if key == keyCommandSecret {
+			if _, ok := a.store.Get(key); ok {
+				return "REDACTED", nil
+			}
+		}
+		return val, nil
+	}
+	if fallback := a.configFallback(key); fallback != "" {
+		return fallback, nil
+	}
+	return "", errors.New(notFound)
+}
+
+func (a *agent) SetRuntimeConfig(ctx context.Context, key, value string) error {
+	if !settableKeys[key] {
+		return errInvalidCommand
+	}
+	if err := validateSettableValue(key, value); err != nil {
+		return err
+	}
+	if a.store == nil {
+		return errors.New(notConfigured)
+	}
+	if err := a.store.Set(key, value); err != nil {
+		return err
+	}
+	a.cfgMu.Lock()
+	ApplyConfigEntry(a.config, key, value)
+	a.cfgMu.Unlock()
+	a.applyLiveUpdate(key, value)
+	return nil
 }
