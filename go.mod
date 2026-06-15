@@ -11,6 +11,7 @@ require (
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-kit/kit v0.13.0
 	github.com/goburrow/modbus v0.1.0
+	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/pelletier/go-toml v1.9.5
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
@@ -59,7 +60,6 @@ require (
 	github.com/goburrow/serial v0.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
-	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect

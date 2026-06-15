@@ -246,7 +246,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", cfg.Server.Port),
-		Handler: api.MakeHandler(svc, logger, stream, ""),
+		Handler: api.MakeHandler(svc, logger, stream),
 	}
 
 	g.Go(func() error {
