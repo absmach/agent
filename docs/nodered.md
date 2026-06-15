@@ -399,4 +399,3 @@ mosquitto_pub \
 | `MG_AGENT_BOOTSTRAP_URL`          | `http://bootstrap:9013/clients/bootstrap` | Bootstrap fetch URL        |
 | `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`  |                                           | Bootstrap external ID      |
 | `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` |                                           | Bootstrap external key     |
-| `MG_UI_PORT`                      | `9999`                                    | Agent UI port              |
