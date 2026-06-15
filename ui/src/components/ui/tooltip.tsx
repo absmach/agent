@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { type ComponentChildren, createContext } from "preact";
-import { useState, useId, useContext } from "preact/hooks";
+import { useContext, useId, useState } from "preact/hooks";
 import { cn } from "@/lib/utils";
 
 interface TooltipCtx {

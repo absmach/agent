@@ -1,7 +1,7 @@
 // Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
-import { ComponentChildren, createContext } from "preact";
+import { type ComponentChildren, createContext } from "preact";
 import type { HTMLAttributes } from "preact/compat";
 import { useContext } from "preact/hooks";
 import { cn } from "@/lib/utils";
