@@ -10,7 +10,9 @@ import {
   Loader2,
   Network,
   Phone,
+  Plus,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
 import { EmptyState } from "@/components/empty-state";
@@ -18,6 +20,8 @@ import { ErrorAlert } from "@/components/error-alert";
 import { StatusBadge, type StatusValue } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { UI_BASE } from "@/routes";
 
 interface ServiceInfo {
@@ -33,6 +37,10 @@ export function ServicesCard() {
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [name, setName] = useState("");
+  const [type, setType] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -49,6 +57,44 @@ export function ServicesCard() {
     }
   }
 
+  async function addService(e: Event) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch("/services", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          type: type.trim() || "service",
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setName("");
+      setType("");
+      setShowAdd(false);
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function removeService(svcName: string) {
+    try {
+      const res = await fetch(`/services/${encodeURIComponent(svcName)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
   useEffect(() => {
     refresh();
   }, []);
@@ -60,14 +106,29 @@ export function ServicesCard() {
           <Activity className="size-4" />
           Registered Services
         </CardTitle>
-        <Button variant="ghost" size="sm" onClick={refresh} disabled={loading}>
-          {loading ? (
-            <Loader2 className="size-3 animate-spin" />
-          ) : (
-            <RefreshCw className="size-3" />
-          )}
-          Refresh
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={refresh}
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3" />
+            )}
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowAdd((s) => !s)}
+          >
+            <Plus className="size-3" />
+            Add Service
+          </Button>
+        </div>
       </CardHeader>
 
       {error && (
@@ -76,12 +137,49 @@ export function ServicesCard() {
         </div>
       )}
 
+      {showAdd && (
+        <form
+          onSubmit={addService}
+          className="flex flex-wrap items-end gap-3 border-b bg-muted/30 px-4 py-3"
+        >
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="svc-name">Name</Label>
+            <Input
+              id="svc-name"
+              value={name}
+              onInput={(e) => setName((e.target as HTMLInputElement).value)}
+              placeholder="my-service"
+              className="w-48"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="svc-type">Type</Label>
+            <Input
+              id="svc-type"
+              value={type}
+              onInput={(e) => setType((e.target as HTMLInputElement).value)}
+              placeholder="service"
+              className="w-48"
+            />
+          </div>
+          <Button type="submit" size="sm" disabled={submitting || !name.trim()}>
+            {submitting ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Plus className="size-3" />
+            )}
+            Register
+          </Button>
+        </form>
+      )}
+
       <div>
         {services.length > 0 ? (
           services.map((service) => (
             <ServiceRow
               key={`${service.name}-${service.type}-${service.last_seen ?? ""}`}
               service={service}
+              onRemove={() => removeService(service.name)}
             />
           ))
         ) : (
@@ -129,7 +227,13 @@ function pickIcon(endpoint: string, name: string) {
   return Activity;
 }
 
-function ServiceRow({ service }: { service: ServiceInfo }) {
+function ServiceRow({
+  service,
+  onRemove,
+}: {
+  service: ServiceInfo;
+  onRemove: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const status = normalizeStatus(service.status);
   const endpoint = service.endpoint || service.type || "unknown endpoint";
@@ -172,6 +276,14 @@ function ServiceRow({ service }: { service: ServiceInfo }) {
             <ChevronDown className="size-3" />
           )}
           Details
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          title="Remove service"
+          className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 className="size-3" />
         </button>
       </div>
 

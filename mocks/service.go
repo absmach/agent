@@ -1240,6 +1240,63 @@ func (_c *Service_ReadDevice_Call) RunAndReturn(run func(id string, n int) ([]by
 	return _c
 }
 
+// RegisterService provides a mock function for the type Service
+func (_mock *Service) RegisterService(svcname string, svctype string) error {
+	ret := _mock.Called(svcname, svctype)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RegisterService")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string, string) error); ok {
+		r0 = returnFunc(svcname, svctype)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Service_RegisterService_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RegisterService'
+type Service_RegisterService_Call struct {
+	*mock.Call
+}
+
+// RegisterService is a helper method to define mock.On call
+//   - svcname string
+//   - svctype string
+func (_e *Service_Expecter) RegisterService(svcname interface{}, svctype interface{}) *Service_RegisterService_Call {
+	return &Service_RegisterService_Call{Call: _e.mock.On("RegisterService", svcname, svctype)}
+}
+
+func (_c *Service_RegisterService_Call) Run(run func(svcname string, svctype string)) *Service_RegisterService_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *Service_RegisterService_Call) Return(err error) *Service_RegisterService_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_RegisterService_Call) RunAndReturn(run func(svcname string, svctype string) error) *Service_RegisterService_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RemoveDevice provides a mock function for the type Service
 func (_mock *Service) RemoveDevice(id string) error {
 	ret := _mock.Called(id)
@@ -1287,6 +1344,57 @@ func (_c *Service_RemoveDevice_Call) Return(err error) *Service_RemoveDevice_Cal
 }
 
 func (_c *Service_RemoveDevice_Call) RunAndReturn(run func(id string) error) *Service_RemoveDevice_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RemoveService provides a mock function for the type Service
+func (_mock *Service) RemoveService(svcname string) error {
+	ret := _mock.Called(svcname)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveService")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string) error); ok {
+		r0 = returnFunc(svcname)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Service_RemoveService_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveService'
+type Service_RemoveService_Call struct {
+	*mock.Call
+}
+
+// RemoveService is a helper method to define mock.On call
+//   - svcname string
+func (_e *Service_Expecter) RemoveService(svcname interface{}) *Service_RemoveService_Call {
+	return &Service_RemoveService_Call{Call: _e.mock.On("RemoveService", svcname)}
+}
+
+func (_c *Service_RemoveService_Call) Run(run func(svcname string)) *Service_RemoveService_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *Service_RemoveService_Call) Return(err error) *Service_RemoveService_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_RemoveService_Call) RunAndReturn(run func(svcname string) error) *Service_RemoveService_Call {
 	_c.Call.Return(run)
 	return _c
 }

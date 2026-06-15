@@ -224,6 +224,41 @@ func (lm *loggingMiddleware) UpdateLiveness(svcname, svctype string) (err error)
 	return lm.svc.UpdateLiveness(svcname, svctype)
 }
 
+func (lm *loggingMiddleware) RegisterService(svcname, svctype string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.String("svcname", svcname),
+			slog.String("svctype", svctype),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("Register service failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("Register service completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.RegisterService(svcname, svctype)
+}
+
+func (lm *loggingMiddleware) RemoveService(svcname string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.String("svcname", svcname),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("Remove service failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("Remove service completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.RemoveService(svcname)
+}
+
 func (lm *loggingMiddleware) OTA(ctx context.Context, url, sha256hex string, size uint64) (err error) {
 	defer func(begin time.Time) {
 		args := []any{

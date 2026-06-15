@@ -227,6 +227,13 @@ type Service interface {
 	// an authenticated MQTT heartbeat message.
 	UpdateLiveness(svcname, svctype string) error
 
+	// RegisterService manually registers a local service so that it appears on
+	// the services list immediately, regardless of MQTT heartbeats.
+	RegisterService(svcname, svctype string) error
+
+	// RemoveService removes a previously registered service from the services list.
+	RemoveService(svcname string) error
+
 	// OTA triggers an over-the-air binary update by downloading from url.
 	OTA(ctx context.Context, url, sha256hex string, size uint64) error
 
@@ -1361,6 +1368,33 @@ func (a *agent) UpdateLiveness(svcname, svctype string) error {
 		a.svcs[svcname] = svc
 	}
 	a.svcs[svcname].Update()
+	return nil
+}
+
+func (a *agent) RegisterService(svcname, svctype string) error {
+	if svcname == "" {
+		return errors.New("service name is required")
+	}
+	a.svcsMu.Lock()
+	defer a.svcsMu.Unlock()
+	if _, ok := a.svcs[svcname]; !ok {
+		svc := NewHeartbeat(svcname, svctype, a.Config().Heartbeat.Interval)
+		a.svcs[svcname] = svc
+	}
+	a.svcs[svcname].Update()
+	return nil
+}
+
+func (a *agent) RemoveService(svcname string) error {
+	if svcname == "" {
+		return errors.New("service name is required")
+	}
+	a.svcsMu.Lock()
+	defer a.svcsMu.Unlock()
+	if svc, ok := a.svcs[svcname]; ok {
+		svc.Stop()
+		delete(a.svcs, svcname)
+	}
 	return nil
 }
 

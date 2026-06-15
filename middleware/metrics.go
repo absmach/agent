@@ -149,6 +149,24 @@ func (ms *metricsMiddleware) UpdateLiveness(svcname, svctype string) error {
 	return ms.svc.UpdateLiveness(svcname, svctype)
 }
 
+func (ms *metricsMiddleware) RegisterService(svcname, svctype string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "register_service").Add(1)
+		ms.latency.With("method", "register_service").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.RegisterService(svcname, svctype)
+}
+
+func (ms *metricsMiddleware) RemoveService(svcname string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "remove_service").Add(1)
+		ms.latency.With("method", "remove_service").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.RemoveService(svcname)
+}
+
 func (ms *metricsMiddleware) OTA(ctx context.Context, url, sha256hex string, size uint64) error {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "ota").Add(1)

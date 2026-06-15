@@ -176,6 +176,18 @@ func (req deviceWriteReq) validate() error {
 
 type decodeIDPayload struct {
 	ID    string
-	Bytes int `json:"bytes"`
+	Bytes int    `json:"bytes"`
 	Data  string `json:"data"`
+}
+
+type addServiceReq struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+func (req addServiceReq) validate() error {
+	if req.Name == "" {
+		return agent.ErrMalformedEntity
+	}
+	return nil
 }

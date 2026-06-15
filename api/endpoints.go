@@ -330,3 +330,29 @@ func telemetryDataEndpoint(svc agent.Service) endpoint.Endpoint {
 		return svc.Telemetry(), nil
 	}
 }
+
+func addServiceEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		req := request.(addServiceReq)
+		if err := req.validate(); err != nil {
+			return nil, err
+		}
+		if err := svc.RegisterService(req.Name, req.Type); err != nil {
+			return nil, err
+		}
+		return simpleRes{Service: svcName, Response: "registered"}, nil
+	}
+}
+
+func removeServiceEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		id := request.(string)
+		if id == "" {
+			return nil, agent.ErrMalformedEntity
+		}
+		if err := svc.RemoveService(id); err != nil {
+			return nil, err
+		}
+		return removeDeviceRes{}, nil
+	}
+}
