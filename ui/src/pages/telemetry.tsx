@@ -7,8 +7,11 @@ import {
   Clock,
   Cpu,
   Disc,
+  HardDrive,
   Loader2,
+  MemoryStick,
   RefreshCw,
+  Thermometer,
   Wifi,
 } from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
@@ -18,6 +21,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatBytes, formatDuration } from "@/lib/utils";
 
 interface TelemetryInfo {
   interval: string;
@@ -26,25 +30,46 @@ interface TelemetryInfo {
   include_load: boolean;
 }
 
+interface TelemetryData {
+  uptime?: number;
+  mem_total?: number;
+  mem_available?: number;
+  mem_used?: number;
+  cpu_temperature?: number;
+  rssi?: number;
+  load_avg_1m?: number;
+  load_avg_5m?: number;
+  load_avg_15m?: number;
+  disk_usage_percent?: number;
+  devices_active?: number;
+}
+
 export function TelemetryPage() {
   const [telemetry, setTelemetry] = useState<TelemetryInfo | null>(null);
+  const [data, setData] = useState<TelemetryData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function fetchTelemetry() {
+  async function fetchAll() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/config");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const t = data.telemetry || {};
-      setTelemetry({
-        interval: t.interval || "0s",
-        include_temperature: t.include_temperature !== false,
-        include_network: t.include_network !== false,
-        include_load: t.include_load !== false,
-      });
+      const [cfgRes, dataRes] = await Promise.allSettled([
+        fetch("/config", { cache: "no-store" }).then((r) => r.json()),
+        fetch("/telemetry/data", { cache: "no-store" }).then((r) => r.json()),
+      ]);
+      if (cfgRes.status === "fulfilled") {
+        const t = cfgRes.value.telemetry || {};
+        setTelemetry({
+          interval: t.interval || "0s",
+          include_temperature: t.include_temperature !== false,
+          include_network: t.include_network !== false,
+          include_load: t.include_load !== false,
+        });
+      }
+      if (dataRes.status === "fulfilled") {
+        setData(dataRes.value);
+      }
     } catch (e) {
       setError(String(e));
     } finally {
@@ -53,7 +78,14 @@ export function TelemetryPage() {
   }
 
   useEffect(() => {
-    fetchTelemetry();
+    fetchAll();
+    const id = setInterval(() => {
+      fetch("/telemetry/data", { cache: "no-store" })
+        .then((r) => r.json())
+        .then(setData)
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(id);
   }, []);
 
   const enabled = telemetry?.interval && telemetry.interval !== "0s";
@@ -67,7 +99,7 @@ export function TelemetryPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={fetchTelemetry}
+            onClick={fetchAll}
             disabled={loading}
           >
             {loading ? (
@@ -104,7 +136,7 @@ export function TelemetryPage() {
                     Publish Interval
                   </div>
                   <div className="font-mono text-sm font-semibold">
-                    {telemetry.interval}
+                    {formatDuration(telemetry.interval)}
                   </div>
                 </div>
               </div>
@@ -152,6 +184,76 @@ export function TelemetryPage() {
         </CardContent>
       </Card>
 
+      {data && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <Activity className="size-4" />
+              Current Readings
+              <span className="ml-auto text-xs font-normal text-muted-foreground">
+                updates every 5s
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Reading
+                icon={<Clock className="size-4" />}
+                label="Uptime"
+                value={formatDuration(data.uptime ? data.uptime * 1e9 : null)}
+              />
+              <Reading
+                icon={<MemoryStick className="size-4" />}
+                label="Memory"
+                value={
+                  data.mem_used != null && data.mem_total != null
+                    ? `${formatBytes(data.mem_used)} / ${formatBytes(data.mem_total)}`
+                    : "—"
+                }
+                sub={
+                  data.mem_used != null && data.mem_total != null
+                    ? `${((data.mem_used / data.mem_total) * 100).toFixed(0)}% used`
+                    : undefined
+                }
+              />
+              <Reading
+                icon={<HardDrive className="size-4" />}
+                label="Disk Usage"
+                value={
+                  data.disk_usage_percent != null
+                    ? `${data.disk_usage_percent.toFixed(1)}%`
+                    : "—"
+                }
+              />
+              <Reading
+                icon={<Thermometer className="size-4" />}
+                label="CPU Temp"
+                value={
+                  data.cpu_temperature != null
+                    ? `${data.cpu_temperature.toFixed(1)} \u00B0C`
+                    : "—"
+                }
+              />
+              <Reading
+                icon={<Wifi className="size-4" />}
+                label="RSSI"
+                value={data.rssi != null ? `${data.rssi.toFixed(0)} dBm` : "—"}
+              />
+              <Reading
+                icon={<Disc className="size-4" />}
+                label="Load Avg"
+                value={
+                  data.load_avg_1m != null
+                    ? `${data.load_avg_1m.toFixed(2)} / ${data.load_avg_5m?.toFixed(2) ?? "—"} / ${data.load_avg_15m?.toFixed(2) ?? "—"}`
+                    : "—"
+                }
+                sub="1m / 5m / 15m"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {enabled && (
         <Card>
           <CardHeader>
@@ -196,6 +298,31 @@ export function TelemetryPage() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+function Reading({
+  icon,
+  label,
+  value,
+  sub,
+}: {
+  icon: preact.ComponentChildren;
+  label: string;
+  value: string;
+  sub?: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border px-4 py-3">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <div className="text-xs font-medium text-muted-foreground">{label}</div>
+        <div className="truncate font-mono text-sm font-semibold">{value}</div>
+        {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
+      </div>
     </div>
   );
 }

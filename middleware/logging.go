@@ -304,6 +304,10 @@ func (lm *loggingMiddleware) OTAStatus() agent.OTAStatusInfo {
 	return lm.svc.OTAStatus()
 }
 
+func (lm *loggingMiddleware) Telemetry() agent.TelemetryData {
+	return lm.svc.Telemetry()
+}
+
 func (lm *loggingMiddleware) OTAAbort() (err error) {
 	defer func(begin time.Time) {
 		args := []any{

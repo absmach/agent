@@ -193,6 +193,10 @@ func (ms *metricsMiddleware) OTAStatus() agent.OTAStatusInfo {
 	return ms.svc.OTAStatus()
 }
 
+func (ms *metricsMiddleware) Telemetry() agent.TelemetryData {
+	return ms.svc.Telemetry()
+}
+
 func (ms *metricsMiddleware) OTAAbort() error {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "ota_abort").Add(1)

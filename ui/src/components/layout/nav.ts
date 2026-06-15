@@ -8,8 +8,8 @@ import {
   HardDriveDownload,
   HeartPulse,
   type LucideIcon,
-  Power,
   Radio,
+  RadioTower,
   ScrollText,
   Settings,
   SquareTerminal,
@@ -58,7 +58,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { href: `${UI_BASE}/config`, label: "Configuration", icon: Settings },
       { href: `${UI_BASE}/ota`, label: "OTA Update", icon: Download },
-      { href: `${UI_BASE}/bootstrap`, label: "Bootstrap", icon: Power },
+      { href: `${UI_BASE}/bootstrap`, label: "Bootstrap", icon: RadioTower },
     ],
   },
 ];

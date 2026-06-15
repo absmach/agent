@@ -324,3 +324,9 @@ func runtimeConfigSetEndpoint(svc agent.Service) endpoint.Endpoint {
 		return simpleRes{Service: svcName, Response: "ok"}, nil
 	}
 }
+
+func telemetryDataEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, _ any) (any, error) {
+		return svc.Telemetry(), nil
+	}
+}

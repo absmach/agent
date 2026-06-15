@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Module } from "@/components/ui/module";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAgentStatus } from "@/lib/agent";
-import { cn } from "@/lib/utils";
+import { cn, formatDuration } from "@/lib/utils";
 import { UI_BASE } from "@/routes";
 
 interface Health {
@@ -239,14 +239,19 @@ export function HomePage() {
       <Module label="Runtime">
         <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
           <Field label="Log level" value={runtime?.log_level ?? "—"} />
-          <Field label="Heartbeat" value={runtime?.heartbeat_interval ?? "—"} />
+          <Field
+            label="Heartbeat"
+            value={formatDuration(runtime?.heartbeat_interval)}
+          />
           <Field
             label="Telemetry"
-            value={runtime?.telemetry_interval ?? telemetry?.interval ?? "—"}
+            value={formatDuration(
+              runtime?.telemetry_interval ?? telemetry?.interval,
+            )}
           />
           <Field
             label="Term timeout"
-            value={runtime?.terminal_session_timeout ?? "—"}
+            value={formatDuration(runtime?.terminal_session_timeout)}
           />
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border pt-4">

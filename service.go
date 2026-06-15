@@ -250,6 +250,9 @@ type Service interface {
 	// OTAStatus returns whether an OTA operation is currently in progress and the last error message, if any.
 	OTAStatus() OTAStatusInfo
 
+	// Telemetry returns the current gateway telemetry readings (live snapshot).
+	Telemetry() TelemetryData
+
 	// OTAAbort cancels an in-progress OTA update. It returns an error if no OTA is running.
 	OTAAbort() error
 
@@ -278,6 +281,21 @@ type Service interface {
 type OTAStatusInfo struct {
 	Busy      bool   `json:"busy"`
 	LastError string `json:"last_error,omitempty"`
+}
+
+// TelemetryData holds the current gateway telemetry readings.
+type TelemetryData struct {
+	Uptime         float64  `json:"uptime"`
+	MemTotal       uint64   `json:"mem_total,omitempty"`
+	MemAvailable   uint64   `json:"mem_available,omitempty"`
+	MemUsed        uint64   `json:"mem_used,omitempty"`
+	CPUTemperature *float64 `json:"cpu_temperature,omitempty"`
+	RSSI           *float64 `json:"rssi,omitempty"`
+	LoadAvg1m      *float64 `json:"load_avg_1m,omitempty"`
+	LoadAvg5m      *float64 `json:"load_avg_5m,omitempty"`
+	LoadAvg15m     *float64 `json:"load_avg_15m,omitempty"`
+	DiskUsagePct   *float64 `json:"disk_usage_percent,omitempty"`
+	DevicesActive  *int     `json:"devices_active,omitempty"`
 }
 
 var _ Service = (*agent)(nil)
@@ -1232,6 +1250,53 @@ func (a *agent) selfTelemetry(ctx context.Context, topic string, interval time.D
 			return
 		}
 	}
+}
+
+// Telemetry returns a live snapshot of the current gateway telemetry readings.
+func (a *agent) Telemetry() TelemetryData {
+	cfg := a.Config()
+	data := TelemetryData{
+		Uptime: time.Since(startTime).Seconds(),
+	}
+
+	if total, _, available, ok := readMemoryStats(); ok {
+		data.MemTotal = total
+		data.MemAvailable = available
+		data.MemUsed = total - available
+	}
+
+	if cfg.Telemetry.IncludeTemperature {
+		if temp, ok := readCPUTemperature(); ok {
+			data.CPUTemperature = &temp
+		}
+	}
+
+	if cfg.Telemetry.IncludeNetwork {
+		if rssi, ok := readInterfaceRSSI(); ok {
+			data.RSSI = &rssi
+		}
+	}
+
+	if cfg.Telemetry.IncludeLoad {
+		if l1, l5, l15, ok := readLoadAverage(); ok {
+			data.LoadAvg1m = &l1
+			data.LoadAvg5m = &l5
+			data.LoadAvg15m = &l15
+		}
+	}
+
+	if pct, ok := readDiskUsagePercent(); ok {
+		data.DiskUsagePct = &pct
+	}
+
+	if a.devices != nil {
+		if n, err := a.devices.Count(); err == nil {
+			count := n
+			data.DevicesActive = &count
+		}
+	}
+
+	return data
 }
 
 func (a *agent) gatewayTelemetryPayload() []senml.Record {

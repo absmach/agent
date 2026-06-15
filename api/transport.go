@@ -168,6 +168,13 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 		opts...,
 	).ServeHTTP)
 
+	r.Get("/telemetry/data", kithttp.NewServer(
+		telemetryDataEndpoint(svc),
+		decodeRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health", health())
 	r.Get("/terminal/ws", terminalWSHandler(logger))
