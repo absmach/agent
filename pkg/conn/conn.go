@@ -136,8 +136,21 @@ func (b *broker) registerBuiltins() {
 	b.RegisterHandler(nred, func(ctx context.Context, pack senml.Pack) error {
 		uuid, cmdStr := extractCmd(pack)
 		log.Info("NodeRed command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-		_, err := svc.NodeRed(cmdStr)
-		return err
+		resp, err := svc.NodeRed(cmdStr)
+		if err != nil {
+			if payload, encErr := encoder.EncodeSenML(uuid, nred, err.Error()); encErr == nil {
+				if pubErr := svc.Publish("control", string(payload)); pubErr != nil {
+					log.Warn("Failed to publish NodeRed error response", slog.Any("error", pubErr))
+				}
+			}
+			return err
+		}
+		if payload, encErr := encoder.EncodeSenML(uuid, nred, resp); encErr == nil {
+			if pubErr := svc.Publish("control", string(payload)); pubErr != nil {
+				log.Warn("Failed to publish NodeRed response", slog.Any("error", pubErr))
+			}
+		}
+		return nil
 	})
 
 	b.RegisterHandler(ping, func(ctx context.Context, pack senml.Pack) error {

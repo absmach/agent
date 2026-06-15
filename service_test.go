@@ -527,12 +527,13 @@ func TestServiceConfig(t *testing.T) {
 
 func TestConfigGetSet(t *testing.T) {
 	cases := []struct {
-		desc     string
-		cmd      string
-		useStore bool
-		seed     map[string]string
-		wantResp string
-		err      bool
+		desc          string
+		cmd           string
+		useStore      bool
+		seed          map[string]string
+		wantResp      string
+		err           bool
+		mockTelemetry bool
 	}{
 		{
 			desc:     "get key without store returns not_configured",
@@ -541,10 +542,10 @@ func TestConfigGetSet(t *testing.T) {
 			wantResp: "not_configured",
 		},
 		{
-			desc:     "get missing key returns not_found",
+			desc:     "get unset key returns running config value",
 			cmd:      "get,log_level",
 			useStore: true,
-			wantResp: "not_found",
+			wantResp: "debug",
 		},
 		{
 			desc:     "set key without store returns not_configured",
@@ -590,10 +591,11 @@ func TestConfigGetSet(t *testing.T) {
 			err:      true,
 		},
 		{
-			desc:     "set telemetry_interval stores valid duration",
-			cmd:      "set,telemetry_interval,30s",
-			useStore: true,
-			wantResp: "ok",
+			desc:          "set telemetry_interval stores valid duration",
+			cmd:           "set,telemetry_interval,30s",
+			useStore:      true,
+			wantResp:      "ok",
+			mockTelemetry: true,
 		},
 		{
 			desc:     "get telemetry_interval after set returns previously set value",
@@ -765,6 +767,14 @@ func TestConfigGetSet(t *testing.T) {
 			}
 			svc, mqttClient, _, setupErr := newService(t, testConfig(), s)
 			assert.Nil(t, setupErr, fmt.Sprintf("%s: unexpected setup error %v", tc.desc, setupErr))
+
+			if tc.mockTelemetry {
+				telToken := agentmocks.NewMQTTToken(t)
+				telToken.On("Wait").Maybe().Return(true)
+				telToken.On("Error").Maybe().Return(error(nil))
+				mqttClient.On("Publish", mqttTopic("data-channel", "gateway/telemetry"),
+					mock.Anything, mock.Anything, mock.Anything).Maybe().Return(telToken)
+			}
 
 			if !tc.err {
 				expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil).Run(func(args mock.Arguments) {
@@ -1026,6 +1036,7 @@ func TestTerminal(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			if tc.emptyPath {
 				t.Setenv("PATH", "")
+				t.Setenv("SHELL", "/no/such/shell")
 			}
 			svc, _, _, err := newService(t, testConfig(), nil)
 			require.NoError(t, err)

@@ -47,7 +47,7 @@ const (
 	view = "view"
 	save = "save"
 
-	char    = "c"
+	char    = "char"
 	open    = "open"
 	close   = "close"
 	control = "control"
@@ -75,6 +75,8 @@ const (
 
 	senmlNameUptime = "uptime"
 	notAllowed      = "not_allowed"
+
+	provisionTimeout = 30 * time.Second
 )
 
 var (
@@ -236,6 +238,7 @@ type OTAStatusInfo struct {
 var _ Service = (*agent)(nil)
 
 type agent struct {
+	ctx                 context.Context
 	mqttClient          paho.Client
 	config              *Config
 	noderedClient       nodered.Client
@@ -252,6 +255,7 @@ type agent struct {
 	store               cfgstore.Store
 	heartbeatIntervalCh chan time.Duration
 	telemetryIntervalCh chan time.Duration
+	telemetryStarted    atomic.Bool
 	logLevel            *slog.LevelVar
 	cfgMu               sync.RWMutex
 	startupConfig       Config
@@ -265,6 +269,7 @@ type agent struct {
 // New returns agent service implementation.
 func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store cfgstore.Store, levelVar *slog.LevelVar, bootstrapCachePath string) (Service, error) {
 	ag := &agent{
+		ctx:                 ctx,
 		mqttClient:          mc,
 		noderedClient:       nc,
 		config:              cfg,
@@ -296,6 +301,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 	if cfg.Telemetry.Interval > 0 {
 		telemetryTopic := fmt.Sprintf("m/%s/c/%s/gateway/telemetry",
 			cfg.DomainID, cfg.Channels.DataChan())
+		ag.telemetryStarted.Store(true)
 		go ag.selfTelemetry(ctx, telemetryTopic, cfg.Telemetry.Interval, cfg.MQTT.QoS)
 	}
 
@@ -441,6 +447,8 @@ func (a *agent) ServiceConfig(ctx context.Context, uuid, cmdStr string) error {
 			resp = notConfigured
 		} else if val, ok := a.store.Get(key); ok {
 			resp = val
+		} else if fallback := a.configFallback(key); fallback != "" {
+			resp = fallback
 		} else {
 			resp = notFound
 		}
@@ -1131,7 +1139,7 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
 
 	progressFn := func(state ota.State, progress float64) {
-		now := float64(time.Now().UnixNano())
+		now := float64(time.Now().UnixNano()) / float64(time.Second)
 		stateStr := strings.ToLower(state.String())
 		statusPack := []senml.Record{
 			{BaseName: "gw:", BaseTime: now, Name: "ota_state", StringValue: &stateStr},
@@ -1365,7 +1373,7 @@ func validateSettableValue(key, val string) error {
 		}
 	case keyTelemetryInterval:
 		d, err := time.ParseDuration(val)
-		if err != nil || d < time.Second || d > time.Hour {
+		if err != nil || (d != 0 && (d < time.Second || d > time.Hour)) {
 			return errInvalidCommand
 		}
 	case keyTerminalSessionTimeout:
@@ -1490,6 +1498,13 @@ func (a *agent) applyLiveUpdate(key, val string) {
 		}
 	case keyTelemetryInterval:
 		if d, err := time.ParseDuration(val); err == nil {
+			if d > 0 && !a.telemetryStarted.Load() {
+				a.telemetryStarted.Store(true)
+				cfg := a.Config()
+				telemetryTopic := fmt.Sprintf("m/%s/c/%s/gateway/telemetry",
+					cfg.DomainID, cfg.Channels.DataChan())
+				go a.selfTelemetry(a.ctx, telemetryTopic, 0, cfg.MQTT.QoS)
+			}
 			select {
 			case a.telemetryIntervalCh <- d:
 			default:
@@ -1499,6 +1514,21 @@ func (a *agent) applyLiveUpdate(key, val string) {
 		// Secret is read from Config() on each inbound message;
 		// no live subsystem needs updating.
 	}
+}
+
+func (a *agent) configFallback(key string) string {
+	cfg := a.Config()
+	switch key {
+	case keyLogLevel:
+		return cfg.Log.Level
+	case keyHeartbeatInterval:
+		return cfg.Heartbeat.Interval.String()
+	case keyTelemetryInterval:
+		return cfg.Telemetry.Interval.String()
+	case keyTerminalSessionTimeout:
+		return cfg.Terminal.SessionTimeout.String()
+	}
+	return ""
 }
 
 func (a *agent) getTopic(topic string) (t string) {
@@ -1574,7 +1604,9 @@ func (a *agent) DeviceManager(ctx context.Context, uuid, cmdStr string) error {
 			return errors.Wrap(errDeviceManagerFailed, errInvalidCommand)
 		}
 		ifaceType := iface.ParseInterfaceType(addReq.IfaceType)
-		d, aerr := a.devices.Add(ctx, addReq.Name, addReq.ExternalID, addReq.ExternalKey, ifaceType, addReq.IfaceAddr)
+		addCtx, cancel := context.WithTimeout(ctx, provisionTimeout)
+		d, aerr := a.devices.Add(addCtx, addReq.Name, addReq.ExternalID, addReq.ExternalKey, ifaceType, addReq.IfaceAddr)
+		cancel()
 		if aerr != nil {
 			return errors.Wrap(errDeviceManagerFailed, aerr)
 		}
