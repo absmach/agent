@@ -1,7 +1,7 @@
 # Copyright (c) Abstract Machines
 # SPDX-License-Identifier: Apache-2.0
 
-FROM alpine:3.23
+FROM alpine:3.24
 ARG SVC
 COPY magistrala-$SVC /exe
 ENTRYPOINT ["/exe"]
