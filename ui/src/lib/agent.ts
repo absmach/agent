@@ -5,6 +5,14 @@ import { useEffect, useState } from "preact/hooks";
 
 export type LinkStatus = "checking" | "online" | "offline";
 
+const REPO_URL = "https://github.com/absmach/agent";
+const hashRe = /^[0-9a-f]{7,40}$/i;
+
+export function commitUrl(commit?: string): string | null {
+  if (!commit || !hashRe.test(commit)) return null;
+  return `${REPO_URL}/commit/${commit}`;
+}
+
 /** Polls the agent's /config endpoint to track local link liveness. */
 export function useAgentStatus(intervalMs = 5000): LinkStatus {
   const [status, setStatus] = useState<LinkStatus>("checking");

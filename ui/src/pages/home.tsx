@@ -3,6 +3,7 @@
 
 import { ChevronRight, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
+import { CommitLink } from "@/components/commit-link";
 import { navGroups } from "@/components/layout/nav";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -210,7 +211,7 @@ export function HomePage() {
                 />
                 <Field
                   label="Commit"
-                  value={health?.commit ? health.commit.slice(0, 10) : "—"}
+                  value={<CommitLink commit={health?.commit} short />}
                 />
                 <Field label="Built" value={fmtBuild(health?.build_time)} />
                 <Field

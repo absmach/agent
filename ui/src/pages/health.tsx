@@ -9,6 +9,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
+import { CommitLink } from "@/components/commit-link";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorAlert } from "@/components/error-alert";
 import { PageHeader } from "@/components/page-header";
@@ -92,7 +93,10 @@ export function HealthPage() {
               <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3">
                 <DetailField label="Status" value={health.status} />
                 <DetailField label="Version" value={health.version} />
-                <DetailField label="Commit" value={health.commit} />
+                <DetailField
+                  label="Commit"
+                  value={<CommitLink commit={health.commit} />}
+                />
                 <DetailField label="Service" value={health.description} />
                 <DetailField label="Build Time" value={health.build_time} />
                 <DetailField
@@ -156,7 +160,13 @@ export function HealthPage() {
   );
 }
 
-function DetailField({ label, value }: { label: string; value: string }) {
+function DetailField({
+  label,
+  value,
+}: {
+  label: string;
+  value: preact.ComponentChildren;
+}) {
   return (
     <div>
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
