@@ -2022,11 +2022,32 @@ func TestControlSubcommands(t *testing.T) {
 		expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil).Run(func(args mock.Arguments) {
 			rec := decodeFirstRecord(t, args.Get(3))
 			require.NotNil(t, rec.StringValue)
-			assert.Equal(t, "reloaded", *rec.StringValue)
+			assert.Equal(t, "reloaded:log_level", *rec.StringValue, "response should list applied keys")
 		})
 
 		require.NoError(t, svc.Control("uuid", "reload"))
 		assert.Equal(t, "error", svc.Config().Log.Level, "reload should apply persisted log_level override")
+	})
+
+	t.Run("reload validates and skips invalid persisted values", func(t *testing.T) {
+		store, storeErr := cfgstore.NewStore(filepath.Join(t.TempDir(), "config.json"))
+		require.NoError(t, storeErr)
+		require.NoError(t, store.Set("log_level", "not-a-level")) // invalid, must be skipped
+		require.NoError(t, store.Set("heartbeat_interval", "30s"))
+
+		cfg := testConfig()
+		svc, mqttClient, _, err := newService(t, cfg, store)
+		require.NoError(t, err)
+
+		expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil).Run(func(args mock.Arguments) {
+			rec := decodeFirstRecord(t, args.Get(3))
+			require.NotNil(t, rec.StringValue)
+			assert.Equal(t, "reloaded:heartbeat_interval", *rec.StringValue)
+		})
+
+		require.NoError(t, svc.Control("uuid", "reload"))
+		assert.Equal(t, "debug", svc.Config().Log.Level, "invalid log_level must be skipped")
+		assert.Equal(t, 30*time.Second, svc.Config().Heartbeat.Interval, "valid override should apply")
 	})
 
 	t.Run("reload without store reports not configured", func(t *testing.T) {

@@ -428,10 +428,19 @@ func (a *agent) controlStop() string {
 }
 
 // controlStart resumes the background publishing loops and restarts the
-// per-device scheduler using the agent's run context.
+// per-device scheduler using the agent's run context. The scheduler context
+// descends from the process context passed to New so device goroutines still
+// terminate on shutdown; if that context is already cancelled (process is
+// shutting down) the scheduler is not restarted.
 func (a *agent) controlStart() string {
 	a.paused.Store(false)
-	if a.sched != nil && a.runCtx != nil {
+	switch {
+	case a.sched == nil:
+		// No device scheduler configured; nothing to restart.
+	case a.runCtx == nil || a.runCtx.Err() != nil:
+		a.logger.Warn("Run context unavailable; device scheduler not restarted",
+			slog.Any("error", contextErr(a.runCtx)))
+	default:
 		if err := a.sched.Start(a.runCtx); err != nil {
 			a.logger.Warn("Failed to restart device scheduler", slog.Any("error", err))
 		}
@@ -440,23 +449,45 @@ func (a *agent) controlStart() string {
 	return "started"
 }
 
+// contextErr returns ctx.Err() guarding against a nil context.
+func contextErr(ctx context.Context) error {
+	if ctx == nil {
+		return context.Canceled
+	}
+	return ctx.Err()
+}
+
 // controlReload re-applies persisted runtime config overrides from the store so
-// that out-of-band changes to the store take effect without a restart.
+// that out-of-band changes to the store take effect without a restart. Each
+// value is validated before being applied; invalid entries (e.g. from manual
+// file edits) are skipped and logged. The response lists the keys that were
+// applied for auditability.
 func (a *agent) controlReload() string {
 	if a.store == nil {
 		return notConfigured
 	}
+	var applied []string
 	for key, val := range a.store.All() {
 		if !settableKeys[key] {
+			continue
+		}
+		if err := validateSettableValue(key, val); err != nil {
+			a.logger.Warn("Skipping invalid persisted config value on reload",
+				slog.String("key", key), slog.Any("error", err))
 			continue
 		}
 		a.cfgMu.Lock()
 		ApplyConfigEntry(a.config, key, val)
 		a.cfgMu.Unlock()
 		a.applyLiveUpdate(key, val)
+		applied = append(applied, key)
 	}
-	a.logger.Info("Agent config reloaded via control command")
-	return "reloaded"
+	sort.Strings(applied)
+	a.logger.Info("Agent config reloaded via control command", slog.Any("applied", applied))
+	if len(applied) == 0 {
+		return "reloaded"
+	}
+	return "reloaded:" + strings.Join(applied, ",")
 }
 
 // controlStatus reports the agent's current runtime state as a JSON document.
@@ -506,6 +537,12 @@ func (a *agent) Route(_ context.Context, uuid, cmdStr string) error {
 			return errors.Wrap(errRouteFailed, errInvalidCommand)
 		}
 		readBytes = n
+	}
+
+	// Resolve the device first so a missing device returns a clear error rather
+	// than surfacing as an opaque interface-open failure.
+	if _, err := a.devices.Get(deviceID); err != nil {
+		return errors.Wrap(errRouteFailed, err)
 	}
 
 	if err := a.devices.OpenIface(deviceID); err != nil {
