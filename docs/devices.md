@@ -38,6 +38,8 @@ All device commands are sent via the `devices` dispatch name on the commands cha
 | `read`     | `devices,read,<device_id>,<n_bytes>`                                                                    | Read n bytes from device, reply as hex string |
 | `write`    | `devices,write,<device_id>,<hex_data>`                                                                  | Write hex-encoded bytes to the device         |
 
+> For a single write-then-read round trip to a device, the [`route`](control.md#route-to-downstream-device) command (`route,<device_id>,<hex_payload>[,<read_bytes>]`) opens the interface if needed, writes the payload, and returns the response in one command.
+
 ## Provisioning Flow
 
 When `add` is called, the agent:
