@@ -8,18 +8,24 @@ All commands are sent as [SenML][senml] JSON arrays to the **commands channel re
 
 ### Command Subsystems
 
+The dispatch registry is extensible — handlers can be registered at runtime — and each command carries metadata (description, usage) surfaced by the `help` command.
+
 | `n` value | Handler       | Description                                                     |
 | --------- | ------------- | --------------------------------------------------------------- |
 | `exec`    | Execute       | Run an allowlisted shell command                                |
 | `config`  | ServiceConfig | View services, get/set/reset runtime config, save export config |
 | `service` | ServiceConfig | Alias for `config` — same handler                               |
-| `control` | Control       | Node-RED management commands                                    |
+| `control` | Control       | Agent lifecycle (stop/start/reload/status) and Node-RED passthrough |
 | `term`    | Terminal      | Open/close/write interactive terminal sessions                  |
 | `nodered` | NodeRed       | Node-RED flow operations                                        |
 | `ping`    | Ping          | Publish an immediate heartbeat                                  |
 | `reset`   | Reset         | Graceful shutdown and process restart                           |
-| `ota`     | OTA           | Over-the-air binary update                                      |
+| `ota`     | OTA           | Over-the-air binary update (trigger/status/abort)              |
 | `devices` | DeviceManager | Downstream device CRUD                                          |
+| `route`   | Route         | Forward a payload to a downstream device interface              |
+| `help`    | —             | List available commands and their usage                         |
+
+Authorization is enforced **per command**: when a command secret is configured, each command that requires auth must carry a matching `token` record in the SenML pack (see [Token Authentication](#token-authentication)).
 
 ## Message Format
 
@@ -255,6 +261,47 @@ mosquitto_pub \
     -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
     -t "m/<domain-id>/c/<commands-channel-id>/req" \
     -m "[{\"bn\":\"req-1:\", \"n\":\"config\", \"vs\":\"save,export,/path/to/config.toml,$CONTENT\"}]"
+```
+
+## Agent Lifecycle (control subsystem)
+
+The `control` command manages the running agent without restarting the process. `reset` (below) is used for a full process restart.
+
+| `vs`         | Behavior                                                                              | Response                              |
+| ------------ | ------------------------------------------------------------------------------------- | ------------------------------------- |
+| `stop`       | Pause the heartbeat, telemetry, and device-scheduler loops; the process stays alive   | `stopped`                             |
+| `start`      | Resume the paused loops and restart the device scheduler                              | `started`                             |
+| `reload`     | Re-apply persisted runtime config overrides (validated; invalid values are skipped)   | `reloaded` or `reloaded:<keys>`       |
+| `status`     | Report current runtime state                                                          | `{running, paused, uptime_seconds, version}` JSON |
+| `nodered-*`  | Node-RED passthrough (see [nodered.md](nodered.md))                                   | command-specific                      |
+
+```bash
+# Pause background publishing (agent stays alive), then resume
+mosquitto_pub ... -m '[{"bn":"req-1:","n":"control","vs":"stop"}]'
+mosquitto_pub ... -m '[{"bn":"req-1:","n":"control","vs":"start"}]'
+
+# Re-apply persisted overrides and report status
+mosquitto_pub ... -m '[{"bn":"req-1:","n":"control","vs":"reload"}]'
+mosquitto_pub ... -m '[{"bn":"req-1:","n":"control","vs":"status"}]'
+```
+
+## Route to Downstream Device
+
+The `route` command forwards a hex payload to a registered device's physical interface (opening it if needed), then optionally reads back `<read_bytes>` and returns them as a hex string. With no `read_bytes`, the number of bytes written is returned.
+
+```bash
+# Write bytes 01 a2 ff to <device-id> and read 16 bytes back
+mosquitto_pub ... -m '[{"bn":"req-1:","n":"route","vs":"<device-id>,01a2ff,16"}]'
+```
+
+A missing device returns a clear "device not found" error. See [devices.md](devices.md) for device provisioning.
+
+## Discover Commands (help)
+
+The `help` command returns the registry as a JSON array of `{name, description, usage}`:
+
+```bash
+mosquitto_pub ... -m '[{"bn":"req-1:","n":"help","vs":""}]'
 ```
 
 ## Reset (process restart)
