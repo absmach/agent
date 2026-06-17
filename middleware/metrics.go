@@ -158,6 +158,15 @@ func (ms *metricsMiddleware) OTA(ctx context.Context, url, sha256hex string, siz
 	return ms.svc.OTA(ctx, url, sha256hex, size)
 }
 
+func (ms *metricsMiddleware) OTAFromData(ctx context.Context, data []byte, sha256hex string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "ota_from_data").Add(1)
+		ms.latency.With("method", "ota_from_data").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.OTAFromData(ctx, data, sha256hex)
+}
+
 func (ms *metricsMiddleware) NodeRed(cmdStr string) (string, error) {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "nodered").Add(1)

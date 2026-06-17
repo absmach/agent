@@ -34,6 +34,101 @@ func writeTempFile(t *testing.T, content []byte) string {
 	return f.Name()
 }
 
+func TestParseCfgFromRecords(t *testing.T) {
+	urlVal := "https://example.com/agent.bin"
+	hashVal := "abcdef1234567890"
+	sizeVal := 153600.0
+
+	cases := []struct {
+		desc      string
+		records   []senml.Record
+		wantURL   string
+		wantHash  string
+		wantSize  uint64
+	}{
+		{
+			desc:     "url, hash, and size present",
+			records:  []senml.Record{{Name: "url", StringValue: &urlVal}, {Name: "hash", StringValue: &hashVal}, {Name: "size", Value: &sizeVal}},
+			wantURL:  urlVal,
+			wantHash: hashVal,
+			wantSize: 153600,
+		},
+		{
+			desc:     "hash and size only (no url for MQTT path)",
+			records:  []senml.Record{{Name: "hash", StringValue: &hashVal}, {Name: "size", Value: &sizeVal}},
+			wantHash: hashVal,
+			wantSize: 153600,
+		},
+		{
+			desc:    "empty records",
+			records: []senml.Record{},
+		},
+		{
+			desc:     "url with nil string value is ignored",
+			records:  []senml.Record{{Name: "url", StringValue: nil}},
+			wantURL:  "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			tr := ParseCfgFromRecords(tc.records)
+			assert.Equal(t, tc.wantURL, tr.URL)
+			assert.Equal(t, tc.wantHash, tr.SHA256Hex)
+			assert.Equal(t, tc.wantSize, tr.Size)
+		})
+	}
+}
+
+func TestRunFromData(t *testing.T) {
+	content := []byte("fake binary content for mqtt ota")
+
+	cases := []struct {
+		desc            string
+		data            []byte
+		sha256hex       string
+		wantErrContains string
+	}{
+		{
+			desc:            "empty hash rejected",
+			data:            content,
+			sha256hex:       "",
+			wantErrContains: "hash required",
+		},
+		{
+			desc:            "hash mismatch",
+			data:            content,
+			sha256hex:       "deadbeef",
+			wantErrContains: "sha256 mismatch",
+		},
+		{
+			desc:      "correct hash proceeds to exec (expected to fail in test)",
+			data:      content,
+			sha256hex: sha256hex(content),
+			// syscall.Exec fails because content is not a valid binary;
+			// we just check there is an error (not a verify error).
+			wantErrContains: "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			dir := t.TempDir()
+			dst := filepath.Join(dir, "agent-dst")
+			cfg := Config{BinaryPath: dst, DownloadDir: dir}
+
+			var states []State
+			err := RunFromData(context.Background(), cfg, tc.data, tc.sha256hex,
+				func(s State, _, _ int64, _ float64) { states = append(states, s) })
+
+			assert.Error(t, err)
+			if tc.wantErrContains != "" {
+				assert.ErrorContains(t, err, tc.wantErrContains)
+			}
+		})
+	}
+}
+
 func TestState_String(t *testing.T) {
 	cases := []struct {
 		state    State
@@ -227,7 +322,7 @@ func TestDownload(t *testing.T) {
 			}
 
 			var progress []float64
-			path, err := download(ctx, url, t.TempDir(), tc.sizeLimit, func(pct float64) {
+			path, err := download(ctx, url, t.TempDir(), tc.sizeLimit, func(_, _ int64, pct float64) {
 				progress = append(progress, pct)
 			})
 			if tc.wantErr {
@@ -258,7 +353,7 @@ func TestDownload(t *testing.T) {
 		defer srv.Close()
 
 		var calls []float64
-		path, err := download(context.Background(), srv.URL, t.TempDir(), 0, func(pct float64) {
+		path, err := download(context.Background(), srv.URL, t.TempDir(), 0, func(_, _ int64, pct float64) {
 			calls = append(calls, pct)
 		})
 		require.NoError(t, err)
@@ -473,7 +568,7 @@ func TestRun(t *testing.T) {
 			dir := t.TempDir()
 			cfg := Config{BinaryPath: filepath.Join(dir, "agent"), DownloadDir: dir}
 			var states []State
-			err := Run(context.Background(), cfg, url, tc.sha256hex, 0, func(s State, _ float64) {
+			err := Run(context.Background(), cfg, url, tc.sha256hex, 0, func(s State, _, _ int64, _ float64) {
 				states = append(states, s)
 			})
 

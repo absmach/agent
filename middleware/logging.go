@@ -242,6 +242,24 @@ func (lm *loggingMiddleware) OTA(ctx context.Context, url, sha256hex string, siz
 	return lm.svc.OTA(ctx, url, sha256hex, size)
 }
 
+func (lm *loggingMiddleware) OTAFromData(ctx context.Context, data []byte, sha256hex string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.Int("bytes", len(data)),
+			slog.String("sha256hex", sha256hex),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("OTA from data failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("OTA from data completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.OTAFromData(ctx, data, sha256hex)
+}
+
 func (lm *loggingMiddleware) NodeRed(cmdStr string) (resp string, err error) {
 	defer func(begin time.Time) {
 		args := []any{

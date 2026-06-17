@@ -61,8 +61,9 @@ func (s State) String() string {
 }
 
 // ProgressFn is called on state transitions and during download.
-// progress is 0–100 and is only meaningful in StateDownloading.
-type ProgressFn func(state State, progress float64)
+// bytesWritten and totalBytes are bytes on disk; they are only meaningful during
+// StateDownloading. progress is 0–100 and is only meaningful in StateDownloading.
+type ProgressFn func(state State, bytesWritten, totalBytes int64, progress float64)
 
 // Config holds the OTA updater parameters.
 type Config struct {
@@ -111,6 +112,30 @@ func TriggerFromRecords(records []senml.Record) (Trigger, error) {
 	return t, nil
 }
 
+// ParseCfgFromRecords parses OTA configuration fields from SenML records without
+// requiring a URL. Use this for MQTT data-path priming where firmware is delivered
+// via the ota data topic rather than via HTTP download.
+func ParseCfgFromRecords(records []senml.Record) Trigger {
+	var t Trigger
+	for _, r := range records {
+		switch r.Name {
+		case fieldURL:
+			if r.StringValue != nil {
+				t.URL = strings.TrimSpace(*r.StringValue)
+			}
+		case fieldHash:
+			if r.StringValue != nil {
+				t.SHA256Hex = *r.StringValue
+			}
+		case fieldSize:
+			if r.Value != nil {
+				t.Size = uint64(*r.Value)
+			}
+		}
+	}
+	return t
+}
+
 // Run executes the full OTA cycle: download → verify → replace → restart.
 // sha256hex is the expected SHA-256 hex digest; if empty the sidecar at url+".sha256" is tried.
 // size is the expected byte count; if non-zero the downloaded file is checked against it.
@@ -119,27 +144,27 @@ func TriggerFromRecords(records []senml.Record) (Trigger, error) {
 // On success it never returns (the process is replaced in-place).
 func Run(ctx context.Context, cfg Config, url, sha256hex string, size uint64, progressFn ProgressFn) error {
 	if progressFn == nil {
-		progressFn = func(State, float64) {}
+		progressFn = func(State, int64, int64, float64) {}
 	}
-	progressFn(StateTriggered, 0)
+	progressFn(StateTriggered, 0, 0, 0)
 
-	progressFn(StateDownloading, 0)
-	tmpPath, err := download(ctx, url, cfg.DownloadDir, size, func(pct float64) {
-		progressFn(StateDownloading, pct)
+	progressFn(StateDownloading, 0, 0, 0)
+	tmpPath, err := download(ctx, url, cfg.DownloadDir, size, func(written, total int64, pct float64) {
+		progressFn(StateDownloading, written, total, pct)
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			progressFn(StateAborted, 0)
+			progressFn(StateAborted, 0, 0, 0)
 		}
 		return fmt.Errorf("ota download: %w", err)
 	}
 
-	progressFn(StateVerifying, 100)
+	progressFn(StateVerifying, 0, 0, 100)
 	verified, err := verify(ctx, url, tmpPath, sha256hex)
 	if err != nil {
 		_ = os.Remove(tmpPath)
 		if errors.Is(err, context.Canceled) {
-			progressFn(StateAborted, 0)
+			progressFn(StateAborted, 0, 0, 0)
 		}
 		return fmt.Errorf("ota verify: %w", err)
 	}
@@ -148,20 +173,72 @@ func Run(ctx context.Context, cfg Config, url, sha256hex string, size uint64, pr
 		return fmt.Errorf("ota verify: no hash provided and sidecar not found at %s.sha256; refusing unverified install", url)
 	}
 
-	progressFn(StateReady, 100)
+	progressFn(StateReady, 0, 0, 100)
 	if err := replace(tmpPath, cfg.BinaryPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("ota replace: %w", err)
 	}
 
-	progressFn(StateRestarting, 100)
+	progressFn(StateRestarting, 0, 0, 100)
+	return syscall.Exec(cfg.BinaryPath, os.Args, os.Environ())
+}
+
+// RunFromData installs firmware from an in-memory binary payload instead of
+// downloading from HTTP. sha256hex must be the hex-encoded SHA-256 of data.
+// On success it never returns (the process is replaced in-place).
+func RunFromData(ctx context.Context, cfg Config, data []byte, sha256hex string, progressFn ProgressFn) error {
+	if progressFn == nil {
+		progressFn = func(State, int64, int64, float64) {}
+	}
+	if sha256hex == "" {
+		return fmt.Errorf("ota verify: hash required for MQTT-delivered firmware")
+	}
+
+	totalBytes := int64(len(data))
+	progressFn(StateTriggered, 0, totalBytes, 0)
+	progressFn(StateDownloading, 0, totalBytes, 0)
+
+	f, err := os.CreateTemp(cfg.DownloadDir, "agent-ota-*")
+	if err != nil {
+		progressFn(StateAborted, 0, totalBytes, 0)
+		return fmt.Errorf("ota create temp: %w", err)
+	}
+	tmpPath := f.Name()
+
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmpPath)
+		progressFn(StateAborted, 0, totalBytes, 0)
+		return fmt.Errorf("ota write: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("ota close temp: %w", err)
+	}
+	progressFn(StateDownloading, totalBytes, totalBytes, 100)
+
+	progressFn(StateVerifying, totalBytes, totalBytes, 100)
+	if err := verifyFile(tmpPath, sha256hex); err != nil {
+		_ = os.Remove(tmpPath)
+		progressFn(StateAborted, 0, totalBytes, 0)
+		return fmt.Errorf("ota verify: %w", err)
+	}
+
+	progressFn(StateReady, totalBytes, totalBytes, 100)
+	if err := replace(tmpPath, cfg.BinaryPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("ota replace: %w", err)
+	}
+
+	progressFn(StateRestarting, totalBytes, totalBytes, 100)
 	return syscall.Exec(cfg.BinaryPath, os.Args, os.Environ())
 }
 
 // download fetches url into a temporary file under dir and returns its path.
 // If size is non-zero the stream is aborted as soon as written bytes exceed it.
-// pctFn is called each time download progress crosses a 5% threshold.
-func download(ctx context.Context, url, dir string, size uint64, pctFn func(float64)) (string, error) {
+// pctFn is called each time download progress crosses a 5% threshold with the
+// bytes written so far, the total content length (-1 if unknown), and the percentage.
+func download(ctx context.Context, url, dir string, size uint64, pctFn func(written, total int64, pct float64)) (string, error) {
 	u, err := neturl.Parse(url)
 	if err != nil {
 		return "", fmt.Errorf("invalid URL: %w", err)
@@ -196,7 +273,7 @@ func download(ctx context.Context, url, dir string, size uint64, pctFn func(floa
 	var written int64
 	lastPct := 0.0
 	buf := make([]byte, 32*1024)
-	pctFn(0)
+	pctFn(0, total, 0)
 
 	for {
 		if ctx.Err() != nil {
@@ -221,7 +298,7 @@ func download(ctx context.Context, url, dir string, size uint64, pctFn func(floa
 				pct := float64(written) / float64(total) * 100
 				if pct-lastPct >= 5 {
 					lastPct = pct
-					pctFn(pct)
+					pctFn(written, total, pct)
 				}
 			}
 		}
@@ -238,8 +315,26 @@ func download(ctx context.Context, url, dir string, size uint64, pctFn func(floa
 		_ = os.Remove(tmpName)
 		return "", err
 	}
-	pctFn(100)
+	pctFn(written, total, 100)
 	return tmpName, nil
+}
+
+// verifyFile checks the SHA-256 hash of the file at tmpPath against the expected hex digest.
+func verifyFile(tmpPath, sha256hex string) error {
+	f, err := os.Open(tmpPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	got := fmt.Sprintf("%x", h.Sum(nil))
+	if got != sha256hex {
+		return fmt.Errorf("sha256 mismatch: got %s, want %s", got, sha256hex)
+	}
+	return nil
 }
 
 // verify checks the SHA-256 of tmpPath.
@@ -277,18 +372,8 @@ func verify(ctx context.Context, url, tmpPath, sha256hex string) (bool, error) {
 		expected = fields[0]
 	}
 
-	f, err := os.Open(tmpPath)
-	if err != nil {
+	if err := verifyFile(tmpPath, expected); err != nil {
 		return false, err
-	}
-	defer func() { _ = f.Close() }()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return false, err
-	}
-	got := fmt.Sprintf("%x", h.Sum(nil))
-	if got != expected {
-		return false, fmt.Errorf("sha256 mismatch: got %s, want %s", got, expected)
 	}
 	return true, nil
 }

@@ -221,6 +221,10 @@ type Service interface {
 	// OTA triggers an over-the-air binary update by downloading from url.
 	OTA(ctx context.Context, url, sha256hex string, size uint64) error
 
+	// OTAFromData installs firmware from a binary payload received via MQTT.
+	// sha256hex must be the hex-encoded SHA-256 of data.
+	OTAFromData(ctx context.Context, data []byte, sha256hex string) error
+
 	// Reset performs a reset in the given mode. Supported modes are:
 	//   - "graceful"  – clean shutdown, save state, close connections, then exec
 	//   - "immediate" – emergency reset with minimal cleanup, then exec
@@ -1320,20 +1324,30 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	qos := cfg.MQTT.QoS
 	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
 
-	progressFn := func(state ota.State, progress float64) {
+	publishStatus := func(state ota.State, bytesWritten, totalBytes int64, progress float64, errMsg string) {
 		now := float64(time.Now().UnixNano()) / float64(time.Second)
 		stateStr := strings.ToLower(state.String())
-		statusPack := []senml.Record{
-			{BaseName: "gw:", BaseTime: now, Name: "ota_state", StringValue: &stateStr},
-			{Name: "ota_progress", Unit: "%", Value: &progress},
+		bytesVal := float64(bytesWritten)
+		totalVal := float64(totalBytes)
+		pack := []senml.Record{
+			{BaseName: "gw:", BaseTime: now, Name: "state", StringValue: &stateStr},
+			{Name: "bytes", Unit: "By", Value: &bytesVal},
+			{Name: "total", Unit: "By", Value: &totalVal},
+			{Name: "progress", Unit: "%", Value: &progress},
 		}
-		b, err := senml.EncodeRecords(statusPack)
+		if errMsg != "" {
+			pack = append(pack, senml.Record{Name: "error", StringValue: &errMsg})
+		}
+		b, err := senml.EncodeRecords(pack)
 		if err != nil {
 			a.logger.Warn("Failed to encode OTA status", slog.Any("error", err))
 			return
 		}
-		token := a.mqttClient.Publish(statusTopic, qos, false, b)
+		token := a.mqttClient.Publish(statusTopic, qos, true, b)
 		token.Wait()
+	}
+	progressFn := func(state ota.State, bytesWritten, totalBytes int64, progress float64) {
+		publishStatus(state, bytesWritten, totalBytes, progress, "")
 	}
 
 	runErr := ota.Run(otaCtx, otaCfg, url, sha256hex, size, progressFn)
@@ -1343,9 +1357,88 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 			a.otaLastErr = "aborted"
 		}
 		if a.otaAborted.Load() {
-			progressFn(ota.StateAborted, 0)
+			publishStatus(ota.StateAborted, 0, 0, 0, "OTA aborted by user")
 			a.otaLastErr = "OTA aborted by user"
 		} else {
+			publishStatus(ota.StateAborted, 0, 0, 0, runErr.Error())
+			a.otaLastErr = runErr.Error()
+		}
+		a.otaMu.Unlock()
+	}
+	return runErr
+}
+
+func (a *agent) OTAFromData(ctx context.Context, data []byte, sha256hex string) error {
+	cfg := a.Config()
+	if !cfg.OTA.Enabled {
+		return errors.New("OTA is disabled")
+	}
+
+	otaCtx, otaCancel := context.WithCancel(ctx)
+
+	a.otaMu.Lock()
+	if a.otaBusy.Load() {
+		a.otaMu.Unlock()
+		otaCancel()
+		return errors.New("OTA already in progress")
+	}
+	a.otaBusy.Store(true)
+	a.otaLastErr = ""
+	a.otaCancel = otaCancel
+	a.otaAborted.Store(false)
+	a.otaMu.Unlock()
+
+	defer func() {
+		a.otaMu.Lock()
+		a.otaCancel = nil
+		a.otaMu.Unlock()
+		a.otaBusy.Store(false)
+	}()
+
+	otaCfg := ota.Config{
+		BinaryPath:  cfg.OTA.BinaryPath,
+		DownloadDir: cfg.OTA.DownloadDir,
+	}
+
+	domainID := cfg.DomainID
+	ctrlChan := cfg.Channels.CtrlChan()
+	qos := cfg.MQTT.QoS
+	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
+
+	publishStatus := func(state ota.State, bytesWritten, totalBytes int64, progress float64, errMsg string) {
+		now := float64(time.Now().UnixNano()) / float64(time.Second)
+		stateStr := strings.ToLower(state.String())
+		bytesVal := float64(bytesWritten)
+		totalVal := float64(totalBytes)
+		pack := []senml.Record{
+			{BaseName: "gw:", BaseTime: now, Name: "state", StringValue: &stateStr},
+			{Name: "bytes", Unit: "By", Value: &bytesVal},
+			{Name: "total", Unit: "By", Value: &totalVal},
+			{Name: "progress", Unit: "%", Value: &progress},
+		}
+		if errMsg != "" {
+			pack = append(pack, senml.Record{Name: "error", StringValue: &errMsg})
+		}
+		b, err := senml.EncodeRecords(pack)
+		if err != nil {
+			a.logger.Warn("Failed to encode OTA status", slog.Any("error", err))
+			return
+		}
+		token := a.mqttClient.Publish(statusTopic, qos, true, b)
+		token.Wait()
+	}
+	progressFn := func(state ota.State, bytesWritten, totalBytes int64, progress float64) {
+		publishStatus(state, bytesWritten, totalBytes, progress, "")
+	}
+
+	runErr := ota.RunFromData(otaCtx, otaCfg, data, sha256hex, progressFn)
+	if runErr != nil {
+		a.otaMu.Lock()
+		if a.otaAborted.Load() {
+			publishStatus(ota.StateAborted, 0, 0, 0, "OTA aborted by user")
+			a.otaLastErr = "OTA aborted by user"
+		} else {
+			publishStatus(ota.StateAborted, 0, 0, 0, runErr.Error())
 			a.otaLastErr = runErr.Error()
 		}
 		a.otaMu.Unlock()

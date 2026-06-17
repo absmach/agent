@@ -796,6 +796,69 @@ func (_c *Service_OTAAbort_Call) RunAndReturn(run func() error) *Service_OTAAbor
 	return _c
 }
 
+// OTAFromData provides a mock function for the type Service
+func (_mock *Service) OTAFromData(ctx context.Context, data []byte, sha256hex string) error {
+	ret := _mock.Called(ctx, data, sha256hex)
+
+	if len(ret) == 0 {
+		panic("no return value specified for OTAFromData")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, string) error); ok {
+		r0 = returnFunc(ctx, data, sha256hex)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Service_OTAFromData_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OTAFromData'
+type Service_OTAFromData_Call struct {
+	*mock.Call
+}
+
+// OTAFromData is a helper method to define mock.On call
+//   - ctx context.Context
+//   - data []byte
+//   - sha256hex string
+func (_e *Service_Expecter) OTAFromData(ctx interface{}, data interface{}, sha256hex interface{}) *Service_OTAFromData_Call {
+	return &Service_OTAFromData_Call{Call: _e.mock.On("OTAFromData", ctx, data, sha256hex)}
+}
+
+func (_c *Service_OTAFromData_Call) Run(run func(ctx context.Context, data []byte, sha256hex string)) *Service_OTAFromData_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []byte
+		if args[1] != nil {
+			arg1 = args[1].([]byte)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *Service_OTAFromData_Call) Return(err error) *Service_OTAFromData_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Service_OTAFromData_Call) RunAndReturn(run func(ctx context.Context, data []byte, sha256hex string) error) *Service_OTAFromData_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // OTAStatus provides a mock function for the type Service
 func (_mock *Service) OTAStatus() agent.OTAStatusInfo {
 	ret := _mock.Called()
