@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+
 // MakeHandler returns a HTTP handler for API endpoints.
 func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Stream) http.Handler {
 	opts := []kithttp.ServerOption{
@@ -37,6 +38,16 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 	r.MethodFunc(http.MethodOptions, "/*", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
+
+	hub := NewWSHub(logger)
+	go hub.Run()
+	r.Get("/ws", hub.ServeHTTP)
+
+	if a, ok := svc.(interface{ SetPushEvent(func(string)) }); ok {
+		a.SetPushEvent(func(typeName string) {
+			PushEvent(WSEvent{Type: typeName})
+		})
+	}
 
 	r.Post("/pub", kithttp.NewServer(
 		pubEndpoint(svc),

@@ -13,9 +13,75 @@ export function commitUrl(commit?: string): string | null {
   return `${REPO_URL}/commit/${commit}`;
 }
 
-/** Polls the agent's /config endpoint to track local link liveness. */
-export function useAgentStatus(intervalMs = 5000): LinkStatus {
+type WSEvent = {
+  type: string;
+  data?: unknown;
+  error?: string;
+};
+
+type EventCallback = (event: WSEvent) => void;
+
+let wsRef: WebSocket | null = null;
+let wsListeners: Set<EventCallback> = new Set();
+let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+function connectWS() {
+  if (wsRef?.readyState === WebSocket.OPEN || wsRef?.readyState === WebSocket.CONNECTING) return;
+
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const url = `${proto}//${location.host}/ws`;
+  wsRef = new WebSocket(url);
+
+  wsRef.onopen = () => {
+    if (wsReconnectTimer) {
+      clearTimeout(wsReconnectTimer);
+      wsReconnectTimer = null;
+    }
+  };
+
+  wsRef.onmessage = (msg) => {
+    try {
+      const event: WSEvent = JSON.parse(msg.data);
+      wsListeners.forEach((cb) => {
+        cb(event);
+      });
+    } catch {
+      // ignore malformed messages
+    }
+  };
+
+  wsRef.onclose = () => {
+    wsRef = null;
+    wsReconnectTimer = setTimeout(connectWS, 3000);
+  };
+
+  wsRef.onerror = () => {
+    wsRef?.close();
+  };
+}
+
+function subscribe(cb: EventCallback): () => void {
+  wsListeners.add(cb);
+  if (!wsRef) connectWS();
+  return () => {
+    wsListeners.delete(cb);
+    if (wsListeners.size === 0 && wsRef) {
+      wsRef.close();
+      wsRef = null;
+    }
+  };
+}
+
+/** Uses WebSocket events to track agent link liveness, falling back to polling. */
+export function useAgentStatus(intervalMs = 30000): LinkStatus {
   const [status, setStatus] = useState<LinkStatus>("checking");
+
+  useEffect(() => {
+    const unsub = subscribe((event) => {
+      if (event.type === "config") setStatus("online");
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -94,10 +160,31 @@ export function useTheme() {
   return { dark, toggle };
 }
 
-/** Polls /devices and returns total + active counts (null until first load). */
-export function useDeviceCount(intervalMs = 15000) {
+/** Uses WebSocket events for device updates, with polling fallback. */
+export function useDeviceCount(intervalMs = 60000) {
   const [count, setCount] = useState<number | null>(null);
   const [online, setOnline] = useState(0);
+
+  useEffect(() => {
+    const unsub = subscribe((event) => {
+      if (event.type === "devices") {
+        fetch("/devices", {
+          cache: "no-store",
+          signal: AbortSignal.timeout(3000),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (!data) return;
+            const list: { active?: boolean }[] = data.devices ?? [];
+            setCount(list.length);
+            setOnline(list.filter((d) => d.active).length);
+          })
+          .catch(() => {});
+      }
+    });
+    return unsub;
+  }, []);
+
   useEffect(() => {
     let alive = true;
     async function load() {

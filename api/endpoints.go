@@ -64,6 +64,8 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 			return nil, err
 		}
 
+		PushEvent(WSEvent{Type: "config"})
+
 		return addConfigRes{
 			Service:  svcName,
 			Response: "config",
@@ -142,6 +144,7 @@ func addDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
 		if err != nil {
 			return nil, err
 		}
+		PushEvent(WSEvent{Type: "devices"})
 		return addDeviceRes{Device: d}, nil
 	}
 }
@@ -152,6 +155,7 @@ func removeDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
 		if err := svc.RemoveDevice(id); err != nil {
 			return nil, err
 		}
+		PushEvent(WSEvent{Type: "devices"})
 		return removeDeviceRes{}, nil
 	}
 }
@@ -162,6 +166,7 @@ func markDeviceSeenEndpoint(svc agent.Service) endpoint.Endpoint {
 		if err := svc.MarkDeviceSeen(id); err != nil {
 			return nil, err
 		}
+		PushEvent(WSEvent{Type: "devices"})
 		return markDeviceSeenRes{}, nil
 	}
 }
@@ -182,6 +187,7 @@ func otaTriggerEndpoint(svc agent.Service) endpoint.Endpoint {
 		otaCtx := context.WithoutCancel(ctx)
 		go func() {
 			_ = svc.OTA(otaCtx, req.URL, req.SHA256Hex, req.Size)
+			PushEvent(WSEvent{Type: "ota"})
 		}()
 		return otaTriggerRes{Status: "triggered"}, nil
 	}
@@ -229,6 +235,7 @@ func openDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
 		if err := svc.OpenDevice(ctx, id); err != nil {
 			return nil, err
 		}
+		PushEvent(WSEvent{Type: "devices"})
 		return simpleRes{Service: svcName, Response: "opened"}, nil
 	}
 }
@@ -239,6 +246,7 @@ func closeDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
 		if err := svc.CloseDevice(id); err != nil {
 			return nil, err
 		}
+		PushEvent(WSEvent{Type: "devices"})
 		return simpleRes{Service: svcName, Response: "closed"}, nil
 	}
 }
@@ -301,6 +309,7 @@ func runtimeConfigSetEndpoint(svc agent.Service) endpoint.Endpoint {
 		if err := svc.SetRuntimeConfig(ctx, req.Key, req.Value); err != nil {
 			return nil, err
 		}
+		PushEvent(WSEvent{Type: "runtime_config"})
 		return simpleRes{Service: svcName, Response: "ok"}, nil
 	}
 }

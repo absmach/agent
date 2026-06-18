@@ -301,6 +301,7 @@ type agent struct {
 	termMu              sync.Mutex
 	devices             *devicemgr.Manager
 	sched               *Scheduler
+	pushEvent           func(typeName string)
 	otaBusy             atomic.Bool
 	store               cfgstore.Store
 	heartbeatIntervalCh chan time.Duration
@@ -358,6 +359,10 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 	}
 
 	return ag, nil
+}
+
+func (a *agent) SetPushEvent(fn func(string)) {
+	a.pushEvent = fn
 }
 
 func (a *agent) Control(uuid, cmdStr string) error {
