@@ -82,6 +82,9 @@ const (
 	senmlNameUptime = "uptime"
 	notAllowed      = "not_allowed"
 
+	// senmlBaseGateway is the SenML base name used for gateway-scoped records.
+	senmlBaseGateway = "gw:"
+
 	provisionTimeout = 30 * time.Second
 )
 
@@ -1213,7 +1216,7 @@ func (a *agent) gatewayTelemetryPayload() []senml.Record {
 	uptime := time.Since(startTime).Seconds()
 
 	records := []senml.Record{
-		{BaseName: "gw:", BaseTime: now, Name: "uptime", Unit: "s", Value: &uptime},
+		{BaseName: senmlBaseGateway, BaseTime: now, Name: "uptime", Unit: "s", Value: &uptime},
 	}
 
 	if total, _, available, ok := readMemoryStats(); ok {
@@ -1325,26 +1328,7 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
 
 	publishStatus := func(state ota.State, bytesWritten, totalBytes int64, progress float64, errMsg string) {
-		now := float64(time.Now().UnixNano()) / float64(time.Second)
-		stateStr := strings.ToLower(state.String())
-		bytesVal := float64(bytesWritten)
-		totalVal := float64(totalBytes)
-		pack := []senml.Record{
-			{BaseName: "gw:", BaseTime: now, Name: "state", StringValue: &stateStr},
-			{Name: "bytes", Unit: "By", Value: &bytesVal},
-			{Name: "total", Unit: "By", Value: &totalVal},
-			{Name: "progress", Unit: "%", Value: &progress},
-		}
-		if errMsg != "" {
-			pack = append(pack, senml.Record{Name: "error", StringValue: &errMsg})
-		}
-		b, err := senml.EncodeRecords(pack)
-		if err != nil {
-			a.logger.Warn("Failed to encode OTA status", slog.Any("error", err))
-			return
-		}
-		token := a.mqttClient.Publish(statusTopic, qos, true, b)
-		token.Wait()
+		a.publishOTAStatus(statusTopic, qos, state, bytesWritten, totalBytes, progress, errMsg)
 	}
 	progressFn := func(state ota.State, bytesWritten, totalBytes int64, progress float64) {
 		publishStatus(state, bytesWritten, totalBytes, progress, "")
@@ -1406,26 +1390,7 @@ func (a *agent) OTAFromData(ctx context.Context, data []byte, sha256hex string) 
 	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
 
 	publishStatus := func(state ota.State, bytesWritten, totalBytes int64, progress float64, errMsg string) {
-		now := float64(time.Now().UnixNano()) / float64(time.Second)
-		stateStr := strings.ToLower(state.String())
-		bytesVal := float64(bytesWritten)
-		totalVal := float64(totalBytes)
-		pack := []senml.Record{
-			{BaseName: "gw:", BaseTime: now, Name: "state", StringValue: &stateStr},
-			{Name: "bytes", Unit: "By", Value: &bytesVal},
-			{Name: "total", Unit: "By", Value: &totalVal},
-			{Name: "progress", Unit: "%", Value: &progress},
-		}
-		if errMsg != "" {
-			pack = append(pack, senml.Record{Name: "error", StringValue: &errMsg})
-		}
-		b, err := senml.EncodeRecords(pack)
-		if err != nil {
-			a.logger.Warn("Failed to encode OTA status", slog.Any("error", err))
-			return
-		}
-		token := a.mqttClient.Publish(statusTopic, qos, true, b)
-		token.Wait()
+		a.publishOTAStatus(statusTopic, qos, state, bytesWritten, totalBytes, progress, errMsg)
 	}
 	progressFn := func(state ota.State, bytesWritten, totalBytes int64, progress float64) {
 		publishStatus(state, bytesWritten, totalBytes, progress, "")
@@ -1444,6 +1409,31 @@ func (a *agent) OTAFromData(ctx context.Context, data []byte, sha256hex string) 
 		a.otaMu.Unlock()
 	}
 	return runErr
+}
+
+// publishOTAStatus publishes a retained OTA status SenML record to statusTopic.
+// errMsg is appended as an "error" field only when non-empty.
+func (a *agent) publishOTAStatus(statusTopic string, qos byte, state ota.State, bytesWritten, totalBytes int64, progress float64, errMsg string) {
+	now := float64(time.Now().UnixNano()) / float64(time.Second)
+	stateStr := strings.ToLower(state.String())
+	bytesVal := float64(bytesWritten)
+	totalVal := float64(totalBytes)
+	pack := []senml.Record{
+		{BaseName: senmlBaseGateway, BaseTime: now, Name: "state", StringValue: &stateStr},
+		{Name: "bytes", Unit: "By", Value: &bytesVal},
+		{Name: "total", Unit: "By", Value: &totalVal},
+		{Name: "progress", Unit: "%", Value: &progress},
+	}
+	if errMsg != "" {
+		pack = append(pack, senml.Record{Name: "error", StringValue: &errMsg})
+	}
+	b, err := senml.EncodeRecords(pack)
+	if err != nil {
+		a.logger.Warn("Failed to encode OTA status", slog.Any("error", err))
+		return
+	}
+	token := a.mqttClient.Publish(statusTopic, qos, true, b)
+	token.Wait()
 }
 
 func (a *agent) OTAAbort() error {
