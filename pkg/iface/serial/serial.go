@@ -5,6 +5,7 @@ package serial
 
 import (
 	"fmt"
+	"time"
 
 	goserial "go.bug.st/serial"
 )
@@ -41,6 +42,9 @@ func New(cfg Config) *Serial {
 	return &Serial{cfg: cfg}
 }
 
+const openTimeout = 10 * time.Second
+const readTimeout = 100 * time.Millisecond
+
 // Open opens the serial port with the configured parameters.
 func (s *Serial) Open() error {
 	if s.cfg.Path == "" {
@@ -52,12 +56,30 @@ func (s *Serial) Open() error {
 		StopBits: s.cfg.StopBits,
 		Parity:   s.cfg.Parity,
 	}
-	port, err := goserial.Open(s.cfg.Path, mode)
-	if err != nil {
-		return fmt.Errorf("serial: open %s: %w", s.cfg.Path, err)
+
+	type result struct {
+		port goserial.Port
+		err  error
 	}
-	s.port = port
-	return nil
+	ch := make(chan result, 1)
+	go func() {
+		p, err := goserial.Open(s.cfg.Path, mode)
+		ch <- result{p, err}
+	}()
+
+	select {
+	case r := <-ch:
+		if r.err != nil {
+			return fmt.Errorf("serial: open %s: %w", s.cfg.Path, r.err)
+		}
+		s.port = r.port
+		if err := s.port.SetReadTimeout(readTimeout); err != nil {
+			return fmt.Errorf("serial: set read timeout: %w", err)
+		}
+		return nil
+	case <-time.After(openTimeout):
+		return fmt.Errorf("serial: open %s: timeout after %v", s.cfg.Path, openTimeout)
+	}
 }
 
 // Close closes the serial port.

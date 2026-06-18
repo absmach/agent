@@ -246,7 +246,11 @@ func closeDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
 func readDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
 	return func(_ context.Context, request any) (any, error) {
 		req := request.(decodeIDPayload)
-		data, err := svc.ReadDevice(req.ID, req.Bytes)
+		n := req.Bytes
+		if n <= 0 {
+			n = 1024
+		}
+		data, err := svc.ReadDevice(req.ID, n)
 		if err != nil {
 			return nil, err
 		}
@@ -279,7 +283,7 @@ func runtimeConfigGetEndpoint(svc agent.Service) endpoint.Endpoint {
 		for _, k := range keys {
 			val, err := svc.GetRuntimeConfig(k)
 			if err != nil {
-				result[k] = "error"
+				result[k] = ""
 			} else {
 				result[k] = val
 			}

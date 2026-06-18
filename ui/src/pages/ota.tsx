@@ -78,6 +78,9 @@ export function OTAPage() {
   const [triggerError, setTriggerError] = useState("");
 
   const [release, setRelease] = useState<ReleaseCheck>({ state: "idle" });
+  const [releaseURL, setReleaseURL] = useState(
+    "https://api.github.com/repos/absmach/agent/releases/latest",
+  );
 
   async function pollStatus() {
     try {
@@ -108,7 +111,7 @@ export function OTAPage() {
     try {
       const [healthRes, releaseRes] = await Promise.all([
         fetch("/health"),
-        fetch("https://api.github.com/repos/absmach/agent/releases/latest", {
+        fetch(releaseURL, {
           headers: { Accept: "application/vnd.github+json" },
         }),
       ]);
@@ -248,6 +251,31 @@ export function OTAPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <Input
+              type="url"
+              value={releaseURL}
+              onInput={(e) =>
+                setReleaseURL((e.target as HTMLInputElement).value)
+              }
+              placeholder="https://api.github.com/repos/owner/repo/releases/latest"
+              className="flex-1 text-xs font-mono"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={checkForUpdates}
+              disabled={release.state === "checking"}
+            >
+              {release.state === "checking" ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <RefreshCw className="size-3" />
+              )}
+              {release.state === "idle" ? "Check" : "Check again"}
+            </Button>
+          </div>
+
           {release.state === "idle" && (
             <p className="text-sm text-muted-foreground">
               Check GitHub for the latest published release and pick a binary to
@@ -315,13 +343,6 @@ export function OTAPage() {
           )}
 
           {release.state === "error" && <ErrorAlert error={release.error} />}
-
-          {release.state !== "checking" && (
-            <Button variant="outline" size="sm" onClick={checkForUpdates}>
-              <RefreshCw className="size-3" />
-              {release.state === "idle" ? "Check for updates" : "Check again"}
-            </Button>
-          )}
         </CardContent>
       </Card>
 

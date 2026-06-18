@@ -1371,11 +1371,8 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	qos := cfg.MQTT.QoS
 	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
 
-	publishStatus := func(state ota.State, bytesWritten, totalBytes int64, progress float64, errMsg string) {
-		a.publishOTAStatus(statusTopic, qos, state, bytesWritten, totalBytes, progress, errMsg)
-	}
 	progressFn := func(state ota.State, bytesWritten, totalBytes int64, progress float64) {
-		publishStatus(state, bytesWritten, totalBytes, progress, "")
+		a.publishOTAStatus(statusTopic, qos, state, bytesWritten, totalBytes, progress, "")
 	}
 
 	runErr := ota.Run(otaCtx, otaCfg, url, sha256hex, size, progressFn)
@@ -1385,10 +1382,10 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 			a.otaLastErr = "aborted"
 		}
 		if a.otaAborted.Load() {
-			publishStatus(ota.StateAborted, 0, 0, 0, "OTA aborted by user")
+			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, "OTA aborted by user")
 			a.otaLastErr = "OTA aborted by user"
 		} else {
-			publishStatus(ota.StateAborted, 0, 0, 0, runErr.Error())
+			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, runErr.Error())
 			a.otaLastErr = runErr.Error()
 		}
 		a.otaMu.Unlock()
@@ -1433,21 +1430,18 @@ func (a *agent) OTAFromData(ctx context.Context, data []byte, sha256hex string) 
 	qos := cfg.MQTT.QoS
 	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
 
-	publishStatus := func(state ota.State, bytesWritten, totalBytes int64, progress float64, errMsg string) {
-		a.publishOTAStatus(statusTopic, qos, state, bytesWritten, totalBytes, progress, errMsg)
-	}
 	progressFn := func(state ota.State, bytesWritten, totalBytes int64, progress float64) {
-		publishStatus(state, bytesWritten, totalBytes, progress, "")
+		a.publishOTAStatus(statusTopic, qos, state, bytesWritten, totalBytes, progress, "")
 	}
 
 	runErr := ota.RunFromData(otaCtx, otaCfg, data, sha256hex, progressFn)
 	if runErr != nil {
 		a.otaMu.Lock()
 		if a.otaAborted.Load() {
-			publishStatus(ota.StateAborted, 0, 0, 0, "OTA aborted by user")
+			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, "OTA aborted by user")
 			a.otaLastErr = "OTA aborted by user"
 		} else {
-			publishStatus(ota.StateAborted, 0, 0, 0, runErr.Error())
+			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, runErr.Error())
 			a.otaLastErr = runErr.Error()
 		}
 		a.otaMu.Unlock()
@@ -1476,6 +1470,12 @@ func (a *agent) publishOTAStatus(statusTopic string, qos byte, state ota.State, 
 		a.logger.Warn("Failed to encode OTA status", slog.Any("error", err))
 		return
 	}
+
+	a.logger.Info("OTA progress",
+		slog.String("state", stateStr),
+		slog.Float64("progress", progress),
+	)
+
 	token := a.mqttClient.Publish(statusTopic, qos, true, b)
 	token.Wait()
 }
@@ -2024,7 +2024,17 @@ func (a *agent) ReadDevice(id string, n int) ([]byte, error) {
 	if a.devices == nil {
 		return nil, errDeviceManagerDisabled
 	}
-	return a.devices.ReadIface(id, n)
+	data, err := a.devices.ReadIface(id, n)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > 0 {
+		return data, nil
+	}
+	if last := a.devices.LastReadData(id); len(last) > 0 {
+		return last, nil
+	}
+	return data, nil
 }
 
 func (a *agent) WriteDevice(id, hexData string) (int, error) {

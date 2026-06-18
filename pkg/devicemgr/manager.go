@@ -20,7 +20,10 @@ type Manager struct {
 	mu         sync.RWMutex
 	interfaces map[string]iface.Interface
 	ifaceCfg   iface.Config
+	lastRead   map[string][]byte
 }
+
+const maxLastRead = 4096
 
 // New creates a Manager backed by a BoltDB store at dbPath.
 func New(dbPath string, cfg ProvisionConfig, ifaceCfg iface.Config) (*Manager, error) {
@@ -33,6 +36,7 @@ func New(dbPath string, cfg ProvisionConfig, ifaceCfg iface.Config) (*Manager, e
 		provision:  newProvisionClient(cfg),
 		interfaces: make(map[string]iface.Interface),
 		ifaceCfg:   ifaceCfg,
+		lastRead:   make(map[string][]byte),
 	}, nil
 }
 
@@ -76,6 +80,7 @@ func (m *Manager) Remove(id string) error {
 	if ok {
 		delete(m.interfaces, id)
 	}
+	delete(m.lastRead, id)
 	m.mu.Unlock()
 	if ok {
 		if err := ifc.Close(); err != nil {
@@ -178,7 +183,23 @@ func (m *Manager) ReadIface(id string, n int) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read from device %s: %w", id, err)
 	}
-	return buf[:read], nil
+	data := buf[:read]
+	if len(data) > 0 {
+		m.mu.Lock()
+		if len(data) > maxLastRead {
+			m.lastRead[id] = data[:maxLastRead]
+		} else {
+			m.lastRead[id] = data
+		}
+		m.mu.Unlock()
+	}
+	return data, nil
+}
+
+func (m *Manager) LastReadData(id string) []byte {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.lastRead[id]
 }
 
 // WriteIface sends hex-encoded data to the open interface of the given device.

@@ -6,6 +6,8 @@ import {
   Cable,
   Copy,
   Cpu,
+  Eye,
+  EyeOff,
   Loader2,
   LogIn,
   LogOut,
@@ -51,6 +53,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toaster";
 import { Tooltip } from "@/components/ui/tooltip";
 
@@ -112,6 +115,25 @@ function truncateId(id: string): string {
   return id.length > 13 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 }
 
+function hexDecode(hex: string): string {
+  try {
+    const bytes = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      bytes.push(parseInt(hex.slice(i, i + 2), 16));
+    }
+    return new TextDecoder().decode(new Uint8Array(bytes));
+  } catch {
+    return hex;
+  }
+}
+
+function hexEncode(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 async function extractError(res: Response): Promise<string> {
   try {
     const body = await res.json();
@@ -138,6 +160,7 @@ export function DevicesPage() {
   });
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState("");
+  const [showExtKey, setShowExtKey] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -235,7 +258,7 @@ export function DevicesPage() {
 
   async function handleRead(id: string) {
     try {
-      const res = await fetch(`/devices/${id}/read`, { method: "POST" });
+      const res = await fetch(`/devices/${id}/read`, { method: "POST", body: "{}" });
       if (!res.ok) throw new Error(await extractError(res));
       const data = await res.json();
       const dataStr =
@@ -251,25 +274,25 @@ export function DevicesPage() {
     id: string;
     data: string;
   } | null>(null);
-  const [writeDeviceId, setWriteDeviceId] = useState<string | null>(null);
-  const [writeData, setWriteData] = useState("");
+  const [writeDialog, setWriteDialog] = useState<string | null>(null);
+  const [writeText, setWriteText] = useState("");
 
   async function handleWrite(id: string) {
-    if (writeDeviceId !== id) {
-      setWriteDeviceId(id);
-      setWriteData("");
+    if (writeDialog !== id) {
+      setWriteDialog(id);
+      setWriteText("");
       return;
     }
-    if (!writeData.trim()) return;
+    if (!writeText.trim()) return;
     try {
       const res = await fetch(`/devices/${id}/write`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: writeData }),
+        body: JSON.stringify({ data: hexEncode(writeText) }),
       });
       if (!res.ok) throw new Error(await extractError(res));
-      setWriteDeviceId(null);
-      setWriteData("");
+      setWriteDialog(null);
+      setWriteText("");
       toast({ message: "Data written to device", variant: "success" });
       setError("");
     } catch (e) {
@@ -383,19 +406,31 @@ export function DevicesPage() {
               </div>
               <div className="flex flex-col gap-1.5 sm:col-span-2">
                 <Label htmlFor="dev-extkey">External key</Label>
-                <Input
-                  id="dev-extkey"
-                  type="password"
-                  placeholder="pre-shared secret or password"
-                  value={form.ext_key}
-                  onInput={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      ext_key: (e.target as HTMLInputElement).value,
-                    }))
-                  }
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="dev-extkey"
+                    type={showExtKey ? "text" : "password"}
+                    placeholder="pre-shared secret or password"
+                    value={form.ext_key}
+                    onInput={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        ext_key: (e.target as HTMLInputElement).value,
+                      }))
+                    }
+                    required
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowExtKey((v) => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    tabIndex={-1}
+                    aria-label={showExtKey ? "Hide password" : "Show password"}
+                  >
+                    {showExtKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
               </div>
               <ErrorAlert error={addError} className="sm:col-span-2" />
               <div className="flex gap-2 sm:col-span-2">
@@ -462,21 +497,6 @@ export function DevicesPage() {
                   status={d.active ? "active" : "inactive"}
                   label={d.active ? "Active" : "Inactive"}
                 />
-                {writeDeviceId === d.id && (
-                  <Input
-                    value={writeData}
-                    onInput={(e) =>
-                      setWriteData((e.target as HTMLInputElement).value)
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleWrite(d.id);
-                      if (e.key === "Escape") setWriteDeviceId(null);
-                    }}
-                    placeholder="data to write…"
-                    className="h-7 w-28 text-xs"
-                    autoFocus
-                  />
-                )}
                 <div className="flex items-center gap-1">
                   <Tooltip content="Open interface" side="bottom">
                     <Button
@@ -555,15 +575,19 @@ export function DevicesPage() {
           <DialogHeader>
             <DialogTitle>
               Read from{" "}
-              {readResult?.id ? `${readResult.id.slice(0, 8)}…` : "device"}
+              {devices.find((d) => d.id === readResult?.id)?.name ??
+                readResult?.id?.slice(0, 8)}
             </DialogTitle>
             <DialogDescription>
-              Raw data read from the device interface.
+              Data read from the device interface.
             </DialogDescription>
           </DialogHeader>
-          <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-3 font-mono text-xs text-foreground">
-            {readResult?.data}
-          </pre>
+          <Textarea
+            value={readResult?.data ? hexDecode(readResult.data) : ""}
+            readOnly
+            rows={6}
+            className="font-mono text-xs"
+          />
           <div className="mt-4 flex justify-end">
             <Button
               variant="outline"
@@ -571,6 +595,55 @@ export function DevicesPage() {
               onClick={() => setReadResult(null)}
             >
               Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!writeDialog}
+        onOpenChange={(v) => {
+          if (!v) setWriteDialog(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Write to{" "}
+              {devices.find((d) => d.id === writeDialog)?.name ??
+                writeDialog?.slice(0, 8)}
+            </DialogTitle>
+            <DialogDescription>
+              Enter text to send to the device.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={writeText}
+            onInput={(e) =>
+              setWriteText((e.target as HTMLTextAreaElement).value)
+            }
+            placeholder="type your message here…"
+            rows={4}
+            className="font-mono text-xs"
+          />
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setWriteDialog(null);
+                setWriteText("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!writeText.trim()}
+              onClick={() => writeDialog && handleWrite(writeDialog)}
+            >
+              <Upload className="size-3" />
+              Send
             </Button>
           </div>
         </DialogContent>

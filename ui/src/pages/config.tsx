@@ -4,6 +4,9 @@
 import {
   AlertCircle,
   CheckCircle2,
+  Copy,
+  Eye,
+  EyeOff,
   Loader2,
   Power,
   RefreshCw,
@@ -19,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { useToast } from "@/components/ui/toaster";
 
 interface RuntimeConfig {
   log_level: string;
@@ -58,6 +62,7 @@ const RUNTIME_KEYS: {
 ];
 
 export function ConfigPage() {
+  const { toast } = useToast();
   const [runtimeConfig, setRuntimeConfig] = useState<RuntimeConfig | null>(
     null,
   );
@@ -122,6 +127,7 @@ export function ConfigPage() {
   const [resetMode, setResetMode] = useState("graceful");
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState("");
+  const [secretVisible, setSecretVisible] = useState(false);
 
   async function doReset() {
     setResetting(true);
@@ -194,6 +200,51 @@ export function ConfigPage() {
                           </option>
                         ))}
                       </Select>
+                    ) : type === "password" ? (
+                      <div className="relative flex-1">
+                        <Input
+                          id={`rt-${key}`}
+                          type={secretVisible ? "text" : "password"}
+                          value={editValues[key] || ""}
+                          onInput={(e) =>
+                            setEditValues((v) => ({
+                              ...v,
+                              [key]: (e.target as HTMLInputElement).value,
+                            }))
+                          }
+                          className="pr-14"
+                        />
+                        <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setSecretVisible((v) => !v)}
+                            className="rounded p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+                            title={secretVisible ? "Hide" : "Show"}
+                          >
+                            {secretVisible ? (
+                              <EyeOff className="size-3.5" />
+                            ) : (
+                              <Eye className="size-3.5" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await navigator.clipboard.writeText(
+                                editValues[key] || "",
+                              );
+                              toast({
+                                message: "Copied to clipboard",
+                                variant: "success",
+                              });
+                            }}
+                            className="rounded p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+                            title="Copy to clipboard"
+                          >
+                            <Copy className="size-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <Input
                         id={`rt-${key}`}

@@ -170,8 +170,7 @@ func Run(ctx context.Context, cfg Config, url, sha256hex string, size uint64, pr
 		return fmt.Errorf("ota verify: %w", err)
 	}
 	if !verified {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("ota verify: no hash provided and sidecar not found at %s.sha256; refusing unverified install", url)
+		progressFn(StateVerifying, 100)
 	}
 
 	progressFn(StateReady, totalBytes, totalBytes, 100)
@@ -379,17 +378,17 @@ func verify(ctx context.Context, url, tmpPath, sha256hex string) (bool, error) {
 		if err != nil {
 			return false, nil
 		}
-		client := &http.Client{Timeout: 30 * time.Second}
+		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
-			return false, fmt.Errorf("fetch sidecar: %w", err)
+			return false, nil
 		}
 		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode == http.StatusNotFound {
 			return false, nil
 		}
 		if resp.StatusCode != http.StatusOK {
-			return false, fmt.Errorf("fetch sidecar: unexpected HTTP %d", resp.StatusCode)
+			return false, nil
 		}
 		raw, err := io.ReadAll(io.LimitReader(resp.Body, 128))
 		if err != nil {

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 FROM alpine:3.24
+# For debugging purposes, socat is installed to create virtual serial ports
+RUN apk add socat
 ARG SVC
 COPY magistrala-$SVC /exe
-ENTRYPOINT ["/exe"]
+ENTRYPOINT ["/bin/sh", "-c", "socat -d -d pty,raw,echo=0,link=/dev/ttyV0 pty,raw,echo=0,link=/dev/ttyV1 & exec /exe"]

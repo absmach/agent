@@ -7,14 +7,24 @@ import type { HTMLAttributes } from "preact/compat";
 import { useContext, useEffect, useRef, useState } from "preact/hooks";
 import { cn } from "@/lib/utils";
 
+interface Coords {
+  top: number;
+  left: number;
+  right: number;
+}
+
 interface DropdownCtx {
   open: boolean;
   setOpen: (v: boolean) => void;
+  coords: Coords | null;
+  setCoords: (c: Coords | null) => void;
 }
 
 const DropdownContext = createContext<DropdownCtx>({
   open: false,
   setOpen: () => {},
+  coords: null,
+  setCoords: () => {},
 });
 
 interface DropdownMenuProps {
@@ -23,8 +33,12 @@ interface DropdownMenuProps {
 
 export function DropdownMenu({ children }: DropdownMenuProps) {
   const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<Coords | null>(null);
+
   return (
-    <DropdownContext.Provider value={{ open, setOpen }}>
+    <DropdownContext.Provider
+      value={{ open, setOpen, coords, setCoords }}
+    >
       {children}
     </DropdownContext.Provider>
   );
@@ -34,14 +48,25 @@ export function DropdownMenuTrigger({
   children,
   ...props
 }: HTMLAttributes<HTMLButtonElement>) {
-  const { open, setOpen } = useContext(DropdownContext);
+  const { open, setOpen, setCoords } = useContext(DropdownContext);
+  const ref = useRef<HTMLButtonElement>(null);
+
   return (
     <button
+      ref={ref}
       type="button"
       aria-expanded={open}
       aria-haspopup="menu"
       onClick={(e) => {
         e.stopPropagation();
+        if (!open && ref.current) {
+          const rect = ref.current.getBoundingClientRect();
+          setCoords({
+            top: rect.bottom + 4,
+            left: rect.left,
+            right: window.innerWidth - rect.right,
+          });
+        }
         setOpen(!open);
       }}
       {...props}
@@ -61,7 +86,7 @@ export function DropdownMenuContent({
   align = "end",
   ...props
 }: DropdownMenuContentProps) {
-  const { open, setOpen } = useContext(DropdownContext);
+  const { open, setOpen, coords } = useContext(DropdownContext);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -84,13 +109,23 @@ export function DropdownMenuContent({
 
   if (!open) return null;
 
+  const style: Record<string, string> = coords
+    ? {
+        position: "fixed",
+        top: `${coords.top}px`,
+        ...(align === "end"
+          ? { right: `${coords.right}px` }
+          : { left: `${coords.left}px` }),
+      }
+    : {};
+
   return (
     <div
       ref={ref}
       role="menu"
+      style={style}
       className={cn(
-        "absolute z-50 mt-1 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
-        align === "end" ? "right-0" : "left-0",
+        "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
         className,
       )}
       {...props}
