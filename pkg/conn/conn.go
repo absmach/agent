@@ -497,6 +497,11 @@ func (b *broker) handleOTACfgMsg(ctx context.Context, msg mqtt.Message) {
 	cfg := ota.ParseCfgFromRecords(records)
 
 	if cfg.URL != "" {
+		// A URL trigger supersedes any pending data-path priming so a later
+		// stray ota data message can't install against a stale hash.
+		b.otaPrepMu.Lock()
+		b.otaPrep = nil
+		b.otaPrepMu.Unlock()
 		b.logger.Info("OTA cfg HTTP download", slog.String("url", cfg.URL))
 		go func(ctx context.Context) {
 			if err := b.svc.OTA(ctx, cfg.URL, cfg.SHA256Hex, cfg.Size); err != nil {
@@ -519,6 +524,10 @@ func (b *broker) handleOTACfgMsg(ctx context.Context, msg mqtt.Message) {
 
 // handleOTADataMsg receives firmware binary on the ota data topic and installs it.
 // A prior ota/cfg message without a url must have primed the expected hash and size.
+//
+// The data topic carries no token of its own; trust rests entirely on the prior
+// authenticated ota/cfg priming and on OTAFromData verifying the payload against
+// the primed SHA-256 hash before install. Payloads that don't match are rejected.
 func (b *broker) handleOTADataMsg(ctx context.Context, msg mqtt.Message) {
 	b.otaPrepMu.Lock()
 	prep := b.otaPrep
