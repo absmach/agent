@@ -40,11 +40,11 @@ func TestParseCfgFromRecords(t *testing.T) {
 	sizeVal := 153600.0
 
 	cases := []struct {
-		desc      string
-		records   []senml.Record
-		wantURL   string
-		wantHash  string
-		wantSize  uint64
+		desc     string
+		records  []senml.Record
+		wantURL  string
+		wantHash string
+		wantSize uint64
 	}{
 		{
 			desc:     "url, hash, and size present",
@@ -64,9 +64,9 @@ func TestParseCfgFromRecords(t *testing.T) {
 			records: []senml.Record{},
 		},
 		{
-			desc:     "url with nil string value is ignored",
-			records:  []senml.Record{{Name: "url", StringValue: nil}},
-			wantURL:  "",
+			desc:    "url with nil string value is ignored",
+			records: []senml.Record{{Name: "url", StringValue: nil}},
+			wantURL: "",
 		},
 	}
 
