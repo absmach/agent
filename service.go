@@ -1001,6 +1001,9 @@ func (a *agent) AddConfig(c Config) error {
 	a.cfgMu.Lock()
 	defer a.cfgMu.Unlock()
 	*a.config = c
+	if a.pushEvent != nil {
+		a.pushEvent("config")
+	}
 	return nil
 }
 
@@ -1381,6 +1384,9 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	}
 
 	runErr := ota.Run(otaCtx, otaCfg, url, sha256hex, size, progressFn)
+	if a.pushEvent != nil {
+		a.pushEvent("ota")
+	}
 	if runErr != nil {
 		a.otaMu.Lock()
 		if context.Cause(otaCtx) != nil || otaCtx.Err() != nil {
@@ -1535,6 +1541,9 @@ func (a *agent) AddDevice(ctx context.Context, name, extID, extKey, ifaceType, i
 	if a.sched != nil {
 		a.sched.StartDevice(context.WithoutCancel(ctx), d)
 	}
+	if a.pushEvent != nil {
+		a.pushEvent("devices")
+	}
 	return d, nil
 }
 
@@ -1545,14 +1554,22 @@ func (a *agent) RemoveDevice(id string) error {
 	if a.sched != nil {
 		a.sched.StopDevice(id)
 	}
-	return a.devices.Remove(id)
+	err := a.devices.Remove(id)
+	if err == nil && a.pushEvent != nil {
+		a.pushEvent("devices")
+	}
+	return err
 }
 
 func (a *agent) MarkDeviceSeen(id string) error {
 	if a.devices == nil {
 		return errDeviceManagerDisabled
 	}
-	return a.devices.MarkSeen(id)
+	err := a.devices.MarkSeen(id)
+	if err == nil && a.pushEvent != nil {
+		a.pushEvent("devices")
+	}
+	return err
 }
 
 func (a *agent) Reset(ctx context.Context, mode string) error {
@@ -2015,14 +2032,22 @@ func (a *agent) OpenDevice(ctx context.Context, id string) error {
 	if a.devices == nil {
 		return errDeviceManagerDisabled
 	}
-	return a.devices.OpenIface(id)
+	err := a.devices.OpenIface(id)
+	if err == nil && a.pushEvent != nil {
+		a.pushEvent("devices")
+	}
+	return err
 }
 
 func (a *agent) CloseDevice(id string) error {
 	if a.devices == nil {
 		return errDeviceManagerDisabled
 	}
-	return a.devices.CloseIface(id)
+	err := a.devices.CloseIface(id)
+	if err == nil && a.pushEvent != nil {
+		a.pushEvent("devices")
+	}
+	return err
 }
 
 func (a *agent) ReadDevice(id string, n int) ([]byte, error) {
@@ -2090,5 +2115,8 @@ func (a *agent) SetRuntimeConfig(ctx context.Context, key, value string) error {
 	ApplyConfigEntry(a.config, key, value)
 	a.cfgMu.Unlock()
 	a.applyLiveUpdate(key, value)
+	if a.pushEvent != nil {
+		a.pushEvent("runtime_config")
+	}
 	return nil
 }
