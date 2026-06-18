@@ -22,11 +22,15 @@ type WSEvent = {
 type EventCallback = (event: WSEvent) => void;
 
 let wsRef: WebSocket | null = null;
-let wsListeners: Set<EventCallback> = new Set();
+const wsListeners: Set<EventCallback> = new Set();
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 function connectWS() {
-  if (wsRef?.readyState === WebSocket.OPEN || wsRef?.readyState === WebSocket.CONNECTING) return;
+  if (
+    wsRef?.readyState === WebSocket.OPEN ||
+    wsRef?.readyState === WebSocket.CONNECTING
+  )
+    return;
 
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const url = `${proto}//${location.host}/ws`;

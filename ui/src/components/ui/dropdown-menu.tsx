@@ -36,9 +36,7 @@ export function DropdownMenu({ children }: DropdownMenuProps) {
   const [coords, setCoords] = useState<Coords | null>(null);
 
   return (
-    <DropdownContext.Provider
-      value={{ open, setOpen, coords, setCoords }}
-    >
+    <DropdownContext.Provider value={{ open, setOpen, coords, setCoords }}>
       {children}
     </DropdownContext.Provider>
   );

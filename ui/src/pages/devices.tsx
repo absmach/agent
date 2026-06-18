@@ -258,7 +258,10 @@ export function DevicesPage() {
 
   async function handleRead(id: string) {
     try {
-      const res = await fetch(`/devices/${id}/read`, { method: "POST", body: "{}" });
+      const res = await fetch(`/devices/${id}/read`, {
+        method: "POST",
+        body: "{}",
+      });
       if (!res.ok) throw new Error(await extractError(res));
       const data = await res.json();
       const dataStr =
@@ -428,7 +431,11 @@ export function DevicesPage() {
                     tabIndex={-1}
                     aria-label={showExtKey ? "Hide password" : "Show password"}
                   >
-                    {showExtKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    {showExtKey ? (
+                      <EyeOff className="size-4" />
+                    ) : (
+                      <Eye className="size-4" />
+                    )}
                   </button>
                 </div>
               </div>
