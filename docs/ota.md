@@ -231,10 +231,15 @@ mosquitto_sub \
 
 **Expected output:**
 
+Download progress is published on every 5% step (`5, 10, 15, … 95, 100`); the lines below are abbreviated with `...`:
+
 ```
 m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"triggered"},{"n":"bytes","u":"By","v":0},{"n":"total","u":"By","v":0},{"n":"progress","u":"%","v":0}]
 m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"downloading"},{"n":"bytes","u":"By","v":66237},{"n":"total","u":"By","v":1324740},{"n":"progress","u":"%","v":5}]
-m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"downloading"},{"n":"bytes","u":"By","v":662370},{"n":"total","u":"By","v":1324740},{"n":"progress","u":"%","v":50}]
+m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"downloading"},{"n":"bytes","u":"By","v":132474},{"n":"total","u":"By","v":1324740},{"n":"progress","u":"%","v":10}]
+...
+m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"downloading"},{"n":"bytes","u":"By","v":1258503},{"n":"total","u":"By","v":1324740},{"n":"progress","u":"%","v":95}]
+m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"downloading"},{"n":"bytes","u":"By","v":1324740},{"n":"total","u":"By","v":1324740},{"n":"progress","u":"%","v":100}]
 m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"verifying"},{"n":"bytes","u":"By","v":0},{"n":"total","u":"By","v":0},{"n":"progress","u":"%","v":100}]
 m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"ready"},{"n":"bytes","u":"By","v":0},{"n":"total","u":"By","v":0},{"n":"progress","u":"%","v":100}]
 m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"restarting"},{"n":"bytes","u":"By","v":0},{"n":"total","u":"By","v":0},{"n":"progress","u":"%","v":100}]
