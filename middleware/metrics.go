@@ -59,6 +59,15 @@ func (ms *metricsMiddleware) Control(uuid, cmdStr string) error {
 	return ms.svc.Control(uuid, cmdStr)
 }
 
+func (ms *metricsMiddleware) Route(ctx context.Context, uuid, cmdStr string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "route").Add(1)
+		ms.latency.With("method", "route").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.Route(ctx, uuid, cmdStr)
+}
+
 func (ms *metricsMiddleware) AddConfig(ec agent.Config) error {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "add_config").Add(1)

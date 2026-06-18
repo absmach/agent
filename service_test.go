@@ -1924,3 +1924,168 @@ func TestDeviceManager(t *testing.T) {
 		})
 	}
 }
+
+func newEmptyManager(t *testing.T) *devicemgr.Manager {
+	t.Helper()
+	m, err := devicemgr.New(
+		filepath.Join(t.TempDir(), "devices.db"),
+		devicemgr.ProvisionConfig{},
+		iface.Config{},
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+	return m
+}
+
+func TestRoute(t *testing.T) {
+	t.Run("error when device manager disabled", func(t *testing.T) {
+		svc, _, _, err := newService(t, testConfig(), nil)
+		require.NoError(t, err)
+		assert.Error(t, svc.Route(context.Background(), "uuid", "dev,01a2ff,16"))
+	})
+
+	cases := []struct {
+		desc   string
+		cmdStr string
+	}{
+		{desc: "empty command", cmdStr: ""},
+		{desc: "missing payload", cmdStr: "dev"},
+		{desc: "blank payload", cmdStr: "dev,"},
+		{desc: "non-numeric read bytes", cmdStr: "dev,01,bad"},
+		{desc: "zero read bytes", cmdStr: "dev,01,0"},
+		{desc: "read bytes over limit", cmdStr: "dev,01,70000"},
+		{desc: "unknown device write", cmdStr: "dev,01a2ff"},
+		{desc: "unknown device read", cmdStr: "dev,01a2ff,16"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			mgr := newEmptyManager(t)
+			svc, _, _, err := newService(t, testConfig(), nil, mgr)
+			require.NoError(t, err)
+			// All cases fail before a successful round-trip, so no response is
+			// published; the error is returned to the caller.
+			assert.Error(t, svc.Route(context.Background(), "uuid", tc.cmdStr))
+		})
+	}
+}
+
+func TestControlSubcommands(t *testing.T) {
+	t.Run("status reports running state", func(t *testing.T) {
+		cfg := testConfig()
+		svc, mqttClient, _, err := newService(t, cfg, nil)
+		require.NoError(t, err)
+
+		expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil).Run(func(args mock.Arguments) {
+			rec := decodeFirstRecord(t, args.Get(3))
+			assert.Equal(t, "status", rec.Name)
+			require.NotNil(t, rec.StringValue)
+			assert.Contains(t, *rec.StringValue, `"running":true`)
+			assert.Contains(t, *rec.StringValue, `"paused":false`)
+		})
+
+		require.NoError(t, svc.Control("uuid", "status"))
+	})
+
+	t.Run("stop then start", func(t *testing.T) {
+		cfg := testConfig()
+		svc, mqttClient, _, err := newService(t, cfg, nil)
+		require.NoError(t, err)
+
+		expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil).Run(func(args mock.Arguments) {
+			rec := decodeFirstRecord(t, args.Get(3))
+			assert.Equal(t, "stop", rec.Name)
+			require.NotNil(t, rec.StringValue)
+			assert.Equal(t, "stopped", *rec.StringValue)
+		})
+		require.NoError(t, svc.Control("uuid", "stop"))
+
+		expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil).Run(func(args mock.Arguments) {
+			rec := decodeFirstRecord(t, args.Get(3))
+			assert.Equal(t, "start", rec.Name)
+			require.NotNil(t, rec.StringValue)
+			assert.Equal(t, "started", *rec.StringValue)
+		})
+		require.NoError(t, svc.Control("uuid", "start"))
+	})
+
+	t.Run("reload re-applies persisted overrides", func(t *testing.T) {
+		store, storeErr := cfgstore.NewStore(filepath.Join(t.TempDir(), "config.json"))
+		require.NoError(t, storeErr)
+		require.NoError(t, store.Set("log_level", "error"))
+
+		cfg := testConfig()
+		svc, mqttClient, _, err := newService(t, cfg, store)
+		require.NoError(t, err)
+		require.Equal(t, "debug", svc.Config().Log.Level)
+
+		expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil).Run(func(args mock.Arguments) {
+			rec := decodeFirstRecord(t, args.Get(3))
+			require.NotNil(t, rec.StringValue)
+			assert.Equal(t, "reloaded:log_level", *rec.StringValue, "response should list applied keys")
+		})
+
+		require.NoError(t, svc.Control("uuid", "reload"))
+		assert.Equal(t, "error", svc.Config().Log.Level, "reload should apply persisted log_level override")
+	})
+
+	t.Run("reload validates and skips invalid persisted values", func(t *testing.T) {
+		store, storeErr := cfgstore.NewStore(filepath.Join(t.TempDir(), "config.json"))
+		require.NoError(t, storeErr)
+		require.NoError(t, store.Set("log_level", "not-a-level")) // invalid, must be skipped
+		require.NoError(t, store.Set("heartbeat_interval", "30s"))
+
+		cfg := testConfig()
+		svc, mqttClient, _, err := newService(t, cfg, store)
+		require.NoError(t, err)
+
+		expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil).Run(func(args mock.Arguments) {
+			rec := decodeFirstRecord(t, args.Get(3))
+			require.NotNil(t, rec.StringValue)
+			assert.Equal(t, "reloaded:heartbeat_interval", *rec.StringValue)
+		})
+
+		require.NoError(t, svc.Control("uuid", "reload"))
+		assert.Equal(t, "debug", svc.Config().Log.Level, "invalid log_level must be skipped")
+		assert.Equal(t, 30*time.Second, svc.Config().Heartbeat.Interval, "valid override should apply")
+	})
+
+	t.Run("reload without store reports not configured", func(t *testing.T) {
+		cfg := testConfig()
+		svc, mqttClient, _, err := newService(t, cfg, nil)
+		require.NoError(t, err)
+
+		expectMQTTPublish(t, mqttClient, mqttTopic("ctrl-channel", "res"), byte(1), nil).Run(func(args mock.Arguments) {
+			rec := decodeFirstRecord(t, args.Get(3))
+			require.NotNil(t, rec.StringValue)
+			assert.Equal(t, "not_configured", *rec.StringValue)
+		})
+
+		require.NoError(t, svc.Control("uuid", "reload"))
+	})
+
+	t.Run("unknown subcommand errors", func(t *testing.T) {
+		cfg := testConfig()
+		svc, _, _, err := newService(t, cfg, nil)
+		require.NoError(t, err)
+		assert.Error(t, svc.Control("uuid", "bogus"))
+	})
+}
+
+// decodeFirstRecord decodes a published SenML payload and returns its first record.
+func decodeFirstRecord(t *testing.T, payload interface{}) senml.Record {
+	t.Helper()
+	var b []byte
+	switch p := payload.(type) {
+	case []byte:
+		b = p
+	case string:
+		b = []byte(p)
+	default:
+		t.Fatalf("unexpected payload type %T", payload)
+	}
+	pack, err := senml.Decode(b, senml.JSON)
+	require.NoError(t, err)
+	require.NotEmpty(t, pack.Records)
+	return pack.Records[0]
+}

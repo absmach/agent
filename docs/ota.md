@@ -146,6 +146,18 @@ mosquitto_pub \
     -m '[{"bn":"req-1:","n":"ota","vs":"abort"}]'
 ```
 
+### Query OTA status via commands channel
+
+Returns the current OTA state (`busy` and `last_error`) as a JSON response on the control response topic:
+
+```bash
+mosquitto_pub \
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -m '[{"bn":"req-1:","n":"ota","vs":"status"}]'
+```
+
 ### Trigger OTA with token auth (when command_secret is set)
 
 ```bash

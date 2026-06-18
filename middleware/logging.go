@@ -96,6 +96,24 @@ func (lm *loggingMiddleware) Control(uuid, cmd string) (err error) {
 	return lm.svc.Control(uuid, cmd)
 }
 
+func (lm *loggingMiddleware) Route(ctx context.Context, uuid, cmd string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.String("uuid", uuid),
+			slog.String("cmd", cmd),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("Route command failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("Route command completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.Route(ctx, uuid, cmd)
+}
+
 func (lm *loggingMiddleware) AddConfig(c agent.Config) (err error) {
 	defer func(begin time.Time) {
 		args := []any{

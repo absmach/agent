@@ -53,6 +53,12 @@ const (
 	control = "control"
 	data    = "data"
 
+	// control subcommands for agent lifecycle management.
+	ctrlStop   = "stop"
+	ctrlStart  = "start"
+	ctrlReload = "reload"
+	ctrlStatus = "status"
+
 	export = "export"
 
 	keyLogLevel               = "log_level"
@@ -140,6 +146,9 @@ var (
 
 	// errDeviceManagerDisabled indicates device manager is not configured.
 	errDeviceManagerDisabled = errors.New("device manager not configured")
+
+	// errRouteFailed indicates a failure routing a command to a downstream device.
+	errRouteFailed = errors.New("failed to route command to device")
 )
 
 // DeviceService groups the downstream-device management methods of Service.
@@ -171,6 +180,11 @@ type Service interface {
 
 	// Control command.
 	Control(uuid, cmdStr string) error
+
+	// Route forwards a raw payload to a downstream device's physical interface
+	// and publishes the device's response. cmdStr is comma-delimited:
+	// <device_id>,<hex_payload>[,<read_bytes>].
+	Route(ctx context.Context, uuid, cmdStr string) error
 
 	// Update configuration file.
 	AddConfig(Config) error
@@ -264,6 +278,8 @@ type agent struct {
 	otaCancel           context.CancelFunc
 	otaAborted          atomic.Bool
 	bootstrapCachePath  string
+	runCtx              context.Context
+	paused              atomic.Bool
 }
 
 // New returns agent service implementation.
@@ -284,6 +300,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		logLevel:            levelVar,
 		startupConfig:       *cfg,
 		bootstrapCachePath:  bootstrapCachePath,
+		runCtx:              ctx,
 	}
 
 	if devices != nil {
@@ -377,6 +394,14 @@ func (a *agent) Control(uuid, cmdStr string) error {
 
 	cmd := cmdArgs[0]
 	switch {
+	case cmd == ctrlStop:
+		resp = a.controlStop()
+	case cmd == ctrlStart:
+		resp = a.controlStart()
+	case cmd == ctrlReload:
+		resp = a.controlReload()
+	case cmd == ctrlStatus:
+		resp, err = a.controlStatus()
 	case strings.HasPrefix(cmd, "nodered-"):
 		resp, err = a.NodeRed(cmdStr)
 	default:
@@ -388,6 +413,157 @@ func (a *agent) Control(uuid, cmdStr string) error {
 	}
 
 	return a.processResponse(uuid, cmd, resp)
+}
+
+// controlStop pauses the agent's background publishing loops (heartbeat and
+// telemetry) and stops the per-device scheduler. The process stays alive so a
+// subsequent control,start can resume it.
+func (a *agent) controlStop() string {
+	a.paused.Store(true)
+	if a.sched != nil {
+		a.sched.Stop()
+	}
+	a.logger.Info("Agent paused via control command")
+	return "stopped"
+}
+
+// controlStart resumes the background publishing loops and restarts the
+// per-device scheduler using the agent's run context. The scheduler context
+// descends from the process context passed to New so device goroutines still
+// terminate on shutdown; if that context is already cancelled (process is
+// shutting down) the scheduler is not restarted.
+func (a *agent) controlStart() string {
+	a.paused.Store(false)
+	switch {
+	case a.sched == nil:
+		// No device scheduler configured; nothing to restart.
+	case a.runCtx == nil || a.runCtx.Err() != nil:
+		a.logger.Warn("Run context unavailable; device scheduler not restarted",
+			slog.Any("error", contextErr(a.runCtx)))
+	default:
+		if err := a.sched.Start(a.runCtx); err != nil {
+			a.logger.Warn("Failed to restart device scheduler", slog.Any("error", err))
+		}
+	}
+	a.logger.Info("Agent resumed via control command")
+	return "started"
+}
+
+// contextErr returns ctx.Err() guarding against a nil context.
+func contextErr(ctx context.Context) error {
+	if ctx == nil {
+		return context.Canceled
+	}
+	return ctx.Err()
+}
+
+// controlReload re-applies persisted runtime config overrides from the store so
+// that out-of-band changes to the store take effect without a restart. Each
+// value is validated before being applied; invalid entries (e.g. from manual
+// file edits) are skipped and logged. The response lists the keys that were
+// applied for auditability.
+func (a *agent) controlReload() string {
+	if a.store == nil {
+		return notConfigured
+	}
+	var applied []string
+	for key, val := range a.store.All() {
+		if !settableKeys[key] {
+			continue
+		}
+		if err := validateSettableValue(key, val); err != nil {
+			a.logger.Warn("Skipping invalid persisted config value on reload",
+				slog.String("key", key), slog.Any("error", err))
+			continue
+		}
+		a.cfgMu.Lock()
+		ApplyConfigEntry(a.config, key, val)
+		a.cfgMu.Unlock()
+		a.applyLiveUpdate(key, val)
+		applied = append(applied, key)
+	}
+	sort.Strings(applied)
+	a.logger.Info("Agent config reloaded via control command", slog.Any("applied", applied))
+	if len(applied) == 0 {
+		return "reloaded"
+	}
+	return "reloaded:" + strings.Join(applied, ",")
+}
+
+// controlStatus reports the agent's current runtime state as a JSON document.
+func (a *agent) controlStatus() (string, error) {
+	status := struct {
+		Running       bool    `json:"running"`
+		Paused        bool    `json:"paused"`
+		UptimeSeconds float64 `json:"uptime_seconds"`
+		Version       string  `json:"version"`
+	}{
+		Running:       true,
+		Paused:        a.paused.Load(),
+		UptimeSeconds: time.Since(startTime).Seconds(),
+		Version:       Version,
+	}
+	b, err := json.Marshal(status)
+	if err != nil {
+		return "", errors.New(err.Error())
+	}
+	return string(b), nil
+}
+
+// Route forwards a raw payload to a downstream device's physical interface and
+// publishes the device's response. cmdStr is comma-delimited:
+//
+//	<device_id>,<hex_payload>[,<read_bytes>]
+//
+// The interface is opened if not already open, the hex payload is written, and
+// when read_bytes is supplied (0 < n <= 65536) that many bytes are read back
+// and returned as a hex string. With no read_bytes, the number of bytes written
+// is returned.
+func (a *agent) Route(_ context.Context, uuid, cmdStr string) error {
+	if a.devices == nil {
+		return errors.Wrap(errRouteFailed, errDeviceManagerDisabled)
+	}
+
+	args := strings.Split(strings.ReplaceAll(cmdStr, " ", ""), ",")
+	if len(args) < 2 || args[0] == "" || args[1] == "" {
+		return errors.Wrap(errRouteFailed, errInvalidCommand)
+	}
+	deviceID, hexPayload := args[0], args[1]
+
+	readBytes := 0
+	if len(args) >= 3 && args[2] != "" {
+		n, perr := strconv.Atoi(args[2])
+		if perr != nil || n <= 0 || n > 65536 {
+			return errors.Wrap(errRouteFailed, errInvalidCommand)
+		}
+		readBytes = n
+	}
+
+	// Resolve the device first so a missing device returns a clear error rather
+	// than surfacing as an opaque interface-open failure.
+	if _, err := a.devices.Get(deviceID); err != nil {
+		return errors.Wrap(errRouteFailed, err)
+	}
+
+	if err := a.devices.OpenIface(deviceID); err != nil {
+		return errors.Wrap(errRouteFailed, err)
+	}
+
+	written, err := a.devices.WriteIface(deviceID, hexPayload)
+	if err != nil {
+		return errors.Wrap(errRouteFailed, err)
+	}
+
+	resp := strconv.Itoa(written)
+	if readBytes > 0 {
+		read, rerr := a.devices.ReadIface(deviceID, readBytes)
+		if rerr != nil {
+			return errors.Wrap(errRouteFailed, rerr)
+		}
+		resp = fmt.Sprintf("%x", read)
+	}
+
+	return a.processResponse(uuid, "route", resp)
 }
 
 // Message for this command
@@ -895,6 +1071,9 @@ func (a *agent) publish(t, payload string, qos byte) error {
 
 func (a *agent) selfHeartbeat(ctx context.Context, topic string, interval time.Duration, qos byte) {
 	publish := func() {
+		if a.paused.Load() {
+			return
+		}
 		payload, err := a.selfHeartbeatPayload()
 		if err != nil {
 			a.logger.Error("failed to encode self-heartbeat", slog.Any("error", err))
@@ -961,6 +1140,9 @@ func (a *agent) selfHeartbeatPayload() ([]byte, error) {
 
 func (a *agent) selfTelemetry(ctx context.Context, topic string, interval time.Duration, qos byte) {
 	publish := func() {
+		if a.paused.Load() {
+			return
+		}
 		records := a.gatewayTelemetryPayload()
 		if len(records) == 0 {
 			return
