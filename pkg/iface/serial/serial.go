@@ -10,6 +10,11 @@ import (
 	goserial "go.bug.st/serial"
 )
 
+const (
+	openTimeout = 10 * time.Second
+	readTimeout = 100 * time.Millisecond
+)
+
 // Config holds serial port parameters.
 type Config struct {
 	Path     string
@@ -41,9 +46,6 @@ type Serial struct {
 func New(cfg Config) *Serial {
 	return &Serial{cfg: cfg}
 }
-
-const openTimeout = 10 * time.Second
-const readTimeout = 100 * time.Millisecond
 
 // Open opens the serial port with the configured parameters.
 func (s *Serial) Open() error {

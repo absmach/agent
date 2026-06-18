@@ -10,14 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"sync"
-	"time"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
-)
-
-const (
-	wsTermTimeout = 60 * time.Second
 )
 
 type wsTerminal struct {
@@ -58,7 +53,7 @@ func terminalWSHandler(logger *slog.Logger) http.HandlerFunc {
 		ptmx, err := pty.Start(cmd)
 		if err != nil {
 			logger.Error("Failed to start PTY", slog.Any("error", err))
-			conn.WriteJSON(wsMessage{Type: "error", Data: "Failed to start shell: " + err.Error()})
+			_ = conn.WriteJSON(wsMessage{Type: "error", Data: "Failed to start shell: " + err.Error()})
 			conn.Close()
 			return
 		}
@@ -102,13 +97,13 @@ func terminalWSHandler(logger *slog.Logger) http.HandlerFunc {
 					switch m.Type {
 					case "resize":
 						if m.Columns > 0 && m.Rows > 0 {
-							pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(m.Rows), Cols: uint16(m.Columns)})
+							_ = pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(m.Rows), Cols: uint16(m.Columns)})
 						}
 						continue
 					case "input":
 						term.mu.Lock()
 						if !term.closed {
-							ptmx.Write([]byte(m.Data))
+							_, _ = ptmx.WriteString(m.Data)
 						}
 						term.mu.Unlock()
 						continue
@@ -117,7 +112,7 @@ func terminalWSHandler(logger *slog.Logger) http.HandlerFunc {
 				// Plain text fallback
 				term.mu.Lock()
 				if !term.closed {
-					ptmx.Write(msg)
+					_, _ = ptmx.Write(msg)
 				}
 				term.mu.Unlock()
 			}
@@ -129,7 +124,7 @@ func terminalWSHandler(logger *slog.Logger) http.HandlerFunc {
 		term.closed = true
 		term.mu.Unlock()
 		ptmx.Close()
-		cmd.Wait()
+		_ = cmd.Wait()
 		conn.Close()
 	}
 }

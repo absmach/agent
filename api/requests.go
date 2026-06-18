@@ -136,30 +136,6 @@ func (req runtimeConfigReq) validate() error {
 	return nil
 }
 
-type deviceReadReq struct {
-	ID    string
-	Bytes int `json:"bytes"`
-}
-
-func (req deviceReadReq) validate() error {
-	if req.ID == "" || req.Bytes <= 0 || req.Bytes > 65536 {
-		return agent.ErrMalformedEntity
-	}
-	return nil
-}
-
-type deviceWriteReq struct {
-	ID   string
-	Data string `json:"data"`
-}
-
-func (req deviceWriteReq) validate() error {
-	if req.ID == "" || req.Data == "" {
-		return agent.ErrMalformedEntity
-	}
-	return nil
-}
-
 type decodeIDPayload struct {
 	ID    string
 	Bytes int    `json:"bytes"`

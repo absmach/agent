@@ -22,7 +22,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-
 // MakeHandler returns a HTTP handler for API endpoints.
 func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Stream) http.Handler {
 	opts := []kithttp.ServerOption{

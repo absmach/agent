@@ -290,19 +290,3 @@ func (res deviceWriteRes) Headers() map[string]string {
 func (res deviceWriteRes) Empty() bool {
 	return false
 }
-
-type terminalRes struct {
-	SessionID string `json:"session_id"`
-}
-
-func (res terminalRes) Code() int {
-	return http.StatusOK
-}
-
-func (res terminalRes) Headers() map[string]string {
-	return map[string]string{}
-}
-
-func (res terminalRes) Empty() bool {
-	return false
-}
