@@ -60,24 +60,6 @@ func (lm *loggingMiddleware) Publish(topic string, payload string) (err error) {
 	return lm.svc.Publish(topic, payload)
 }
 
-func (lm *loggingMiddleware) Execute(uuid, cmd string) (str string, err error) {
-	defer func(begin time.Time) {
-		args := []any{
-			slog.String("duration", time.Since(begin).String()),
-			slog.String("uuid", uuid),
-			slog.String("cmd", cmd),
-		}
-		if err != nil {
-			args = append(args, slog.String("error", err.Error()))
-			lm.logger.Warn("Execute command failed to complete successfully.", args...)
-			return
-		}
-		lm.logger.Info("Execute command completed successfully.", args...)
-	}(time.Now())
-
-	return lm.svc.Execute(uuid, cmd)
-}
-
 func (lm *loggingMiddleware) Control(uuid, cmd string) (err error) {
 	defer func(begin time.Time) {
 		args := []any{

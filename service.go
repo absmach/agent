@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
-	"os/exec"
 	"regexp"
 	"runtime/metrics"
 	"sort"
@@ -23,7 +22,6 @@ import (
 
 	cfgstore "github.com/absmach/agent/pkg/config"
 	"github.com/absmach/agent/pkg/devicemgr"
-	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/iface"
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/ota"
@@ -106,16 +104,6 @@ var (
 	heapSamples = []metrics.Sample{{Name: "/memory/classes/heap/free:bytes"}}
 )
 
-// execAllowlist is the set of command names permitted via the exec MQTT command.
-var execAllowlist = map[string]bool{
-	"cat": true, "cd": true, "curl": true, "date": true, "df": true,
-	"echo": true, "env": true, "false": true, "free": true, "hostname": true,
-	"id": true, "ifconfig": true, "ip": true, "journalctl": true, "ls": true,
-	"netstat": true, "ping": true, "printf": true, "ps": true, "pwd": true,
-	"ss": true, "systemctl": true, "true": true, "uname": true, "uptime": true,
-	"who": true,
-}
-
 var (
 	// errInvalidCommand indicates malformed command.
 	errInvalidCommand = errors.New("invalid command")
@@ -137,9 +125,6 @@ var (
 
 	// errFailedToPublish.
 	errFailedToPublish = errors.New("failed to publish")
-
-	// errFailedExecute.
-	errFailedExecute = errors.New("failed to execute command")
 
 	// errFailedToCreateTerminalSession.
 	errFailedToCreateTerminalSession = errors.New("failed to create terminal session")
@@ -184,9 +169,6 @@ type DeviceService interface {
 
 // Service specifies API for publishing messages and subscribing to topics.
 type Service interface {
-	// Execute command.
-	Execute(uuid, cmd string) (string, error)
-
 	// Control command.
 	Control(uuid, cmdStr string) error
 
@@ -319,8 +301,6 @@ type agent struct {
 	termMu              sync.Mutex
 	devices             *devicemgr.Manager
 	sched               *Scheduler
-	workDir             string
-	workDirMu           sync.Mutex
 	otaBusy             atomic.Bool
 	store               cfgstore.Store
 	heartbeatIntervalCh chan time.Duration
@@ -349,7 +329,6 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		svcs:                make(map[string]Heartbeat),
 		terminals:           make(map[string]terminal.Session),
 		devices:             devices,
-		workDir:             "/",
 		store:               store,
 		heartbeatIntervalCh: make(chan time.Duration, 1),
 		telemetryIntervalCh: make(chan time.Duration, 1),
@@ -379,64 +358,6 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 	}
 
 	return ag, nil
-}
-
-func (a *agent) changeDir(cmdArr []string) (string, error) {
-	a.workDirMu.Lock()
-	defer a.workDirMu.Unlock()
-	var target string
-	if len(cmdArr) < 2 || cmdArr[1] == "~" {
-		target = "/root"
-	} else if strings.HasPrefix(cmdArr[1], "/") {
-		target = cmdArr[1]
-	} else {
-		target = a.workDir + "/" + cmdArr[1]
-	}
-	if info, statErr := os.Stat(target); statErr != nil || !info.IsDir() {
-		return "sh: cd: " + target + ": No such file or directory", nil
-	}
-	a.workDir = target
-	return "", nil
-}
-
-func (a *agent) Execute(uuid, cmd string) (string, error) {
-	cmdArr := strings.Split(strings.ReplaceAll(cmd, " ", ""), ",")
-	if len(cmdArr) < 1 || cmdArr[0] == "" {
-		return "", errInvalidCommand
-	}
-
-	if cmdArr[0] == "cd" {
-		return a.changeDir(cmdArr)
-	}
-
-	if !execAllowlist[cmdArr[0]] {
-		return "", errInvalidCommand
-	}
-
-	a.workDirMu.Lock()
-	execCmd := exec.Command(cmdArr[0], cmdArr[1:]...)
-	execCmd.Dir = a.workDir
-	a.workDirMu.Unlock()
-	out, err := execCmd.CombinedOutput()
-	if err != nil && len(out) == 0 {
-		return "", errors.Wrap(errFailedExecute, err)
-	}
-
-	result := string(out)
-	if result == "" {
-		result = "(no output)"
-	}
-
-	payload, err := encoder.EncodeSenML(uuid, strings.Join(cmdArr, " "), result)
-	if err != nil {
-		return "", errors.Wrap(errFailedEncode, err)
-	}
-
-	if err := a.publishCmd(control, string(payload)); err != nil {
-		return "", errors.Wrap(errFailedToPublish, err)
-	}
-
-	return result, nil
 }
 
 func (a *agent) Control(uuid, cmdStr string) error {

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"syscall"
 
 	"github.com/absmach/agent"
@@ -39,29 +38,6 @@ func pubEndpoint(svc agent.Service) endpoint.Endpoint {
 			Service:  svcName,
 			Response: "publish",
 		}, nil
-	}
-}
-
-func execEndpoint(svc agent.Service) endpoint.Endpoint {
-	return func(_ context.Context, request any) (any, error) {
-		req := request.(execReq)
-
-		if err := req.validate(); err != nil {
-			return nil, err
-		}
-
-		uuid := strings.TrimSuffix(req.BaseName, ":")
-		out, err := svc.Execute(uuid, req.Value)
-		if err != nil {
-			return nil, err
-		}
-
-		resp := execRes{
-			BaseName: req.BaseName,
-			Name:     "exec",
-			Value:    out,
-		}
-		return resp, nil
 	}
 }
 

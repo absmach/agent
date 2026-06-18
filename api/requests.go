@@ -53,20 +53,6 @@ func (req pubReq) validate() error {
 	return nil
 }
 
-type execReq struct {
-	BaseName string `json:"bn"`
-	Name     string `json:"n"`
-	Value    string `json:"vs"`
-}
-
-func (req execReq) validate() error {
-	if req.BaseName == "" || req.Name != "exec" || req.Value == "" {
-		return agent.ErrMalformedEntity
-	}
-
-	return nil
-}
-
 type addConfigReq struct {
 	agentConfig
 }

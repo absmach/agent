@@ -37,7 +37,6 @@ const (
 	otaDataTopic = "ota"
 
 	control = "control"
-	exec    = "exec"
 	config  = "config"
 	service = "service"
 	term    = "term"

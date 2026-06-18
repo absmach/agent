@@ -13,7 +13,6 @@ import {
   ScrollText,
   Settings,
   SquareTerminal,
-  Terminal,
   Workflow,
 } from "lucide-react";
 import { UI_BASE } from "@/routes";
@@ -48,7 +47,6 @@ export const navGroups: NavGroup[] = [
     label: "Control",
     items: [
       { href: `${UI_BASE}/devices`, label: "Devices", icon: Cpu },
-      { href: `${UI_BASE}/exec`, label: "Execute", icon: Terminal },
       { href: `${UI_BASE}/terminal`, label: "Terminal", icon: SquareTerminal },
       { href: `${UI_BASE}/nodered`, label: "Node-RED", icon: Workflow },
     ],

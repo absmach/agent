@@ -97,8 +97,7 @@ export function LogsPage() {
       if (q && !line.toLowerCase().includes(q)) return false;
       if (timeFilter > 0) {
         const ls = parseTimeSeconds(line);
-        if (ls === null || secondsSince(ls, nowSec) > timeFilter)
-          return false;
+        if (ls === null || secondsSince(ls, nowSec) > timeFilter) return false;
       }
       return true;
     });

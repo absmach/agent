@@ -45,13 +45,6 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 		opts...,
 	).ServeHTTP)
 
-	r.Post("/exec", kithttp.NewServer(
-		execEndpoint(svc),
-		decodeExecRequest,
-		EncodeResponse,
-		opts...,
-	).ServeHTTP)
-
 	r.Post("/config", kithttp.NewServer(
 		addConfigEndpoint(svc),
 		decodeAddConfigRequest,
@@ -211,15 +204,6 @@ func decodeRequest(_ context.Context, r *http.Request) (any, error) {
 
 func decodePublishRequest(_ context.Context, r *http.Request) (any, error) {
 	req := pubReq{}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
-	}
-
-	return req, nil
-}
-
-func decodeExecRequest(_ context.Context, r *http.Request) (any, error) {
-	req := execReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
 	}

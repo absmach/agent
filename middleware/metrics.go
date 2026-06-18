@@ -41,15 +41,6 @@ func NewMetrics(svc agent.Service, counter metrics.Counter, latency metrics.Hist
 	}
 }
 
-func (ms *metricsMiddleware) Execute(uuid, cmdStr string) (string, error) {
-	defer func(begin time.Time) {
-		ms.counter.With("method", "execute").Add(1)
-		ms.latency.With("method", "execute").Observe(time.Since(begin).Seconds())
-	}(time.Now())
-
-	return ms.svc.Execute(uuid, cmdStr)
-}
-
 func (ms *metricsMiddleware) Control(uuid, cmdStr string) error {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "control").Add(1)

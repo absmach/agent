@@ -13,7 +13,6 @@ import (
 
 var (
 	_ magistrala.Response = (*publishRes)(nil)
-	_ magistrala.Response = (*execRes)(nil)
 	_ magistrala.Response = (*addConfigRes)(nil)
 	_ magistrala.Response = (*viewConfigRes)(nil)
 	_ magistrala.Response = (*viewServicesRes)(nil)
@@ -34,24 +33,6 @@ func (res publishRes) Headers() map[string]string {
 }
 
 func (res publishRes) Empty() bool {
-	return false
-}
-
-type execRes struct {
-	BaseName string `json:"bn"`
-	Name     string `json:"n"`
-	Value    string `json:"vs"`
-}
-
-func (res execRes) Code() int {
-	return http.StatusOK
-}
-
-func (res execRes) Headers() map[string]string {
-	return map[string]string{}
-}
-
-func (res execRes) Empty() bool {
 	return false
 }
 
