@@ -1791,13 +1791,26 @@ func TestOTAStatusPublishesErrorOnFailure(t *testing.T) {
 
 	require.NotEmpty(t, publishedPayloads, "expected OTA status messages on failure")
 
-	// Final message should include the 'error' field.
-	last := publishedPayloads[len(publishedPayloads)-1]
-	var records []senml.Record
-	require.NoError(t, json.Unmarshal(last, &records))
+	// Count how many StateAborted messages were published — there must be
+	// exactly one (from the service layer, with the error field). The library
+	// no longer emits StateAborted, so a double publish would be a regression.
+	abortedCount := 0
+	var lastRecords []senml.Record
+	for _, payload := range publishedPayloads {
+		var records []senml.Record
+		require.NoError(t, json.Unmarshal(payload, &records))
+		lastRecords = records
+		for _, r := range records {
+			if r.Name == "state" && r.StringValue != nil && *r.StringValue == "aborted" {
+				abortedCount++
+			}
+		}
+	}
+	assert.Equal(t, 1, abortedCount, "exactly one StateAborted status should be published")
 
+	// Final message should include the 'error' field.
 	hasError := false
-	for _, r := range records {
+	for _, r := range lastRecords {
 		if r.Name == "error" {
 			hasError = true
 			break

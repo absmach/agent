@@ -6,7 +6,6 @@ package ota
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -61,8 +60,9 @@ func (s State) String() string {
 }
 
 // ProgressFn is called on state transitions and during download.
-// bytesWritten and totalBytes are bytes on disk; they are only meaningful during
-// StateDownloading. progress is 0–100 and is only meaningful in StateDownloading.
+// bytesWritten and totalBytes are bytes on disk; during StateDownloading they
+// reflect the running count, and in all later states they report the final file
+// size. progress is 0–100 and is only meaningful in StateDownloading.
 type ProgressFn func(state State, bytesWritten, totalBytes int64, progress float64)
 
 // Config holds the OTA updater parameters.
@@ -98,7 +98,7 @@ func TriggerFromRecords(records []senml.Record) (Trigger, error) {
 			t.URL = strings.TrimSpace(*r.StringValue)
 		case fieldHash:
 			if r.StringValue != nil {
-				t.SHA256Hex = *r.StringValue
+				t.SHA256Hex = strings.TrimSpace(*r.StringValue)
 			}
 		case fieldSize:
 			if r.Value != nil {
@@ -125,7 +125,7 @@ func ParseCfgFromRecords(records []senml.Record) Trigger {
 			}
 		case fieldHash:
 			if r.StringValue != nil {
-				t.SHA256Hex = *r.StringValue
+				t.SHA256Hex = strings.TrimSpace(*r.StringValue)
 			}
 		case fieldSize:
 			if r.Value != nil {
@@ -153,19 +153,20 @@ func Run(ctx context.Context, cfg Config, url, sha256hex string, size uint64, pr
 		progressFn(StateDownloading, written, total, pct)
 	})
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			progressFn(StateAborted, 0, 0, 0)
-		}
 		return fmt.Errorf("ota download: %w", err)
 	}
 
-	progressFn(StateVerifying, 0, 0, 100)
+	// Report the actual file size for subsequent states so that subscribers
+	// see consistent bytes/total values across HTTP- and MQTT-delivered updates.
+	var totalBytes int64
+	if fi, statErr := os.Stat(tmpPath); statErr == nil {
+		totalBytes = fi.Size()
+	}
+
+	progressFn(StateVerifying, totalBytes, totalBytes, 100)
 	verified, err := verify(ctx, url, tmpPath, sha256hex)
 	if err != nil {
 		_ = os.Remove(tmpPath)
-		if errors.Is(err, context.Canceled) {
-			progressFn(StateAborted, 0, 0, 0)
-		}
 		return fmt.Errorf("ota verify: %w", err)
 	}
 	if !verified {
@@ -173,13 +174,13 @@ func Run(ctx context.Context, cfg Config, url, sha256hex string, size uint64, pr
 		return fmt.Errorf("ota verify: no hash provided and sidecar not found at %s.sha256; refusing unverified install", url)
 	}
 
-	progressFn(StateReady, 0, 0, 100)
+	progressFn(StateReady, totalBytes, totalBytes, 100)
 	if err := replace(tmpPath, cfg.BinaryPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("ota replace: %w", err)
 	}
 
-	progressFn(StateRestarting, 0, 0, 100)
+	progressFn(StateRestarting, totalBytes, totalBytes, 100)
 	return syscall.Exec(cfg.BinaryPath, os.Args, os.Environ())
 }
 
@@ -198,9 +199,12 @@ func RunFromData(ctx context.Context, cfg Config, data []byte, sha256hex string,
 	progressFn(StateTriggered, 0, totalBytes, 0)
 	progressFn(StateDownloading, 0, totalBytes, 0)
 
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("ota write: %w", err)
+	}
+
 	f, err := os.CreateTemp(cfg.DownloadDir, "agent-ota-*")
 	if err != nil {
-		progressFn(StateAborted, 0, totalBytes, 0)
 		return fmt.Errorf("ota create temp: %w", err)
 	}
 	tmpPath := f.Name()
@@ -208,23 +212,29 @@ func RunFromData(ctx context.Context, cfg Config, data []byte, sha256hex string,
 	if _, err := f.Write(data); err != nil {
 		_ = f.Close()
 		_ = os.Remove(tmpPath)
-		progressFn(StateAborted, 0, totalBytes, 0)
 		return fmt.Errorf("ota write: %w", err)
 	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("ota close temp: %w", err)
 	}
+	if err := ctx.Err(); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("ota write: %w", err)
+	}
 	progressFn(StateDownloading, totalBytes, totalBytes, 100)
 
 	progressFn(StateVerifying, totalBytes, totalBytes, 100)
-	if err := verifyFile(tmpPath, sha256hex); err != nil {
+	if err := verifyFile(ctx, tmpPath, sha256hex); err != nil {
 		_ = os.Remove(tmpPath)
-		progressFn(StateAborted, 0, totalBytes, 0)
 		return fmt.Errorf("ota verify: %w", err)
 	}
 
 	progressFn(StateReady, totalBytes, totalBytes, 100)
+	if err := ctx.Err(); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("ota replace: %w", err)
+	}
 	if err := replace(tmpPath, cfg.BinaryPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("ota replace: %w", err)
@@ -319,16 +329,36 @@ func download(ctx context.Context, url, dir string, size uint64, pctFn func(writ
 	return tmpName, nil
 }
 
-// verifyFile checks the SHA-256 hash of the file at tmpPath against the expected hex digest.
-func verifyFile(tmpPath, sha256hex string) error {
+// verifyFile checks the SHA-256 hash of the file at tmpPath against the expected
+// hex digest. It respects ctx by checking for cancellation between read chunks so
+// that an aborted OTA does not wait for a large file to be fully hashed.
+func verifyFile(ctx context.Context, tmpPath, sha256hex string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f, err := os.Open(tmpPath)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return err
+	buf := make([]byte, 32*1024)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		n, rerr := f.Read(buf)
+		if n > 0 {
+			if _, werr := h.Write(buf[:n]); werr != nil {
+				return werr
+			}
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return rerr
+		}
 	}
 	got := fmt.Sprintf("%x", h.Sum(nil))
 	if got != sha256hex {
@@ -372,7 +402,7 @@ func verify(ctx context.Context, url, tmpPath, sha256hex string) (bool, error) {
 		expected = fields[0]
 	}
 
-	if err := verifyFile(tmpPath, expected); err != nil {
+	if err := verifyFile(ctx, tmpPath, expected); err != nil {
 		return false, err
 	}
 	return true, nil
