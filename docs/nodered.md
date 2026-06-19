@@ -150,6 +150,11 @@ curl -s -X POST http://localhost:9999/nodered \
   -H 'Content-Type: application/json' \
   -d "{\"command\":\"nodered-deploy\",\"flows\":\"$FLOWS\"}"
 
+# Add a flow tab (non-destructive, flow JSON must be base64 encoded)
+curl -s -X POST http://localhost:9999/nodered \
+  -H 'Content-Type: application/json' \
+  -d "{\"command\":\"nodered-add-flow\",\"flows\":\"$FLOWS\"}"
+
 # Fetch current flows
 curl -s -X POST http://localhost:9999/nodered \
   -H 'Content-Type: application/json' \
@@ -260,7 +265,7 @@ The agent logs will show:
 }
 ```
 
-Node-RED will start publishing speed data to the telemetry topic from the rendered profile, normally `m/<domain-id>/c/<telemetry-channel-id>/msg`, within 3 seconds of deployment.
+Node-RED will start publishing speed data to the telemetry topic within 3 seconds of deployment. The agent normalises all `m/.../c/.../data` and `m/.../c/.../gateway/telemetry` topics in the flow to the rendered telemetry channel: `m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry`.
 
 ## Configuration
 
@@ -272,10 +277,11 @@ Device identity, MQTT credentials, domain ID, and telemetry/commands channel IDs
 
 ## Topic Map
 
-| Direction     | Topic                             | QoS | Description                                            |
-| ------------- | --------------------------------- | --- | ------------------------------------------------------ |
-| Cloud → Agent | `m/<domain-id>/c/<ctrl-chan>/req` | 1   | Node-RED commands via `nodered` or `control` subsystem |
-| Agent → Cloud | `m/<domain-id>/c/<ctrl-chan>/res` | 1   | Command response                                       |
+| Direction        | Topic                                    | QoS | Description                                            |
+| ---------------- | ---------------------------------------- | --- | ------------------------------------------------------ |
+| Cloud → Agent    | `m/<domain-id>/c/<ctrl-chan>/req`        | 1   | Node-RED commands via `nodered` or `control` subsystem |
+| Agent → Cloud    | `m/<domain-id>/c/<ctrl-chan>/res`        | 1   | Command response                                       |
+| Node-RED → Cloud | `m/<domain-id>/c/<telemetry-chan>/gateway/telemetry` | 0 | SenML telemetry published by deployed flows  |
 
 ## MQTT Test Recipes
 
@@ -320,10 +326,23 @@ mosquitto_pub \
 
 ```bash
 mosquitto_pub \
--h localhost -p 1883 \
--u faff2028-a7ba-4d11-8581-d9bbe9e1f75b -P ce6b440b-105a-40be-abf8-80f4c72938fb --id "nr-$(date +%s)" \
--t "m/e9692c28-b730-4797-8a15-2e25c08f9641/c/bc9a0af7-6d0f-4806-aa5a-61d68c0a7cf7/req" \
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "nr-$(date +%s)" \
+    -t "m/<domain-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"nodered", "vs":"nodered-state"}]'
+```
+
+**Expected response:**
+
+```json
+[
+  {
+    "bn": "req-1",
+    "bt": 1781865951.7412772,
+    "n": "nodered",
+    "vs": "{\"state\":\"start\"}"
+  }
+]
 ```
 
 ### Fetch current flows
@@ -336,18 +355,20 @@ mosquitto_pub \
     -m '[{"bn":"req-1:", "n":"nodered", "vs":"nodered-flows"}]'
 ```
 
-**Expected response (truncated):**
+**Expected response (after deploying speed-flow.json, truncated):**
 
 ```json
 [
   {
     "bn": "req-1",
-    "bt": 1781261340.08909,
+    "bt": 1781865982.932532,
     "n": "nodered",
-    "vs": "[{\"id\":\"flow-magistrala-agent\",\"type\":\"tab\",\"label\":\"Magistrala Agent Flow\",\"disabled\":false,\"info\":\"Publishes SenML sensor data to Magistrala cloud every 30s via MQTT over TLS.\"},{\"id\":\"mqtt-broker-config\",\"type\":\"mqtt-broker\",\"name\":\"Magistrala Cloud MQTT\",\"broker\":\"host.docker.internal\",\"port\":\"8883\",\"clientid\":\"ffec2491-0de1-4051-9e75-ad2e2d241627-nr\",\"autoConnect\":true,\"usetls\":true,\"protocolVersion\":\"4\",\"keepalive\":\"60\",\"cleansession\":true,\"autoUnsubscribe\":true,\"credentials\":{\"user\":\"ffec2491-0de1-4051-9e75-ad2e2d241627\",\"password\":\"30c775d7-3504-42c6-976c-52c02474bf2f\"},\"birthTopic\":\"\",\"closeTopic\":\"\",\"willTopic\":\"\",\"z\":\"\",\"tls\":\"magistrala-agent-tls\"},{\"id\":\"inject-sensor\",\"type\":\"inject\",\"z\":\"flow-magistrala-agent\",\"name\":\"Every 30s\",\"props\":[{\"p\":\"payload\",\"v\":\"\",\"vt\":\"date\"}],\"repeat\":\"30\",\"crontab\":\"\",\"once\":true,\"onceDelay\":5,\"topic\":\"\",\"payload\":\"\",\"payloadType\":\"date\",\"x\":150,\"y\":160,\"wires\":[[\"build-senml\"]]},{\"id\":\"build-senml\",\"type\":\"function\",\"z\":\"flow-magistrala-agent\",\"name\":\"Build SenML payload\",\"func\":\"var now = Date.now() * 1e6;\\nmsg.payload = JSON.stringify([\\n    {\\\"bn\\\": \\\"nodered:\\\", \\\"bt\\\": now, \\\"n\\\": \\\"temperature\\\", \\\"u\\\": \\\"Cel\\\", \\\"v\\\": 22.5 + Math.random() * 2},\\n    {\\\"n\\\": \\\"humidity\\\", \\\"u\\\": \\\"%\\\", \\\"v\\\": 55.0 + Math.random() * 5}\\n]);\\nmsg.topic = \\\"m/e9692c28-b730-4797-8a15-2e25c08f9641/c/b465a688-c1ca-417d-a36f-71f6f1be2409/msg\\\";\\nreturn msg;\",\"outputs\":1,\"x\":380,\"y\":160,\"wires\":[[\"mqtt-pub-data\",\"debug-output\"]]},{\"id\":\"mqtt-pub-data\",\"type\":\"mqtt out\",\"z\":\"flow-magistrala-agent\",\"name\":\"Publish to Magistrala\",\"topic\":\"\",\"qos\":\"0\",\"retain\":\"false\",\"broker\":\"mqtt-broker-config\",\"x\":640,\"y\":140,\"wires\":[]},{\"id\":\"debug-output\",\"type\":\"debug\",\"z\":\"flow-magistrala-agent\",\"name\":\"Debug\",\"active\":true,\"tosidebar\":true,\"console\":false,\"complete\":\"payload\",\"x\":620,\"y\":200,\"wires\":[]},{\"id\":\"magistrala-agent-tls\",\"type\":\"tls-config\",\"name\":\"Magistrala MQTT TLS\",\"cert\":\"\",\"key\":\"\",\"ca\":\"\",\"certname\":\"\",\"keyname\":\"\",\"caname\":\"\",\"servername\":\"\",\"verifyservercert\":false,\"alpnprotocol\":\"\"}]"
+    "vs": "[{\"id\":\"flow-speed-sensor\",\"type\":\"tab\",\"label\":\"Speed Sensor Flow\",\"disabled\":false,\"info\":\"Publishes SenML speed data to Magistrala cloud every 15s via MQTT over TLS.\"},{\"id\":\"mqtt-broker-config\",\"type\":\"mqtt-broker\",\"name\":\"Magistrala Cloud MQTT\",\"broker\":\"host.docker.internal\",\"port\":\"8883\",\"clientid\":\"<client-id>-nr\",\"usetls\":true,\"tls\":\"magistrala-agent-tls\",\"credentials\":{\"user\":\"<client-id>\",\"password\":\"<client-secret>\"},\"z\":\"\"},{\"id\":\"inject-speed\",\"type\":\"inject\",\"z\":\"flow-speed-sensor\",\"name\":\"Every 15s\",\"repeat\":\"15\",\"once\":true,\"onceDelay\":3,\"wires\":[[\"build-speed-senml\"]]},{\"id\":\"build-speed-senml\",\"type\":\"function\",\"z\":\"flow-speed-sensor\",\"func\":\"var now = Date.now() * 1e6;\\nmsg.payload = JSON.stringify([\\n    {\\\"bn\\\": \\\"speed-sensor:\\\", \\\"bt\\\": now, \\\"n\\\": \\\"speed\\\", \\\"u\\\": \\\"km/h\\\", \\\"v\\\": 60 + Math.random() * 40}\\n]);\\nmsg.topic = \\\"m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry\\\";\\nreturn msg;\",\"wires\":[[\"mqtt-pub-speed\",\"debug-speed\"]]}]"
   }
 ]
 ```
+
+Note the normalisations the agent applied: `clientid` suffixed with `-nr`, `usetls` set to `true`, `tls` set to `magistrala-agent-tls`, and the topic rewritten to `m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry`.
 
 ### Deploy flows (replace all)
 
@@ -361,18 +382,88 @@ mosquitto_pub \
     -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-deploy,$FLOWS\"}]"
 ```
 
+**Expected response** (Node-RED returns 204 No Content on successful full deploy):
+
+```json
+[
+  {
+    "bn": "req-1",
+    "bt": 1781865982.932532,
+    "n": "nodered",
+    "vs": ""
+  }
+]
+```
+
 > **Warning:** `nodered-deploy` replaces **all** running flows. Use `nodered-add-flow` to add without replacing.
 
 ### Add a flow tab (non-destructive)
 
 ```bash
-FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
+FLOWS=$(cat examples/nodered/modbus-flow.json | base64 -w 0)
 
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
     -u <client-id> -P <client-secret> --id "addflow-$(date +%s)" \
     -t "m/<domain-id>/c/<commands-channel-id>/req" \
     -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-add-flow,$FLOWS\"}]"
+```
+
+**Expected response:**
+
+```json
+[
+  {
+    "bn": "req-1",
+    "bt": 1781866008.2599385,
+    "n": "nodered",
+    "vs": "{\"id\":\"53c5e22d806c0d04\"}"
+  }
+]
+```
+
+The response contains the new flow tab ID. Node IDs in the submitted flow are rekeyed (replaced with fresh `nr-` prefixed IDs) before being sent to Node-RED, so example flows with fixed IDs can be added alongside existing flows without duplicate-ID conflicts.
+
+### Verify telemetry is publishing
+
+After deploying a flow, subscribe to the telemetry topic to confirm Node-RED is publishing SenML data:
+
+```bash
+mosquitto_sub \
+    -h <mqtt-host> -p 1883 \
+    -u <client-id> -P <client-secret> --id "tel-$(date +%s)" \
+    -t "m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry" \
+    -v
+```
+
+**Expected output (speed-flow.json, every 15s):**
+
+```
+m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry [{"bn":"speed-sensor:","bt":1781866061271000000,"n":"speed","u":"km/h","v":82.4},{"n":"rpm","u":"rpm","v":1923},{"n":"gear","u":"1","v":3}]
+```
+
+**Expected output (modbus-flow.json, every 10s):**
+
+```
+m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry [{"bn":"modbus-device:","bt":1781866061271000000,"n":"hr0","u":"V","v":236},{"n":"hr1","u":"A","v":11.2},{"n":"hr2","u":"W","v":2643},{"n":"hr3","u":"Cel","v":48}]
+```
+
+### Error handling
+
+Unknown commands and missing flow arguments return an error response on the response topic:
+
+```bash
+# Unknown command
+mosquitto_pub ... -m '[{"bn":"req-1:", "n":"nodered", "vs":"nodered-unknown"}]'
+# Response: [{"bn":"req-1","n":"nodered","vs":"failed to execute node-red operation : Unknown command"}]
+
+# Deploy without flow argument
+mosquitto_pub ... -m '[{"bn":"req-1:", "n":"nodered", "vs":"nodered-deploy"}]'
+# Response: [{"bn":"req-1","n":"nodered","vs":"invalid command"}]
+
+# Invalid base64 payload
+mosquitto_pub ... -m '[{"bn":"req-1:", "n":"nodered", "vs":"nodered-deploy,%%%bad"}]'
+# Response: [{"bn":"req-1","n":"nodered","vs":"failed to execute node-red operation : ..."}]
 ```
 
 ### Deploy via control subsystem
