@@ -34,6 +34,124 @@ func writeTempFile(t *testing.T, content []byte) string {
 	return f.Name()
 }
 
+func TestParseCfgFromRecords(t *testing.T) {
+	urlVal := "https://example.com/agent.bin"
+	hashVal := "abcdef1234567890"
+	sizeVal := 153600.0
+
+	cases := []struct {
+		desc     string
+		records  []senml.Record
+		wantURL  string
+		wantHash string
+		wantSize uint64
+	}{
+		{
+			desc:     "url, hash, and size present",
+			records:  []senml.Record{{Name: "url", StringValue: &urlVal}, {Name: "hash", StringValue: &hashVal}, {Name: "size", Value: &sizeVal}},
+			wantURL:  urlVal,
+			wantHash: hashVal,
+			wantSize: 153600,
+		},
+		{
+			desc:     "hash and size only (no url for MQTT path)",
+			records:  []senml.Record{{Name: "hash", StringValue: &hashVal}, {Name: "size", Value: &sizeVal}},
+			wantHash: hashVal,
+			wantSize: 153600,
+		},
+		{
+			desc:    "empty records",
+			records: []senml.Record{},
+		},
+		{
+			desc:    "url with nil string value is ignored",
+			records: []senml.Record{{Name: "url", StringValue: nil}},
+			wantURL: "",
+		},
+		{
+			desc:     "hash with surrounding whitespace is trimmed",
+			records:  []senml.Record{{Name: "hash", StringValue: func() *string { s := "  " + hashVal + "  "; return &s }()}},
+			wantHash: hashVal,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			tr := ParseCfgFromRecords(tc.records)
+			assert.Equal(t, tc.wantURL, tr.URL)
+			assert.Equal(t, tc.wantHash, tr.SHA256Hex)
+			assert.Equal(t, tc.wantSize, tr.Size)
+		})
+	}
+}
+
+func TestRunFromData(t *testing.T) {
+	content := []byte("fake binary content for mqtt ota")
+
+	cases := []struct {
+		desc            string
+		data            []byte
+		sha256hex       string
+		wantErrContains string
+	}{
+		{
+			desc:            "empty hash rejected",
+			data:            content,
+			sha256hex:       "",
+			wantErrContains: "hash required",
+		},
+		{
+			desc:            "hash mismatch",
+			data:            content,
+			sha256hex:       "deadbeef",
+			wantErrContains: "sha256 mismatch",
+		},
+		{
+			desc:      "correct hash proceeds to exec (expected to fail in test)",
+			data:      content,
+			sha256hex: sha256hex(content),
+			// syscall.Exec fails because content is not a valid binary;
+			// we just check there is an error (not a verify error).
+			wantErrContains: "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			dir := t.TempDir()
+			dst := filepath.Join(dir, "agent-dst")
+			cfg := Config{BinaryPath: dst, DownloadDir: dir}
+
+			var states []State
+			err := RunFromData(context.Background(), cfg, tc.data, tc.sha256hex,
+				func(s State, _, _ int64, _ float64) { states = append(states, s) })
+
+			assert.Error(t, err)
+			if tc.wantErrContains != "" {
+				assert.ErrorContains(t, err, tc.wantErrContains)
+			}
+			// The library must not emit StateAborted; the service layer is the
+			// sole publisher of the aborted state (with the error message).
+			assert.NotContains(t, states, StateAborted, "library must not publish StateAborted")
+		})
+	}
+}
+
+func TestRunFromDataContextCancelled(t *testing.T) {
+	content := []byte("fake binary content for mqtt ota")
+	dir := t.TempDir()
+	dst := filepath.Join(dir, "agent-dst")
+	cfg := Config{BinaryPath: dst, DownloadDir: dir}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := RunFromData(ctx, cfg, content, sha256hex(content),
+		func(State, int64, int64, float64) {})
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
 func TestState_String(t *testing.T) {
 	cases := []struct {
 		state    State
@@ -126,6 +244,15 @@ func TestTriggerFromRecords(t *testing.T) {
 				{Name: "extra", StringValue: &hashVal},
 			},
 			url: urlVal,
+		},
+		{
+			desc: "hash with surrounding whitespace is trimmed",
+			records: []senml.Record{
+				{Name: "url", StringValue: &urlVal},
+				{Name: "hash", StringValue: func() *string { s := "  " + hashVal + "  "; return &s }()},
+			},
+			url:       urlVal,
+			sha256hex: hashVal,
 		},
 	}
 
@@ -227,7 +354,7 @@ func TestDownload(t *testing.T) {
 			}
 
 			var progress []float64
-			path, err := download(ctx, url, t.TempDir(), tc.sizeLimit, func(pct float64) {
+			path, err := download(ctx, url, t.TempDir(), tc.sizeLimit, func(_, _ int64, pct float64) {
 				progress = append(progress, pct)
 			})
 			if tc.wantErr {
@@ -258,7 +385,7 @@ func TestDownload(t *testing.T) {
 		defer srv.Close()
 
 		var calls []float64
-		path, err := download(context.Background(), srv.URL, t.TempDir(), 0, func(pct float64) {
+		path, err := download(context.Background(), srv.URL, t.TempDir(), 0, func(_, _ int64, pct float64) {
 			calls = append(calls, pct)
 		})
 		require.NoError(t, err)
@@ -473,7 +600,7 @@ func TestRun(t *testing.T) {
 			dir := t.TempDir()
 			cfg := Config{BinaryPath: filepath.Join(dir, "agent"), DownloadDir: dir}
 			var states []State
-			err := Run(context.Background(), cfg, url, tc.sha256hex, 0, func(s State, _ float64) {
+			err := Run(context.Background(), cfg, url, tc.sha256hex, 0, func(s State, _, _ int64, _ float64) {
 				states = append(states, s)
 			})
 
@@ -482,6 +609,9 @@ func TestRun(t *testing.T) {
 			if len(tc.wantStates) > 0 {
 				assert.Equal(t, tc.wantStates, states, fmt.Sprintf("%s: unexpected state sequence", tc.desc))
 			}
+			// The library must not emit StateAborted; the service layer is the
+			// sole publisher of the aborted state (with the error message).
+			assert.NotContains(t, states, StateAborted, fmt.Sprintf("%s: library must not publish StateAborted", tc.desc))
 			if tc.checkCleanup {
 				entries, _ := os.ReadDir(dir)
 				for _, e := range entries {
@@ -492,4 +622,44 @@ func TestRun(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRunReportsFileSizeAfterDownload(t *testing.T) {
+	content := []byte("fake binary content for size check")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".sha256") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+		_, _ = w.Write(content)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	cfg := Config{BinaryPath: filepath.Join(dir, "agent"), DownloadDir: dir}
+
+	type stateInfo struct {
+		state        State
+		bytesWritten int64
+		totalBytes   int64
+	}
+	var infos []stateInfo
+	_ = Run(context.Background(), cfg, srv.URL+"/agent.bin", "deadbeef", 0,
+		func(s State, bw, tb int64, _ float64) {
+			infos = append(infos, stateInfo{s, bw, tb})
+		})
+
+	// After download, bytes/total in StateVerifying should match the file size
+	// so that subscribers see consistent values across HTTP- and MQTT-delivered updates.
+	var verifyInfo *stateInfo
+	for i := range infos {
+		if infos[i].state == StateVerifying {
+			verifyInfo = &infos[i]
+			break
+		}
+	}
+	require.NotNil(t, verifyInfo, "expected StateVerifying to be reported")
+	assert.Equal(t, int64(len(content)), verifyInfo.bytesWritten, "bytes should match file size in StateVerifying")
+	assert.Equal(t, int64(len(content)), verifyInfo.totalBytes, "total should match file size in StateVerifying")
 }

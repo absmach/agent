@@ -24,10 +24,17 @@ import (
 	"robpike.io/filter"
 )
 
+// otaDataPrep holds the expected hash and size for firmware arriving on the ota data topic.
+type otaDataPrep struct {
+	hash string
+	size uint64
+}
+
 const (
-	reqTopic    = "req"
-	servTopic   = "services"
-	otaCfgTopic = "ota/cfg"
+	reqTopic     = "req"
+	servTopic    = "services"
+	otaCfgTopic  = "ota/cfg"
+	otaDataTopic = "ota"
 
 	control = "control"
 	exec    = "exec"
@@ -91,14 +98,16 @@ type MqttBroker interface {
 }
 
 type broker struct {
-	svc      agent.Service
-	client   mqtt.Client
-	logger   *slog.Logger
-	channel  string
-	domainID string
-	ctx      context.Context
-	commands map[string]Command
-	mu       sync.RWMutex
+	svc       agent.Service
+	client    mqtt.Client
+	logger    *slog.Logger
+	channel   string
+	domainID  string
+	ctx       context.Context
+	commands  map[string]Command
+	mu        sync.RWMutex
+	otaPrep   *otaDataPrep
+	otaPrepMu sync.Mutex
 }
 
 // NewBroker returns a new MQTT broker instance with all built-in command
@@ -436,6 +445,11 @@ func (b *broker) subscribe() error {
 	if err := o.Error(); o.Wait() && err != nil {
 		return err
 	}
+	topic = fmt.Sprintf("m/%s/c/%s/%s", b.domainID, b.channel, otaDataTopic)
+	d := b.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) { b.handleOTADataMsg(b.ctx, msg) })
+	if err := d.Error(); d.Wait() && err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -458,6 +472,9 @@ func (b *broker) handleBrokerMsg(msg mqtt.Message) {
 // handleOTACfgMsg handles OTA trigger messages arriving on the ota/cfg topic.
 // The payload is a SenML pack with url, hash, and size records.
 // If a command secret is configured, the pack must include a valid token record.
+// When url is present, firmware is fetched via HTTP. When url is absent, the
+// hash and size are stored so the next message on the ota data topic can be
+// installed directly.
 func (b *broker) handleOTACfgMsg(ctx context.Context, msg mqtt.Message) {
 	records, err := senml.Decode(msg.Payload())
 	if err != nil {
@@ -477,16 +494,63 @@ func (b *broker) handleOTACfgMsg(ctx context.Context, msg mqtt.Message) {
 		}
 	}
 
-	trigger, err := ota.TriggerFromRecords(records)
-	if err != nil {
-		b.logger.Warn("OTA cfg trigger parse failed", slog.Any("error", err))
+	cfg := ota.ParseCfgFromRecords(records)
+
+	if cfg.URL != "" {
+		// A URL trigger supersedes any pending data-path priming so a later
+		// stray ota data message can't install against a stale hash.
+		b.otaPrepMu.Lock()
+		b.otaPrep = nil
+		b.otaPrepMu.Unlock()
+		b.logger.Info("OTA cfg HTTP download", slog.String("url", cfg.URL))
+		go func(ctx context.Context) {
+			if err := b.svc.OTA(ctx, cfg.URL, cfg.SHA256Hex, cfg.Size); err != nil {
+				b.logger.Warn("OTA cfg HTTP operation failed", slog.Any("error", err))
+			}
+		}(context.WithoutCancel(ctx))
 		return
 	}
 
-	b.logger.Info("OTA cfg command", slog.String("url", trigger.URL))
+	if cfg.SHA256Hex == "" {
+		b.logger.Warn("OTA cfg has no url and no hash; ignoring")
+		return
+	}
+
+	b.otaPrepMu.Lock()
+	b.otaPrep = &otaDataPrep{hash: cfg.SHA256Hex, size: cfg.Size}
+	b.otaPrepMu.Unlock()
+	b.logger.Info("OTA cfg primed for MQTT data delivery", slog.String("hash", cfg.SHA256Hex), slog.Uint64("size", cfg.Size))
+}
+
+// handleOTADataMsg receives firmware binary on the ota data topic and installs it.
+// A prior ota/cfg message without a url must have primed the expected hash and size.
+//
+// The data topic carries no token of its own; trust rests entirely on the prior
+// authenticated ota/cfg priming and on OTAFromData verifying the payload against
+// the primed SHA-256 hash before install. Payloads that don't match are rejected.
+func (b *broker) handleOTADataMsg(ctx context.Context, msg mqtt.Message) {
+	b.otaPrepMu.Lock()
+	prep := b.otaPrep
+	b.otaPrep = nil
+	b.otaPrepMu.Unlock()
+
+	if prep == nil {
+		b.logger.Warn("OTA data received with no prior cfg priming; ignoring")
+		return
+	}
+
+	data := msg.Payload()
+	if prep.size > 0 && uint64(len(data)) != prep.size {
+		b.logger.Warn("OTA data size mismatch",
+			slog.Int("got", len(data)),
+			slog.Uint64("expected", prep.size))
+		return
+	}
+
+	b.logger.Info("OTA data received via MQTT", slog.Int("bytes", len(data)))
 	go func(ctx context.Context) {
-		if err := b.svc.OTA(ctx, trigger.URL, trigger.SHA256Hex, trigger.Size); err != nil {
-			b.logger.Warn("OTA cfg operation failed", slog.Any("error", err))
+		if err := b.svc.OTAFromData(ctx, data, prep.hash); err != nil {
+			b.logger.Warn("OTA data operation failed", slog.Any("error", err))
 		}
 	}(context.WithoutCancel(ctx))
 }

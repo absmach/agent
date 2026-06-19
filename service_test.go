@@ -5,6 +5,7 @@ package agent_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -1694,6 +1695,179 @@ func sdkProvisionServer(t *testing.T, deviceID, deviceKey, channelID string) *ht
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+func TestOTAStatusPublishing(t *testing.T) {
+	content := []byte("fake agent binary content for ota test")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Return 404 for the sha256 sidecar so verify fails cleanly without exec.
+		if strings.HasSuffix(r.URL.Path, ".sha256") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+		_, _ = w.Write(content)
+	}))
+	defer srv.Close()
+
+	cfg := testConfig()
+	cfg.OTA = agent.OTAConfig{
+		Enabled:     true,
+		BinaryPath:  filepath.Join(t.TempDir(), "agent"),
+		DownloadDir: t.TempDir(),
+	}
+
+	svc, mqttClient, _, err := newService(t, cfg, nil)
+	require.NoError(t, err)
+
+	statusTopic := mqttTopic("ctrl-channel", "ota/status")
+
+	var publishedPayloads [][]byte
+	token := agentmocks.NewMQTTToken(t)
+	token.On("Wait").Return(true).Maybe()
+	mqttClient.On("Publish", statusTopic, cfg.MQTT.QoS, true, mock.Anything).
+		Run(func(args mock.Arguments) {
+			if p, ok := args[3].([]byte); ok {
+				publishedPayloads = append(publishedPayloads, p)
+			}
+		}).
+		Return(token).
+		Maybe()
+
+	// OTA will fail at verify (no sha256 provided and sidecar returns 404).
+	// The important thing is that status messages were published along the way.
+	_ = svc.OTA(context.Background(), srv.URL+"/agent.bin", "", 0)
+
+	require.NotEmpty(t, publishedPayloads, "expected OTA status messages to be published")
+
+	// Decode the first status message and verify it has the correct SenML fields.
+	first := publishedPayloads[0]
+	var records []senml.Record
+	require.NoError(t, json.Unmarshal(first, &records), "OTA status must be valid JSON")
+
+	fieldNames := map[string]bool{}
+	for _, r := range records {
+		fieldNames[r.Name] = true
+	}
+	assert.True(t, fieldNames["state"], "status must include 'state' field")
+	assert.True(t, fieldNames["bytes"], "status must include 'bytes' field")
+	assert.True(t, fieldNames["total"], "status must include 'total' field")
+	assert.True(t, fieldNames["progress"], "status must include 'progress' field")
+}
+
+func TestOTAStatusPublishesErrorOnFailure(t *testing.T) {
+	// Use an unreachable URL so download fails immediately.
+	closedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	closedSrv.Close()
+
+	cfg := testConfig()
+	cfg.OTA = agent.OTAConfig{
+		Enabled:     true,
+		BinaryPath:  filepath.Join(t.TempDir(), "agent"),
+		DownloadDir: t.TempDir(),
+	}
+
+	svc, mqttClient, _, err := newService(t, cfg, nil)
+	require.NoError(t, err)
+
+	statusTopic := mqttTopic("ctrl-channel", "ota/status")
+
+	var publishedPayloads [][]byte
+	token := agentmocks.NewMQTTToken(t)
+	token.On("Wait").Return(true).Maybe()
+	mqttClient.On("Publish", statusTopic, cfg.MQTT.QoS, true, mock.Anything).
+		Run(func(args mock.Arguments) {
+			if p, ok := args[3].([]byte); ok {
+				publishedPayloads = append(publishedPayloads, p)
+			}
+		}).
+		Return(token).
+		Maybe()
+
+	otaErr := svc.OTA(context.Background(), closedSrv.URL, "", 0)
+	assert.Error(t, otaErr)
+
+	require.NotEmpty(t, publishedPayloads, "expected OTA status messages on failure")
+
+	// Count how many StateAborted messages were published — there must be
+	// exactly one (from the service layer, with the error field). The library
+	// no longer emits StateAborted, so a double publish would be a regression.
+	abortedCount := 0
+	var lastRecords []senml.Record
+	for _, payload := range publishedPayloads {
+		var records []senml.Record
+		require.NoError(t, json.Unmarshal(payload, &records))
+		lastRecords = records
+		for _, r := range records {
+			if r.Name == "state" && r.StringValue != nil && *r.StringValue == "aborted" {
+				abortedCount++
+			}
+		}
+	}
+	assert.Equal(t, 1, abortedCount, "exactly one StateAborted status should be published")
+
+	// Final message should include the 'error' field.
+	hasError := false
+	for _, r := range lastRecords {
+		if r.Name == "error" {
+			hasError = true
+			break
+		}
+	}
+	assert.True(t, hasError, "final OTA status on failure must include 'error' field")
+}
+
+func TestOTAFromDataStatusPublishing(t *testing.T) {
+	content := []byte("fake agent binary content for mqtt ota test")
+
+	// Compute SHA-256 so RunFromData can verify.
+	h := sha256.New()
+	h.Write(content)
+	hash := fmt.Sprintf("%x", h.Sum(nil))
+
+	cfg := testConfig()
+	cfg.OTA = agent.OTAConfig{
+		Enabled:     true,
+		BinaryPath:  filepath.Join(t.TempDir(), "agent"),
+		DownloadDir: t.TempDir(),
+	}
+
+	svc, mqttClient, _, err := newService(t, cfg, nil)
+	require.NoError(t, err)
+
+	statusTopic := mqttTopic("ctrl-channel", "ota/status")
+
+	var publishedPayloads [][]byte
+	token := agentmocks.NewMQTTToken(t)
+	token.On("Wait").Return(true).Maybe()
+	mqttClient.On("Publish", statusTopic, cfg.MQTT.QoS, true, mock.Anything).
+		Run(func(args mock.Arguments) {
+			if p, ok := args[3].([]byte); ok {
+				publishedPayloads = append(publishedPayloads, p)
+			}
+		}).
+		Return(token).
+		Maybe()
+
+	// OTAFromData will fail at syscall.Exec in test; the important thing is
+	// that status messages were published.
+	_ = svc.OTAFromData(context.Background(), content, hash)
+
+	require.NotEmpty(t, publishedPayloads, "expected OTA from-data status messages")
+	last := publishedPayloads[len(publishedPayloads)-1]
+	var records []senml.Record
+	require.NoError(t, json.Unmarshal(last, &records))
+
+	fieldNames := map[string]bool{}
+	for _, r := range records {
+		fieldNames[r.Name] = true
+	}
+	assert.True(t, fieldNames["state"], "status must include 'state' field")
+	assert.True(t, fieldNames["bytes"], "status must include 'bytes' field")
+	assert.True(t, fieldNames["total"], "status must include 'total' field")
+	assert.True(t, fieldNames["progress"], "status must include 'progress' field")
 }
 
 func TestDeviceManager(t *testing.T) {
