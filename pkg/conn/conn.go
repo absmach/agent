@@ -183,19 +183,6 @@ func (b *broker) registerBuiltins() {
 	})
 
 	b.Register(Command{
-		Name:         exec,
-		Description:  "Execute an allowlisted shell command",
-		Usage:        "exec,<command>[,arg...]",
-		RequiresAuth: true,
-		Handler: func(_ context.Context, pack senml.Pack) error {
-			uuid, cmdStr := extractCmd(pack)
-			log.Info("Execute command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-			_, err := svc.Execute(uuid, cmdStr)
-			return err
-		},
-	})
-
-	b.Register(Command{
 		Name:         config,
 		Description:  "View or modify runtime configuration",
 		Usage:        "config,<view|get|set|save|reset>[,args...]",
