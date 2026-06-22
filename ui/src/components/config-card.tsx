@@ -27,6 +27,17 @@ interface Config {
   logLevel: string;
   mqttURL: string;
   nodeRedURL: string;
+  transport: string;
+  coapURL: string;
+  coapPSK: string;
+  coapSkipTLSVer: boolean;
+  coapMaxObserve: number;
+  coapMaxRetransmits: number;
+  coapKeepAlive: number;
+  coapContentFormat: number;
+  coapCert: string;
+  coapKey: string;
+  coapCA: string;
 }
 
 const emptyConfig: Config = {
@@ -38,6 +49,17 @@ const emptyConfig: Config = {
   logLevel: "info",
   mqttURL: "",
   nodeRedURL: "",
+  transport: "mqtt",
+  coapURL: "",
+  coapPSK: "",
+  coapSkipTLSVer: false,
+  coapMaxObserve: 0,
+  coapMaxRetransmits: 0,
+  coapKeepAlive: 0,
+  coapContentFormat: 0,
+  coapCert: "",
+  coapKey: "",
+  coapCA: "",
 };
 
 type Status = { ok: boolean; message: string } | null;
@@ -130,6 +152,17 @@ export function ConfigCard() {
         logLevel: data.log?.level ?? "info",
         mqttURL: data.mqtt?.url ?? "",
         nodeRedURL: data.nodered?.url ?? "",
+        transport: data.transport ?? "mqtt",
+        coapURL: data.coap?.url ?? "",
+        coapPSK: data.coap?.psk ?? "",
+        coapSkipTLSVer: data.coap?.skip_tls_ver ?? false,
+        coapMaxObserve: data.coap?.max_observe ?? 0,
+        coapMaxRetransmits: data.coap?.max_retransmits ?? 0,
+        coapKeepAlive: data.coap?.keep_alive ?? 0,
+        coapContentFormat: data.coap?.content_format ?? 0,
+        coapCert: data.coap?.cert ?? "",
+        coapKey: data.coap?.key ?? "",
+        coapCA: data.coap?.ca ?? "",
       });
       setStatus({ ok: true, message: "Config loaded" });
     } catch (err) {
@@ -143,28 +176,48 @@ export function ConfigCard() {
     fetchConfig();
   }, [fetchConfig]);
 
+  function buildPayload() {
+    const body: Record<string, unknown> = {
+      server: { port: config.httpPort },
+      channels: {
+        ctrl_id: config.ctrlChannelID,
+        data_id: config.dataChannelID,
+      },
+      nodered: { url: config.nodeRedURL },
+      log: { level: config.logLevel },
+      transport: config.transport,
+    };
+    if (config.transport === "coap") {
+      body.coap = {
+        url: config.coapURL,
+        psk: config.coapPSK,
+        skip_tls_ver: config.coapSkipTLSVer,
+        max_observe: config.coapMaxObserve,
+        max_retransmits: config.coapMaxRetransmits,
+        keep_alive: config.coapKeepAlive,
+        content_format: config.coapContentFormat,
+        cert: config.coapCert,
+        key: config.coapKey,
+        ca: config.coapCA,
+      };
+    } else {
+      body.mqtt = {
+        url: config.mqttURL,
+        username: config.clientID,
+        password: config.clientKey,
+      };
+    }
+    return body;
+  }
+
   async function saveConfig() {
     setLoading(true);
     setStatus(null);
     try {
-      const body = {
-        server: { port: config.httpPort },
-        channels: {
-          ctrl_id: config.ctrlChannelID,
-          data_id: config.dataChannelID,
-        },
-        mqtt: {
-          url: config.mqttURL,
-          username: config.clientID,
-          password: config.clientKey,
-        },
-        nodered: { url: config.nodeRedURL },
-        log: { level: config.logLevel },
-      };
       const res = await fetch("/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(buildPayload()),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setStatus({ ok: true, message: "Config saved successfully" });
@@ -188,7 +241,7 @@ export function ConfigCard() {
           id={id}
           type={type}
           placeholder={placeholder}
-          value={config[id]}
+          value={String(config[id])}
           onInput={(e) =>
             setConfig((c) => ({
               ...c,
@@ -199,6 +252,28 @@ export function ConfigCard() {
       </div>
     );
   }
+
+  function numberField(id: keyof Config, label: string, placeholder: string) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={id}>{label}</Label>
+        <Input
+          id={id}
+          type="number"
+          placeholder={placeholder}
+          value={String(config[id])}
+          onInput={(e) =>
+            setConfig((c) => ({
+              ...c,
+              [id]: Number((e.target as HTMLInputElement).value),
+            }))
+          }
+        />
+      </div>
+    );
+  }
+
+  const isCoap = config.transport === "coap";
 
   return (
     <Card>
@@ -211,23 +286,97 @@ export function ConfigCard() {
       <CardContent>
         <div className="grid gap-4 sm:grid-cols-2">
           {field("httpPort", "HTTP Port", "Agent HTTP API port")}
-          {field(
-            "clientID",
-            "Client ID",
-            "Magistrala client ID (MQTT username)",
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="transport">Transport</Label>
+            <Select
+              id="transport"
+              value={config.transport}
+              onChange={(e) =>
+                setConfig((c) => ({
+                  ...c,
+                  transport: (e.target as HTMLSelectElement).value,
+                }))
+              }
+            >
+              <option value="mqtt">MQTT</option>
+              <option value="coap">CoAP</option>
+            </Select>
+          </div>
+
+          {isCoap ? (
+            <>
+              {field("coapURL", "CoAP URL", "coaps://broker.example.com:5684")}
+              <SecretField
+                id="coapPSK"
+                label="PSK Identity"
+                placeholder="Pre-shared key identity"
+                value={config.coapPSK}
+                onInput={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    coapPSK: (e.target as HTMLInputElement).value,
+                  }))
+                }
+              />
+              {numberField(
+                "coapKeepAlive",
+                "Keep Alive (s)",
+                "CoAP keep-alive interval in seconds",
+              )}
+              {numberField(
+                "coapMaxObserve",
+                "Max Observe",
+                "Max concurrent observe relations",
+              )}
+              {numberField(
+                "coapMaxRetransmits",
+                "Max Retransmits",
+                "Max retransmission attempts",
+              )}
+              {numberField(
+                "coapContentFormat",
+                "Content Format",
+                "Content format ID (e.g. 110 for SenML+JSON)",
+              )}
+              {field("coapCert", "Client Cert", "TLS client certificate")}
+              <SecretField
+                id="coapKey"
+                label="Client Key"
+                placeholder="TLS client private key"
+                value={config.coapKey}
+                onInput={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    coapKey: (e.target as HTMLInputElement).value,
+                  }))
+                }
+              />
+              {field("coapCA", "CA Cert", "CA certificate for verification")}
+            </>
+          ) : (
+            <>
+              {field(
+                "clientID",
+                "Client ID",
+                "Magistrala client ID (MQTT username)",
+              )}
+              <SecretField
+                id="clientKey"
+                label="Client Key"
+                placeholder="Magistrala client secret (MQTT password)"
+                value={config.clientKey}
+                onInput={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    clientKey: (e.target as HTMLInputElement).value,
+                  }))
+                }
+              />
+              {field("mqttURL", "MQTT URL", "Magistrala MQTT broker URL")}
+            </>
           )}
-          <SecretField
-            id="clientKey"
-            label="Client Key"
-            placeholder="Magistrala client secret (MQTT password)"
-            value={config.clientKey}
-            onInput={(e) =>
-              setConfig((c) => ({
-                ...c,
-                clientKey: (e.target as HTMLInputElement).value,
-              }))
-            }
-          />
+
           {field(
             "ctrlChannelID",
             "Control Channel ID",
@@ -238,7 +387,6 @@ export function ConfigCard() {
             "Data Channel ID",
             "Magistrala data channel ID",
           )}
-          {field("mqttURL", "MQTT URL", "Magistrala MQTT broker URL")}
           {field("nodeRedURL", "Node-RED URL", "Node-RED API URL")}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="logLevel">Log Level</Label>
@@ -259,6 +407,7 @@ export function ConfigCard() {
               ))}
             </Select>
           </div>
+
           <div className="flex items-end gap-2 sm:col-span-2">
             <Button variant="outline" onClick={fetchConfig} disabled={loading}>
               Get Config

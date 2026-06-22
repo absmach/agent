@@ -59,6 +59,17 @@ func addConfigEndpoint(svc agent.Service) endpoint.Endpoint {
 		current.MQTT.URL = req.Mqtt.Url
 		current.MQTT.Username = req.Mqtt.Username
 		current.MQTT.Password = req.Mqtt.Password
+		current.CoAP.URL = req.CoAP.Url
+		current.CoAP.PSK = req.CoAP.PSK
+		current.CoAP.SkipTLSVer = req.CoAP.SkipTLSVer
+		current.CoAP.MaxObserve = req.CoAP.MaxObserve
+		current.CoAP.MaxRetransmits = req.CoAP.MaxRetransmits
+		current.CoAP.KeepAlive = req.CoAP.KeepAlive
+		current.CoAP.ContentFormat = req.CoAP.ContentFormat
+		current.CoAP.Cert = req.CoAP.Cert
+		current.CoAP.Key = req.CoAP.Key
+		current.CoAP.CA = req.CoAP.CA
+		current.Transport = req.Transport
 
 		if err := svc.AddConfig(current); err != nil {
 			return nil, err
