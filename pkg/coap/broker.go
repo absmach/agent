@@ -31,7 +31,6 @@ const (
 	otaStatusTopic = "ota/status"
 
 	control = "control"
-	exec    = "exec"
 	config  = "config"
 	service = "service"
 	term    = "term"
@@ -88,13 +87,6 @@ func (b *Broker) registerBuiltins() {
 		uuid, cmdStr := extractCmd(pack)
 		log.Info("Control command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 		return svc.Control(uuid, cmdStr)
-	})
-
-	b.RegisterHandler(exec, func(ctx context.Context, pack senml.Pack) error {
-		uuid, cmdStr := extractCmd(pack)
-		log.Info("Execute command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-		_, err := svc.Execute(uuid, cmdStr)
-		return err
 	})
 
 	b.RegisterHandler(config, func(ctx context.Context, pack senml.Pack) error {
