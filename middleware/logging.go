@@ -484,6 +484,10 @@ func (lm *loggingMiddleware) SetRuntimeConfig(ctx context.Context, key, value st
 	return lm.svc.SetRuntimeConfig(ctx, key, value)
 }
 
+func (lm *loggingMiddleware) Health() bool {
+	return lm.svc.Health()
+}
+
 func (lm *loggingMiddleware) SetPushEvent(fn func(string)) {
 	lm.svc.SetPushEvent(fn)
 }

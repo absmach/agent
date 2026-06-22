@@ -303,6 +303,15 @@ func (ms *metricsMiddleware) SetRuntimeConfig(ctx context.Context, key, value st
 	return ms.svc.SetRuntimeConfig(ctx, key, value)
 }
 
+func (ms *metricsMiddleware) Health() bool {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "health").Add(1)
+		ms.latency.With("method", "health").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.Health()
+}
+
 func (ms *metricsMiddleware) SetPushEvent(fn func(string)) {
 	ms.svc.SetPushEvent(fn)
 }

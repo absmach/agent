@@ -209,7 +209,7 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 	).ServeHTTP)
 
 	r.Handle("/metrics", promhttp.Handler())
-	r.Get("/health", health())
+	r.Get("/health", health(svc))
 	r.Get("/terminal/ws", terminalWSHandler(logger))
 	if stream != nil {
 		r.Handle("/logs", logstream.SSEHandler(stream))

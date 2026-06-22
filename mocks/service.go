@@ -235,6 +235,22 @@ func (_c *Service_CloseDevice_Call) RunAndReturn(run func(id string) error) *Ser
 }
 
 // CommandSecret provides a mock function for the type Service
+func (_mock *Service) Health() bool {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Health")
+	}
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func() bool); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	return r0
+}
+
 func (_mock *Service) CommandSecret() string {
 	ret := _mock.Called()
 
