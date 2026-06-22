@@ -96,9 +96,9 @@ jobs:
       - name: Compute build metadata
         id: meta
         run: |
-          echo "version=$(git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0')" >> $GITHUB_OUTPUT
-          echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-          echo "time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+          echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -149,8 +149,8 @@ jobs:
           cp -r docker/nodered dist/nodered
           # FluxMQ configuration
           cp -r docker/fluxmq dist/fluxmq
-          # Bootstrap and provisioning scripts
-          cp scripts/provision.sh dist/provision.sh
+          # Bootstrap and provisioning scripts (entrypoint.sh + provision.sh)
+          cp -r scripts dist/scripts
 
       - name: Create release
         uses: softprops/action-gh-release@v3
