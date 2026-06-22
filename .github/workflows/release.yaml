@@ -1,36 +1,193 @@
 # Copyright (c) Abstract Machines
 # SPDX-License-Identifier: Apache-2.0
 
-name: Automated release
+name: Release
+
 on:
-  release:
-    types: [published]
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/absmach
 
 jobs:
-  release-linux-windows:
-    name: release linux-windows
+  build:
+    name: Build agent-linux-${{ matrix.goarch }}
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        # build and publish in parallel: linux/386, linux/amd64, linux/arm64, windows/386, windows/amd64, darwin/amd64, darwin/arm64
-        goos: [linux, windows, darwin]
-        goarch: ["386", amd64, arm64]
-        exclude:
-          - goarch: "386"
-            goos: darwin
-          - goarch: arm64
-            goos: windows
+        goarch: [amd64, arm64, riscv64]
+
     steps:
-    - uses: actions/checkout@v6
-    - name: compile and release
-      uses: wangyoucao577/go-release-action@v1.55
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        goos: ${{ matrix.goos }}
-        goarch: ${{ matrix.goarch }}
-        asset_name: magistrala-agent-${{ github.event.release.tag_name }}-${{ matrix.goos }}-${{ matrix.goarch }}
-        goversion: "1.26"
-        binary_name: "magistrala-agent"
-        build_command: "make"
-      env:
-        BUILD_DIR: "."
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: "go.sum"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install UI dependencies
+        run: |
+          cd ui
+          npm install
+
+      - name: Build UI
+        run: make ui_prod
+
+      - name: Build binary
+        run: |
+          mkdir -p dist
+          GOOS=linux GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 make agent
+          mv build/magistrala-agent dist/magistrala-agent-linux-${{ matrix.goarch }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-linux-${{ matrix.goarch }}
+          path: dist/
+          retention-days: 7
+
+  docker:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute build metadata
+        id: meta
+        run: |
+          echo "version=$(git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0')" >> $GITHUB_OUTPUT
+          echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/riscv64
+          push: true
+          build-args: |
+            SVC=agent
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ steps.meta.outputs.commit }}
+            TIME=${{ steps.meta.outputs.time }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/agent:latest
+            ${{ env.IMAGE_PREFIX }}/agent:${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    name: Create GitHub Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download binaries
+        uses: actions/download-artifact@v8
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Prepare release assets
+        run: |
+          # Environment file for docker-compose
+          cp docker/.env dist/.env
+          # Docker Compose file
+          cp docker/docker-compose.yml dist/docker-compose.yml
+          # Node-RED configuration (required by docker-compose)
+          cp -r docker/nodered dist/nodered
+          # FluxMQ configuration
+          cp -r docker/fluxmq dist/fluxmq
+          # Bootstrap and provisioning scripts
+          cp scripts/provision.sh dist/provision.sh
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/**
+          generate_release_notes: true
+          body: |
+            ## Docker Images
+
+            Multi-architecture Docker images (linux/amd64, linux/arm64, linux/riscv64) are available on GHCR:
+
+            ```
+            docker pull ghcr.io/absmach/agent:${{ github.ref_name }}
+            docker pull ghcr.io/absmach/agent:latest
+            ```
+
+            Images are tagged with the release version (e.g., `${{ github.ref_name }}`) and `:latest` is updated to point to the most recent stable release.
+
+            ## Quick Start with Docker Compose
+
+            1. Download `.env`, `docker-compose.yml`, the `nodered/` directory, the `fluxmq/` directory and the `scripts/` directory from the release assets.
+            2. Edit `.env` and `fluxmq/` with your configuration.
+            3. Start the stack:
+
+            ```bash
+            docker compose --env-file .env -f docker-compose.yml up -d
+            ```
+
+            ## Running the Binary Directly
+
+            Download the binary for your architecture, make it executable, and run:
+
+            ```bash
+            chmod +x magistrala-agent-linux-<arch>
+            ./magistrala-agent-linux-<arch>
+            ```
+
+            The agent listens on port 9999 by default. Configure it via environment variables (see `.env` for all available options).
+
+            For full documentation, visit the [README](https://github.com/absmach/agent).
