@@ -52,6 +52,8 @@ func testConfig() agent.Config {
 			QoS:        0,
 			CmdQoS:     1,
 		},
+		agent.CoAPConfig{},
+		"mqtt",
 		agent.HeartbeatConfig{Interval: time.Hour},
 		agent.TerminalConfig{SessionTimeout: time.Minute},
 		agent.OTAConfig{Enabled: false, BinaryPath: "/usr/local/bin/agent", DownloadDir: "/tmp"},

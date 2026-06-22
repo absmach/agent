@@ -59,6 +59,17 @@ type config struct {
 	OTAEnabled           string `env:"MG_AGENT_OTA_ENABLED"                   envDefault:"true"`
 	OTABinaryPath        string `env:"MG_AGENT_OTA_BINARY_PATH"               envDefault:"/usr/local/bin/agent"`
 	OTADownloadDir       string `env:"MG_AGENT_OTA_DOWNLOAD_DIR"              envDefault:"/tmp"`
+	TransportType        string `env:"MG_AGENT_TRANSPORT"                    envDefault:"mqtt"`
+	CoAPURL              string `env:"MG_AGENT_COAP_URL"                     envDefault:"localhost:5683"`
+	CoAPPSK              string `env:"MG_AGENT_COAP_PSK"                     envDefault:""`
+	CoAPCertFile         string `env:"MG_AGENT_COAP_CERT_FILE"                envDefault:""`
+	CoAPKeyFile          string `env:"MG_AGENT_COAP_KEY_FILE"                 envDefault:""`
+	CoAPCAFile           string `env:"MG_AGENT_COAP_CA_FILE"                  envDefault:""`
+	CoAPSkipTLSVer       string `env:"MG_AGENT_COAP_SKIP_TLS"                 envDefault:"true"`
+	CoAPMaxObserve       string `env:"MG_AGENT_COAP_MAX_OBSERVE"              envDefault:"8"`
+	CoAPMaxRetransmits   string `env:"MG_AGENT_COAP_MAX_RETRANSMITS"          envDefault:"5"`
+	CoAPKeepAlive        string `env:"MG_AGENT_COAP_KEEP_ALIVE"               envDefault:"0"`
+	CoAPContentFormat    string `env:"MG_AGENT_COAP_CONTENT_FORMAT"           envDefault:"50"`
 	BootstrapURL         string `env:"MG_AGENT_BOOTSTRAP_URL"                 envDefault:""`
 	BootstrapExternalID  string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_ID"         envDefault:""`
 	BootstrapExternalKey string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_KEY"        envDefault:""`
@@ -448,7 +459,31 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 		Retain:      retain,
 	}
 
-	c := agent.NewConfig(sc, agent.ChanConfig{}, nc, lc, mc, ch, ct, oc, tlc)
+	coapMaxObserve, _ := strconv.ParseUint(cfg.CoAPMaxObserve, 10, 64)
+	coapMaxRetransmits, _ := strconv.ParseUint(cfg.CoAPMaxRetransmits, 10, 64)
+	coapKeepAlive, _ := strconv.ParseUint(cfg.CoAPKeepAlive, 10, 64)
+	coapContentFormat, _ := strconv.Atoi(cfg.CoAPContentFormat)
+	coapSkipTLSVer, _ := strconv.ParseBool(cfg.CoAPSkipTLSVer)
+
+	cc := agent.CoAPConfig{
+		URL:            cfg.CoAPURL,
+		PSK:            cfg.CoAPPSK,
+		CertPath:       cfg.CoAPCertFile,
+		PrivKeyPath:    cfg.CoAPKeyFile,
+		CAPath:         cfg.CoAPCAFile,
+		SkipTLSVer:     coapSkipTLSVer,
+		MaxObserve:     uint(coapMaxObserve),
+		MaxRetransmits: uint(coapMaxRetransmits),
+		KeepAlive:      coapKeepAlive,
+		ContentFormat:  coapContentFormat,
+	}
+
+	transportType := strings.ToLower(cfg.TransportType)
+	if transportType != "mqtt" && transportType != "coap" {
+		transportType = "mqtt"
+	}
+
+	c := agent.NewConfig(sc, agent.ChanConfig{}, nc, lc, mc, cc, transportType, ch, ct, oc, tlc)
 	c.CommandSecret = cfg.CommandSecret
 	return c, nil
 }

@@ -29,13 +29,28 @@ type mqttConfig struct {
 	QoS      byte   `json:"qos"`
 }
 
+type coapConfig struct {
+	Url            string `json:"url"`
+	PSK            string `json:"psk"`
+	SkipTLSVer     bool   `json:"skip_tls_ver"`
+	MaxObserve     uint   `json:"max_observe"`
+	MaxRetransmits uint   `json:"max_retransmits"`
+	KeepAlive      uint64 `json:"keep_alive"`
+	ContentFormat  int    `json:"content_format"`
+	Cert           string `json:"cert"`
+	Key            string `json:"key"`
+	CA             string `json:"ca"`
+}
+
 // Config struct of Magistrala Agent.
 type agentConfig struct {
-	Server   serverConfig  `json:"server"`
-	Channels chanConfig    `json:"channels"`
-	NodeRed  noderedConfig `json:"nodered"`
-	Log      logConfig     `json:"log"`
-	Mqtt     mqttConfig    `json:"mqtt"`
+	Server    serverConfig  `json:"server"`
+	Channels  chanConfig    `json:"channels"`
+	NodeRed   noderedConfig `json:"nodered"`
+	Log       logConfig     `json:"log"`
+	Mqtt      mqttConfig    `json:"mqtt"`
+	CoAP      coapConfig    `json:"coap"`
+	Transport string        `json:"transport"`
 }
 
 type pubReq struct {
@@ -57,12 +72,22 @@ type addConfigReq struct {
 
 func (req addConfigReq) validate() error {
 	if req.Server.Port == "" ||
-		req.Mqtt.Username == "" ||
-		req.Mqtt.Password == "" ||
 		(req.Channels.CtrlID == "" || req.Channels.DataID == "") ||
-		req.Log.Level == "" ||
-		req.Mqtt.Url == "" {
+		req.Log.Level == "" {
 		return agent.ErrMalformedEntity
+	}
+
+	switch req.Transport {
+	case "coap":
+		if req.CoAP.Url == "" {
+			return agent.ErrMalformedEntity
+		}
+	default:
+		if req.Mqtt.Username == "" ||
+			req.Mqtt.Password == "" ||
+			req.Mqtt.Url == "" {
+			return agent.ErrMalformedEntity
+		}
 	}
 
 	return nil

@@ -23,6 +23,8 @@ func TestApplyBootstrapResponse(t *testing.T) {
 		agent.NodeRedConfig{URL: "http://nodered:1880"},
 		agent.LogConfig{Level: "info"},
 		agent.MQTTConfig{URL: "ssl://old.example.com:8883", SkipTLSVer: true},
+		agent.CoAPConfig{},
+		"mqtt",
 		agent.HeartbeatConfig{Interval: time.Second},
 		agent.TerminalConfig{SessionTimeout: time.Minute},
 		agent.OTAConfig{},
