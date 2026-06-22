@@ -1409,18 +1409,22 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 
 	runErr := ota.Run(otaCtx, otaCfg, url, sha256hex, size, progressFn)
 	if runErr != nil {
+		aborted := a.otaAborted.Load()
 		a.otaMu.Lock()
 		if context.Cause(otaCtx) != nil || otaCtx.Err() != nil {
 			a.otaLastErr = "aborted"
 		}
-		if a.otaAborted.Load() {
-			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, "OTA aborted by user")
+		if aborted {
 			a.otaLastErr = "OTA aborted by user"
 		} else {
-			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, runErr.Error())
 			a.otaLastErr = runErr.Error()
 		}
 		a.otaMu.Unlock()
+		if aborted {
+			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, "OTA aborted by user")
+		} else {
+			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, runErr.Error())
+		}
 	}
 	return runErr
 }
@@ -1472,15 +1476,19 @@ func (a *agent) OTAFromData(ctx context.Context, data []byte, sha256hex string) 
 
 	runErr := ota.RunFromData(otaCtx, otaCfg, data, sha256hex, progressFn)
 	if runErr != nil {
+		aborted := a.otaAborted.Load()
 		a.otaMu.Lock()
-		if a.otaAborted.Load() {
-			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, "OTA aborted by user")
+		if aborted {
 			a.otaLastErr = "OTA aborted by user"
 		} else {
-			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, runErr.Error())
 			a.otaLastErr = runErr.Error()
 		}
 		a.otaMu.Unlock()
+		if aborted {
+			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, "OTA aborted by user")
+		} else {
+			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, runErr.Error())
+		}
 	}
 	return runErr
 }
