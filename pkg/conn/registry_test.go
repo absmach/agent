@@ -66,7 +66,7 @@ func TestBrokerRegistryMetadata(t *testing.T) {
 	}
 
 	// Every command issued by the issue plus the registry helpers must exist.
-	for _, name := range []string{control, exec, config, service, term, nred, ping, reset, otaCmd, devices, route, help} {
+	for _, name := range []string{control, config, service, term, nred, ping, reset, otaCmd, devices, route, help} {
 		c, ok := byName[name]
 		assert.Truef(t, ok, "command %q should be registered", name)
 		assert.NotEmptyf(t, c.Description, "command %q should have a description", name)
@@ -189,7 +189,7 @@ func TestHelpCommandPublishesRegistry(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, records)
 	require.NotNil(t, records[0].StringValue)
-	for _, name := range []string{route, control, exec, help} {
+	for _, name := range []string{route, control, help} {
 		assert.Contains(t, *records[0].StringValue, name)
 	}
 }

@@ -60,24 +60,6 @@ func (lm *loggingMiddleware) Publish(topic string, payload string) (err error) {
 	return lm.svc.Publish(topic, payload)
 }
 
-func (lm *loggingMiddleware) Execute(uuid, cmd string) (str string, err error) {
-	defer func(begin time.Time) {
-		args := []any{
-			slog.String("duration", time.Since(begin).String()),
-			slog.String("uuid", uuid),
-			slog.String("cmd", cmd),
-		}
-		if err != nil {
-			args = append(args, slog.String("error", err.Error()))
-			lm.logger.Warn("Execute command failed to complete successfully.", args...)
-			return
-		}
-		lm.logger.Info("Execute command completed successfully.", args...)
-	}(time.Now())
-
-	return lm.svc.Execute(uuid, cmd)
-}
-
 func (lm *loggingMiddleware) Control(uuid, cmd string) (err error) {
 	defer func(begin time.Time) {
 		args := []any{
@@ -224,6 +206,41 @@ func (lm *loggingMiddleware) UpdateLiveness(svcname, svctype string) (err error)
 	return lm.svc.UpdateLiveness(svcname, svctype)
 }
 
+func (lm *loggingMiddleware) RegisterService(svcname, svctype string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.String("svcname", svcname),
+			slog.String("svctype", svctype),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("Register service failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("Register service completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.RegisterService(svcname, svctype)
+}
+
+func (lm *loggingMiddleware) RemoveService(svcname string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.String("svcname", svcname),
+		}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("Remove service failed to complete successfully.", args...)
+			return
+		}
+		lm.logger.Info("Remove service completed successfully.", args...)
+	}(time.Now())
+
+	return lm.svc.RemoveService(svcname)
+}
+
 func (lm *loggingMiddleware) OTA(ctx context.Context, url, sha256hex string, size uint64) (err error) {
 	defer func(begin time.Time) {
 		args := []any{
@@ -302,6 +319,10 @@ func (lm *loggingMiddleware) DeviceManager(ctx context.Context, uuid, cmdStr str
 
 func (lm *loggingMiddleware) OTAStatus() agent.OTAStatusInfo {
 	return lm.svc.OTAStatus()
+}
+
+func (lm *loggingMiddleware) Telemetry() agent.TelemetryData {
+	return lm.svc.Telemetry()
 }
 
 func (lm *loggingMiddleware) OTAAbort() (err error) {
@@ -383,4 +404,86 @@ func (lm *loggingMiddleware) MarkDeviceSeen(id string) (err error) {
 		lm.logger.Info("MarkDeviceSeen completed.", args...)
 	}(time.Now())
 	return lm.svc.MarkDeviceSeen(id)
+}
+
+func (lm *loggingMiddleware) OpenDevice(ctx context.Context, id string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("id", id)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("OpenDevice failed.", args...)
+			return
+		}
+		lm.logger.Info("OpenDevice completed.", args...)
+	}(time.Now())
+	return lm.svc.OpenDevice(ctx, id)
+}
+
+func (lm *loggingMiddleware) CloseDevice(id string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("id", id)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("CloseDevice failed.", args...)
+			return
+		}
+		lm.logger.Info("CloseDevice completed.", args...)
+	}(time.Now())
+	return lm.svc.CloseDevice(id)
+}
+
+func (lm *loggingMiddleware) ReadDevice(id string, n int) (data []byte, err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("id", id), slog.Int("n", n)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("ReadDevice failed.", args...)
+			return
+		}
+		lm.logger.Info("ReadDevice completed.", args...)
+	}(time.Now())
+	return lm.svc.ReadDevice(id, n)
+}
+
+func (lm *loggingMiddleware) WriteDevice(id, hexData string) (n int, err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("id", id)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("WriteDevice failed.", args...)
+			return
+		}
+		lm.logger.Info("WriteDevice completed.", args...)
+	}(time.Now())
+	return lm.svc.WriteDevice(id, hexData)
+}
+
+func (lm *loggingMiddleware) GetRuntimeConfig(key string) (val string, err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("key", key)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("GetRuntimeConfig failed.", args...)
+			return
+		}
+		lm.logger.Info("GetRuntimeConfig completed.", args...)
+	}(time.Now())
+	return lm.svc.GetRuntimeConfig(key)
+}
+
+func (lm *loggingMiddleware) SetRuntimeConfig(ctx context.Context, key, value string) (err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("key", key), slog.String("value", value)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("SetRuntimeConfig failed.", args...)
+			return
+		}
+		lm.logger.Info("SetRuntimeConfig completed.", args...)
+	}(time.Now())
+	return lm.svc.SetRuntimeConfig(ctx, key, value)
+}
+
+func (lm *loggingMiddleware) SetPushEvent(fn func(string)) {
+	lm.svc.SetPushEvent(fn)
 }

@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
-	"os/exec"
 	"regexp"
 	"runtime/metrics"
 	"sort"
@@ -23,7 +22,6 @@ import (
 
 	cfgstore "github.com/absmach/agent/pkg/config"
 	"github.com/absmach/agent/pkg/devicemgr"
-	"github.com/absmach/agent/pkg/encoder"
 	"github.com/absmach/agent/pkg/iface"
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/ota"
@@ -59,14 +57,25 @@ const (
 	ctrlReload = "reload"
 	ctrlStatus = "status"
 
+	// Exported aliases for use by the HTTP API layer.
+	CtrlStop   = ctrlStop
+	CtrlStart  = ctrlStart
+	CtrlReload = ctrlReload
+
 	export = "export"
 
-	keyLogLevel               = "log_level"
-	keyHeartbeatInterval      = "heartbeat_interval"
-	keyTelemetryInterval      = "telemetry_interval"
-	keyTerminalSessionTimeout = "terminal_session_timeout"
-	keyCommandSecret          = "command_secret"
-	keyBsValid                = "bs_valid"
+	KeyLogLevel               = "log_level"
+	KeyHeartbeatInterval      = "heartbeat_interval"
+	KeyTelemetryInterval      = "telemetry_interval"
+	KeyTerminalSessionTimeout = "terminal_session_timeout"
+	KeyCommandSecret          = "command_secret"
+	KeyBsValid                = "bs_valid"
+	keyLogLevel               = KeyLogLevel
+	keyHeartbeatInterval      = KeyHeartbeatInterval
+	keyTelemetryInterval      = KeyTelemetryInterval
+	keyTerminalSessionTimeout = KeyTerminalSessionTimeout
+	keyCommandSecret          = KeyCommandSecret
+	keyBsValid                = KeyBsValid
 	keyDomainID               = "domain_id"
 	keyChannelsCtrlID         = "channels_ctrl_id"
 	keyChannelsDataID         = "channels_data_id"
@@ -100,16 +109,6 @@ var (
 	heapSamples = []metrics.Sample{{Name: "/memory/classes/heap/free:bytes"}}
 )
 
-// execAllowlist is the set of command names permitted via the exec MQTT command.
-var execAllowlist = map[string]bool{
-	"cat": true, "cd": true, "curl": true, "date": true, "df": true,
-	"echo": true, "env": true, "false": true, "free": true, "hostname": true,
-	"id": true, "ifconfig": true, "ip": true, "journalctl": true, "ls": true,
-	"netstat": true, "ping": true, "printf": true, "ps": true, "pwd": true,
-	"ss": true, "systemctl": true, "true": true, "uname": true, "uptime": true,
-	"who": true,
-}
-
 var (
 	// errInvalidCommand indicates malformed command.
 	errInvalidCommand = errors.New("invalid command")
@@ -131,9 +130,6 @@ var (
 
 	// errFailedToPublish.
 	errFailedToPublish = errors.New("failed to publish")
-
-	// errFailedExecute.
-	errFailedExecute = errors.New("failed to execute command")
 
 	// errFailedToCreateTerminalSession.
 	errFailedToCreateTerminalSession = errors.New("failed to create terminal session")
@@ -178,9 +174,6 @@ type DeviceService interface {
 
 // Service specifies API for publishing messages and subscribing to topics.
 type Service interface {
-	// Execute command.
-	Execute(uuid, cmd string) (string, error)
-
 	// Control command.
 	Control(uuid, cmdStr string) error
 
@@ -221,6 +214,13 @@ type Service interface {
 	// an authenticated MQTT heartbeat message.
 	UpdateLiveness(svcname, svctype string) error
 
+	// RegisterService manually registers a local service so that it appears on
+	// the services list immediately, regardless of MQTT heartbeats.
+	RegisterService(svcname, svctype string) error
+
+	// RemoveService removes a previously registered service from the services list.
+	RemoveService(svcname string) error
+
 	// OTA triggers an over-the-air binary update by downloading from url.
 	OTA(ctx context.Context, url, sha256hex string, size uint64) error
 
@@ -244,16 +244,63 @@ type Service interface {
 	// OTAStatus returns whether an OTA operation is currently in progress and the last error message, if any.
 	OTAStatus() OTAStatusInfo
 
+	// Telemetry returns the current gateway telemetry readings (live snapshot).
+	Telemetry() TelemetryData
+
 	// OTAAbort cancels an in-progress OTA update. It returns an error if no OTA is running.
 	OTAAbort() error
+
+	// OpenDevice opens the physical interface for a registered downstream device.
+	OpenDevice(ctx context.Context, id string) error
+
+	// CloseDevice closes the physical interface for a registered downstream device.
+	CloseDevice(id string) error
+
+	// ReadDevice reads up to n bytes from the open interface of the given device.
+	ReadDevice(id string, n int) ([]byte, error)
+
+	// WriteDevice sends hex-encoded data to the open interface of the given device.
+	WriteDevice(id, hexData string) (int, error)
+
+	// GetRuntimeConfig returns the value of a single runtime-configurable key.
+	GetRuntimeConfig(key string) (string, error)
+
+	// SetRuntimeConfig sets a runtime-configurable key to the given value.
+	SetRuntimeConfig(ctx context.Context, key, value string) error
+
+	// SetPushEvent registers a callback invoked when a subsystem state changes
+	// (e.g. OTA progress, config updates, device list changes) so the HTTP API
+	// can push real-time WebSocket events to connected UI clients.
+	SetPushEvent(fn func(string))
 
 	DeviceService
 }
 
-// OTAStatusInfo reports the current state of the OTA subsystem.
+// OTAStatusInfo reports the current state of the OTA subsystem. The progress
+// fields mirror the retained MQTT status message so HTTP clients can render a
+// live progress bar without subscribing to MQTT.
 type OTAStatusInfo struct {
-	Busy      bool   `json:"busy"`
-	LastError string `json:"last_error,omitempty"`
+	Busy      bool    `json:"busy"`
+	State     string  `json:"state,omitempty"`
+	Bytes     int64   `json:"bytes"`
+	Total     int64   `json:"total"`
+	Progress  float64 `json:"progress"`
+	LastError string  `json:"last_error,omitempty"`
+}
+
+// TelemetryData holds the current gateway telemetry readings.
+type TelemetryData struct {
+	Uptime         float64  `json:"uptime"`
+	MemTotal       uint64   `json:"mem_total,omitempty"`
+	MemAvailable   uint64   `json:"mem_available,omitempty"`
+	MemUsed        uint64   `json:"mem_used,omitempty"`
+	CPUTemperature *float64 `json:"cpu_temperature,omitempty"`
+	RSSI           *float64 `json:"rssi,omitempty"`
+	LoadAvg1m      *float64 `json:"load_avg_1m,omitempty"`
+	LoadAvg5m      *float64 `json:"load_avg_5m,omitempty"`
+	LoadAvg15m     *float64 `json:"load_avg_15m,omitempty"`
+	DiskUsagePct   *float64 `json:"disk_usage_percent,omitempty"`
+	DevicesActive  *int     `json:"devices_active,omitempty"`
 }
 
 var _ Service = (*agent)(nil)
@@ -270,8 +317,7 @@ type agent struct {
 	termMu              sync.Mutex
 	devices             *devicemgr.Manager
 	sched               *Scheduler
-	workDir             string
-	workDirMu           sync.Mutex
+	pushEvent           func(typeName string)
 	otaBusy             atomic.Bool
 	store               cfgstore.Store
 	heartbeatIntervalCh chan time.Duration
@@ -284,6 +330,10 @@ type agent struct {
 	otaLastErr          string
 	otaCancel           context.CancelFunc
 	otaAborted          atomic.Bool
+	otaState            string
+	otaBytes            int64
+	otaTotal            int64
+	otaProgress         float64
 	bootstrapCachePath  string
 	runCtx              context.Context
 	paused              atomic.Bool
@@ -300,7 +350,6 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		svcs:                make(map[string]Heartbeat),
 		terminals:           make(map[string]terminal.Session),
 		devices:             devices,
-		workDir:             "/",
 		store:               store,
 		heartbeatIntervalCh: make(chan time.Duration, 1),
 		telemetryIntervalCh: make(chan time.Duration, 1),
@@ -332,62 +381,8 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 	return ag, nil
 }
 
-func (a *agent) changeDir(cmdArr []string) (string, error) {
-	a.workDirMu.Lock()
-	defer a.workDirMu.Unlock()
-	var target string
-	if len(cmdArr) < 2 || cmdArr[1] == "~" {
-		target = "/root"
-	} else if strings.HasPrefix(cmdArr[1], "/") {
-		target = cmdArr[1]
-	} else {
-		target = a.workDir + "/" + cmdArr[1]
-	}
-	if info, statErr := os.Stat(target); statErr != nil || !info.IsDir() {
-		return "sh: cd: " + target + ": No such file or directory", nil
-	}
-	a.workDir = target
-	return "", nil
-}
-
-func (a *agent) Execute(uuid, cmd string) (string, error) {
-	cmdArr := strings.Split(strings.ReplaceAll(cmd, " ", ""), ",")
-	if len(cmdArr) < 1 || cmdArr[0] == "" {
-		return "", errInvalidCommand
-	}
-
-	if cmdArr[0] == "cd" {
-		return a.changeDir(cmdArr)
-	}
-
-	if !execAllowlist[cmdArr[0]] {
-		return "", errInvalidCommand
-	}
-
-	a.workDirMu.Lock()
-	execCmd := exec.Command(cmdArr[0], cmdArr[1:]...)
-	execCmd.Dir = a.workDir
-	a.workDirMu.Unlock()
-	out, err := execCmd.CombinedOutput()
-	if err != nil && len(out) == 0 {
-		return "", errors.Wrap(errFailedExecute, err)
-	}
-
-	result := string(out)
-	if result == "" {
-		result = "(no output)"
-	}
-
-	payload, err := encoder.EncodeSenML(uuid, strings.Join(cmdArr, " "), result)
-	if err != nil {
-		return "", errors.Wrap(errFailedEncode, err)
-	}
-
-	if err := a.publishCmd(control, string(payload)); err != nil {
-		return "", errors.Wrap(errFailedToPublish, err)
-	}
-
-	return result, nil
+func (a *agent) SetPushEvent(fn func(string)) {
+	a.pushEvent = fn
 }
 
 func (a *agent) Control(uuid, cmdStr string) error {
@@ -1026,6 +1021,9 @@ func (a *agent) AddConfig(c Config) error {
 	a.cfgMu.Lock()
 	defer a.cfgMu.Unlock()
 	*a.config = c
+	if a.pushEvent != nil {
+		a.pushEvent("config")
+	}
 	return nil
 }
 
@@ -1210,6 +1208,53 @@ func (a *agent) selfTelemetry(ctx context.Context, topic string, interval time.D
 	}
 }
 
+// Telemetry returns a live snapshot of the current gateway telemetry readings.
+func (a *agent) Telemetry() TelemetryData {
+	cfg := a.Config()
+	data := TelemetryData{
+		Uptime: time.Since(startTime).Seconds(),
+	}
+
+	if total, _, available, ok := readMemoryStats(); ok {
+		data.MemTotal = total
+		data.MemAvailable = available
+		data.MemUsed = total - available
+	}
+
+	if cfg.Telemetry.IncludeTemperature {
+		if temp, ok := readCPUTemperature(); ok {
+			data.CPUTemperature = &temp
+		}
+	}
+
+	if cfg.Telemetry.IncludeNetwork {
+		if rssi, ok := readInterfaceRSSI(); ok {
+			data.RSSI = &rssi
+		}
+	}
+
+	if cfg.Telemetry.IncludeLoad {
+		if l1, l5, l15, ok := readLoadAverage(); ok {
+			data.LoadAvg1m = &l1
+			data.LoadAvg5m = &l5
+			data.LoadAvg15m = &l15
+		}
+	}
+
+	if pct, ok := readDiskUsagePercent(); ok {
+		data.DiskUsagePct = &pct
+	}
+
+	if a.devices != nil {
+		if n, err := a.devices.Count(); err == nil {
+			count := n
+			data.DevicesActive = &count
+		}
+	}
+
+	return data
+}
+
 func (a *agent) gatewayTelemetryPayload() []senml.Record {
 	cfg := a.Config()
 	now := float64(time.Now().UnixNano()) / float64(time.Second)
@@ -1275,6 +1320,33 @@ func (a *agent) UpdateLiveness(svcname, svctype string) error {
 	return nil
 }
 
+func (a *agent) RegisterService(svcname, svctype string) error {
+	if svcname == "" {
+		return errors.New("service name is required")
+	}
+	a.svcsMu.Lock()
+	defer a.svcsMu.Unlock()
+	if _, ok := a.svcs[svcname]; !ok {
+		svc := NewHeartbeat(svcname, svctype, a.Config().Heartbeat.Interval)
+		a.svcs[svcname] = svc
+	}
+	a.svcs[svcname].Update()
+	return nil
+}
+
+func (a *agent) RemoveService(svcname string) error {
+	if svcname == "" {
+		return errors.New("service name is required")
+	}
+	a.svcsMu.Lock()
+	defer a.svcsMu.Unlock()
+	if svc, ok := a.svcs[svcname]; ok {
+		svc.Stop()
+		delete(a.svcs, svcname)
+	}
+	return nil
+}
+
 func (a *agent) Ping() error {
 	cfg := a.Config()
 	if cfg.DomainID == "" || cfg.Channels.DataChan() == "" {
@@ -1306,6 +1378,10 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	}
 	a.otaBusy.Store(true)
 	a.otaLastErr = ""
+	a.otaState = strings.ToLower(ota.StateTriggered.String())
+	a.otaBytes = 0
+	a.otaTotal = 0
+	a.otaProgress = 0
 	a.otaCancel = otaCancel
 	a.otaAborted.Store(false)
 	a.otaMu.Unlock()
@@ -1327,27 +1403,28 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	qos := cfg.MQTT.QoS
 	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
 
-	publishStatus := func(state ota.State, bytesWritten, totalBytes int64, progress float64, errMsg string) {
-		a.publishOTAStatus(statusTopic, qos, state, bytesWritten, totalBytes, progress, errMsg)
-	}
 	progressFn := func(state ota.State, bytesWritten, totalBytes int64, progress float64) {
-		publishStatus(state, bytesWritten, totalBytes, progress, "")
+		a.publishOTAStatus(statusTopic, qos, state, bytesWritten, totalBytes, progress, "")
 	}
 
 	runErr := ota.Run(otaCtx, otaCfg, url, sha256hex, size, progressFn)
 	if runErr != nil {
+		aborted := a.otaAborted.Load()
 		a.otaMu.Lock()
 		if context.Cause(otaCtx) != nil || otaCtx.Err() != nil {
 			a.otaLastErr = "aborted"
 		}
-		if a.otaAborted.Load() {
-			publishStatus(ota.StateAborted, 0, 0, 0, "OTA aborted by user")
+		if aborted {
 			a.otaLastErr = "OTA aborted by user"
 		} else {
-			publishStatus(ota.StateAborted, 0, 0, 0, runErr.Error())
 			a.otaLastErr = runErr.Error()
 		}
 		a.otaMu.Unlock()
+		if aborted {
+			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, "OTA aborted by user")
+		} else {
+			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, runErr.Error())
+		}
 	}
 	return runErr
 }
@@ -1368,6 +1445,10 @@ func (a *agent) OTAFromData(ctx context.Context, data []byte, sha256hex string) 
 	}
 	a.otaBusy.Store(true)
 	a.otaLastErr = ""
+	a.otaState = strings.ToLower(ota.StateTriggered.String())
+	a.otaBytes = 0
+	a.otaTotal = 0
+	a.otaProgress = 0
 	a.otaCancel = otaCancel
 	a.otaAborted.Store(false)
 	a.otaMu.Unlock()
@@ -1389,30 +1470,32 @@ func (a *agent) OTAFromData(ctx context.Context, data []byte, sha256hex string) 
 	qos := cfg.MQTT.QoS
 	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
 
-	publishStatus := func(state ota.State, bytesWritten, totalBytes int64, progress float64, errMsg string) {
-		a.publishOTAStatus(statusTopic, qos, state, bytesWritten, totalBytes, progress, errMsg)
-	}
 	progressFn := func(state ota.State, bytesWritten, totalBytes int64, progress float64) {
-		publishStatus(state, bytesWritten, totalBytes, progress, "")
+		a.publishOTAStatus(statusTopic, qos, state, bytesWritten, totalBytes, progress, "")
 	}
 
 	runErr := ota.RunFromData(otaCtx, otaCfg, data, sha256hex, progressFn)
 	if runErr != nil {
+		aborted := a.otaAborted.Load()
 		a.otaMu.Lock()
-		if a.otaAborted.Load() {
-			publishStatus(ota.StateAborted, 0, 0, 0, "OTA aborted by user")
+		if aborted {
 			a.otaLastErr = "OTA aborted by user"
 		} else {
-			publishStatus(ota.StateAborted, 0, 0, 0, runErr.Error())
 			a.otaLastErr = runErr.Error()
 		}
 		a.otaMu.Unlock()
+		if aborted {
+			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, "OTA aborted by user")
+		} else {
+			a.publishOTAStatus(statusTopic, qos, ota.StateAborted, 0, 0, 0, runErr.Error())
+		}
 	}
 	return runErr
 }
 
 // publishOTAStatus publishes a retained OTA status SenML record to statusTopic.
-// errMsg is appended as an "error" field only when non-empty.
+// errMsg is appended as an "error" field only when non-empty. The latest state
+// and progress are also stored so HTTP clients can read them via OTAStatus.
 func (a *agent) publishOTAStatus(statusTopic string, qos byte, state ota.State, bytesWritten, totalBytes int64, progress float64, errMsg string) {
 	now := float64(time.Now().UnixNano()) / float64(time.Second)
 	stateStr := strings.ToLower(state.String())
@@ -1432,8 +1515,27 @@ func (a *agent) publishOTAStatus(statusTopic string, qos byte, state ota.State, 
 		a.logger.Warn("Failed to encode OTA status", slog.Any("error", err))
 		return
 	}
+
+	a.otaMu.Lock()
+	a.otaState = stateStr
+	a.otaBytes = bytesWritten
+	a.otaTotal = totalBytes
+	a.otaProgress = progress
+	a.otaMu.Unlock()
+
+	a.logger.Info("OTA progress",
+		slog.String("state", stateStr),
+		slog.Float64("progress", progress),
+	)
+
 	token := a.mqttClient.Publish(statusTopic, qos, true, b)
 	token.Wait()
+
+	// Notify WS subscribers so the UI can refresh status in real time without
+	// relying solely on HTTP polling.
+	if a.pushEvent != nil {
+		a.pushEvent("ota")
+	}
 }
 
 func (a *agent) OTAAbort() error {
@@ -1448,16 +1550,23 @@ func (a *agent) OTAAbort() error {
 	}
 	a.otaAborted.Store(true)
 	cancel()
+	// Notify WS subscribers that the OTA state changed.
+	if a.pushEvent != nil {
+		a.pushEvent("ota")
+	}
 	return nil
 }
 
 func (a *agent) OTAStatus() OTAStatusInfo {
 	a.otaMu.Lock()
-	lastErr := a.otaLastErr
-	a.otaMu.Unlock()
+	defer a.otaMu.Unlock()
 	return OTAStatusInfo{
 		Busy:      a.otaBusy.Load(),
-		LastError: lastErr,
+		State:     a.otaState,
+		Bytes:     a.otaBytes,
+		Total:     a.otaTotal,
+		Progress:  a.otaProgress,
+		LastError: a.otaLastErr,
 	}
 }
 
@@ -1486,6 +1595,9 @@ func (a *agent) AddDevice(ctx context.Context, name, extID, extKey, ifaceType, i
 	if a.sched != nil {
 		a.sched.StartDevice(context.WithoutCancel(ctx), d)
 	}
+	if a.pushEvent != nil {
+		a.pushEvent("devices")
+	}
 	return d, nil
 }
 
@@ -1496,14 +1608,22 @@ func (a *agent) RemoveDevice(id string) error {
 	if a.sched != nil {
 		a.sched.StopDevice(id)
 	}
-	return a.devices.Remove(id)
+	err := a.devices.Remove(id)
+	if err == nil && a.pushEvent != nil {
+		a.pushEvent("devices")
+	}
+	return err
 }
 
 func (a *agent) MarkDeviceSeen(id string) error {
 	if a.devices == nil {
 		return errDeviceManagerDisabled
 	}
-	return a.devices.MarkSeen(id)
+	err := a.devices.MarkSeen(id)
+	if err == nil && a.pushEvent != nil {
+		a.pushEvent("devices")
+	}
+	return err
 }
 
 func (a *agent) Reset(ctx context.Context, mode string) error {
@@ -1960,4 +2080,97 @@ func (a *agent) DeviceManager(ctx context.Context, uuid, cmdStr string) error {
 	}
 
 	return a.processResponse(uuid, sub, resp)
+}
+
+func (a *agent) OpenDevice(ctx context.Context, id string) error {
+	if a.devices == nil {
+		return errDeviceManagerDisabled
+	}
+	err := a.devices.OpenIface(id)
+	if err == nil && a.pushEvent != nil {
+		a.pushEvent("devices")
+	}
+	return err
+}
+
+func (a *agent) CloseDevice(id string) error {
+	if a.devices == nil {
+		return errDeviceManagerDisabled
+	}
+	err := a.devices.CloseIface(id)
+	if err == nil && a.pushEvent != nil {
+		a.pushEvent("devices")
+	}
+	return err
+}
+
+func (a *agent) ReadDevice(id string, n int) ([]byte, error) {
+	if a.devices == nil {
+		return nil, errDeviceManagerDisabled
+	}
+	data, err := a.devices.ReadIface(id, n)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > 0 {
+		return data, nil
+	}
+	if last := a.devices.LastReadData(id); len(last) > 0 {
+		return last, nil
+	}
+	return data, nil
+}
+
+func (a *agent) WriteDevice(id, hexData string) (int, error) {
+	if a.devices == nil {
+		return 0, errDeviceManagerDisabled
+	}
+	return a.devices.WriteIface(id, hexData)
+}
+
+func (a *agent) GetRuntimeConfig(key string) (string, error) {
+	if !settableKeys[key] {
+		return "", errInvalidCommand
+	}
+	if a.store == nil {
+		return "", errors.New(notConfigured)
+	}
+	if val, ok := a.store.Get(key); ok {
+		if credentialKeys[key] {
+			return notAllowed, nil
+		}
+		if key == keyCommandSecret {
+			if _, ok := a.store.Get(key); ok {
+				return "REDACTED", nil
+			}
+		}
+		return val, nil
+	}
+	if fallback := a.configFallback(key); fallback != "" {
+		return fallback, nil
+	}
+	return "", errors.New(notFound)
+}
+
+func (a *agent) SetRuntimeConfig(ctx context.Context, key, value string) error {
+	if !settableKeys[key] {
+		return errInvalidCommand
+	}
+	if err := validateSettableValue(key, value); err != nil {
+		return err
+	}
+	if a.store == nil {
+		return errors.New(notConfigured)
+	}
+	if err := a.store.Set(key, value); err != nil {
+		return err
+	}
+	a.cfgMu.Lock()
+	ApplyConfigEntry(a.config, key, value)
+	a.cfgMu.Unlock()
+	a.applyLiveUpdate(key, value)
+	if a.pushEvent != nil {
+		a.pushEvent("runtime_config")
+	}
+	return nil
 }

@@ -1,0 +1,238 @@
+// Copyright (c) Abstract Machines
+// SPDX-License-Identifier: Apache-2.0
+
+import { useEffect, useState } from "preact/hooks";
+
+export type LinkStatus = "checking" | "online" | "offline";
+
+const REPO_URL = "https://github.com/absmach/agent";
+const hashRe = /^[0-9a-f]{7,40}$/i;
+
+export function commitUrl(commit?: string): string | null {
+  if (!commit || !hashRe.test(commit)) return null;
+  return `${REPO_URL}/commit/${commit}`;
+}
+
+type WSEvent = {
+  type: string;
+  data?: unknown;
+  error?: string;
+};
+
+type EventCallback = (event: WSEvent) => void;
+
+let wsRef: WebSocket | null = null;
+const wsListeners: Set<EventCallback> = new Set();
+let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+function connectWS() {
+  if (
+    wsRef?.readyState === WebSocket.OPEN ||
+    wsRef?.readyState === WebSocket.CONNECTING
+  )
+    return;
+
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const url = `${proto}//${location.host}/ws`;
+  wsRef = new WebSocket(url);
+
+  wsRef.onopen = () => {
+    if (wsReconnectTimer) {
+      clearTimeout(wsReconnectTimer);
+      wsReconnectTimer = null;
+    }
+  };
+
+  wsRef.onmessage = (msg) => {
+    try {
+      const event: WSEvent = JSON.parse(msg.data);
+      wsListeners.forEach((cb) => {
+        cb(event);
+      });
+    } catch {
+      // ignore malformed messages
+    }
+  };
+
+  wsRef.onclose = () => {
+    wsRef = null;
+    wsReconnectTimer = setTimeout(connectWS, 3000);
+  };
+
+  wsRef.onerror = () => {
+    wsRef?.close();
+  };
+}
+
+function subscribe(cb: EventCallback): () => void {
+  wsListeners.add(cb);
+  if (!wsRef) connectWS();
+  return () => {
+    wsListeners.delete(cb);
+    if (wsListeners.size === 0 && wsRef) {
+      wsRef.close();
+      wsRef = null;
+    }
+  };
+}
+
+/** Subscribes to WebSocket events of a given type. Returns an unsubscribe function. */
+export function useWSEvent(type: string, cb: EventCallback): void {
+  useEffect(() => {
+    const unsub = subscribe((event) => {
+      if (event.type === type) cb(event);
+    });
+    return unsub;
+  }, [type]);
+}
+
+/** Uses WebSocket events to track agent link liveness, falling back to polling. */
+export function useAgentStatus(intervalMs = 30000): LinkStatus {
+  const [status, setStatus] = useState<LinkStatus>("checking");
+
+  useEffect(() => {
+    const unsub = subscribe((event) => {
+      if (event.type === "config") setStatus("online");
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    async function check() {
+      try {
+        const res = await fetch("/config", {
+          cache: "no-store",
+          signal: AbortSignal.timeout(3000),
+        });
+        if (alive) setStatus(res.ok ? "online" : "offline");
+      } catch {
+        if (alive) setStatus("offline");
+      }
+    }
+    check();
+    const id = setInterval(check, intervalMs);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [intervalMs]);
+
+  return status;
+}
+
+export interface AgentInfo {
+  status?: string;
+  version?: string;
+  commit?: string;
+  instance_id?: string;
+  build_time?: string;
+}
+
+/** Fetches static agent identity from /health (best effort). */
+export function useAgentInfo(): AgentInfo | null {
+  const [info, setInfo] = useState<AgentInfo | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/health", { cache: "no-store", signal: AbortSignal.timeout(3000) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => alive && d && setInfo(d))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return info;
+}
+
+export function useTheme() {
+  const [dark, setDark] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("agent-ui-theme");
+    const useDark =
+      saved === "dark" ||
+      (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    apply(useDark);
+    setDark(useDark);
+  }, []);
+
+  function apply(value: boolean) {
+    document.documentElement.classList.toggle("dark", value);
+    document.documentElement.dataset.theme = value ? "dark" : "light";
+  }
+
+  function toggle() {
+    setDark((prev) => {
+      const next = !prev;
+      localStorage.setItem("agent-ui-theme", next ? "dark" : "light");
+      apply(next);
+      return next;
+    });
+  }
+
+  return { dark, toggle };
+}
+
+/** Uses WebSocket events for device updates, with polling fallback. */
+export function useDeviceCount(intervalMs = 60000) {
+  const [count, setCount] = useState<number | null>(null);
+  const [online, setOnline] = useState(0);
+
+  useEffect(() => {
+    const unsub = subscribe((event) => {
+      if (event.type === "devices") {
+        fetch("/devices", {
+          cache: "no-store",
+          signal: AbortSignal.timeout(3000),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (!data) return;
+            const list: { active?: boolean }[] = data.devices ?? [];
+            setCount(list.length);
+            setOnline(list.filter((d) => d.active).length);
+          })
+          .catch(() => {});
+      }
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      try {
+        const res = await fetch("/devices", {
+          cache: "no-store",
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const list: { active?: boolean }[] = data.devices ?? [];
+        if (!alive) return;
+        setCount(list.length);
+        setOnline(list.filter((d) => d.active).length);
+      } catch {
+        /* offline; keep previous value */
+      }
+    }
+    load();
+    const id = setInterval(load, intervalMs);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [intervalMs]);
+  return { count, online };
+}
+
+/** A 1Hz ticking clock. */
+export function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}

@@ -185,4 +185,4 @@ printf "char,ls -la\n" | base64
 
 ### Use the Agent UI terminal
 
-Open `http://localhost:9999`, navigate to the **Execute** panel, and type shell commands. The UI handles base64 encoding and session management automatically.
+Open `http://localhost:9999`, navigate to the **Terminal** page, and start an interactive shell session. The web-based terminal provides a full-featured VT100/VT220/xterm emulator with proper ANSI escape sequence rendering, native text selection, copy/paste, and browser find. The terminal automatically reconnects if the connection drops.

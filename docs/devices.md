@@ -2,14 +2,6 @@
 
 The device manager subsystem allows the agent to provision, register, and manage downstream devices connected via physical interfaces (serial, I2C, Modbus RTU/TCP, USB). Each device is provisioned as a Magistrala client with its own channel, and data from the device is forwarded to Magistrala over MQTT.
 
-## Architecture
-
-The device manager is split into three layers:
-
-1. **Service layer** (`DeviceManager()` in `service.go`) — handles MQTT command dispatch for 9 subcommands
-2. **Manager** (`pkg/devicemgr/manager.go`) — provisioning logic (create client, channel, connect, optional rule)
-3. **Store** (`pkg/devicemgr/store.go`) — BoltDB-backed persistent device registry
-
 ## Supported Interface Types
 
 | Type         | Address Format     | Description             |

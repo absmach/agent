@@ -3,9 +3,7 @@
 
 package api
 
-import (
-	"github.com/absmach/agent"
-)
+import "github.com/absmach/agent"
 
 type serverConfig struct {
 	Port string `json:"port"`
@@ -47,20 +45,6 @@ type pubReq struct {
 
 func (req pubReq) validate() error {
 	if req.Topic == "" || req.Payload == "" {
-		return agent.ErrMalformedEntity
-	}
-
-	return nil
-}
-
-type execReq struct {
-	BaseName string `json:"bn"`
-	Name     string `json:"n"`
-	Value    string `json:"vs"`
-}
-
-func (req execReq) validate() error {
-	if req.BaseName == "" || req.Name != "exec" || req.Value == "" {
 		return agent.ErrMalformedEntity
 	}
 
@@ -133,6 +117,70 @@ type otaTriggerReq struct {
 
 func (req otaTriggerReq) validate() error {
 	if req.URL == "" {
+		return agent.ErrMalformedEntity
+	}
+	return nil
+}
+
+// otaDataReq carries a raw firmware binary for MQTT-style OTA installation
+// (the HTTP equivalent of publishing to the ota data topic). The SHA-256 hash
+// is mandatory because there is no sidecar fallback for data-delivered firmware.
+type otaDataReq struct {
+	Data      []byte
+	SHA256Hex string
+}
+
+func (req otaDataReq) validate() error {
+	if req.SHA256Hex == "" {
+		return agent.ErrMalformedEntity
+	}
+	if len(req.Data) == 0 {
+		return agent.ErrMalformedEntity
+	}
+	return nil
+}
+
+// controlReq drives the agent lifecycle control subcommands (stop, start,
+// reload) over HTTP. The response is published to the MQTT control channel
+// exactly as if the command had arrived over MQTT.
+type controlReq struct {
+	Command string `json:"command"`
+}
+
+func (req controlReq) validate() error {
+	switch req.Command {
+	case agent.CtrlStop, agent.CtrlStart, agent.CtrlReload:
+		return nil
+	default:
+		return agent.ErrMalformedEntity
+	}
+}
+
+type runtimeConfigReq struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+func (req runtimeConfigReq) validate() error {
+	if req.Key == "" {
+		return agent.ErrMalformedEntity
+	}
+	return nil
+}
+
+type decodeIDPayload struct {
+	ID    string
+	Bytes int    `json:"bytes"`
+	Data  string `json:"data"`
+}
+
+type addServiceReq struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+func (req addServiceReq) validate() error {
+	if req.Name == "" {
 		return agent.ErrMalformedEntity
 	}
 	return nil

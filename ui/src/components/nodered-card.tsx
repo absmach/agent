@@ -15,8 +15,12 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { EmptyState } from "@/components/empty-state";
+import { StatusBadge, type StatusValue } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/components/ui/toaster";
 
 type NodeRedCmd =
   | "nodered-ping"
@@ -34,6 +38,7 @@ interface FlowItem {
 }
 
 export function NodeRedCard() {
+  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [lastCmd, setLastCmd] = useState("");
   const [response, setResponse] = useState("");
@@ -81,6 +86,7 @@ export function NodeRedCard() {
     if ((cmd === "nodered-deploy" || cmd === "nodered-add-flow") && !flows) {
       setLastCmd(label);
       setResponse("ERROR: No flow file selected. Upload a JSON file first.");
+      toast({ message: "No flow file selected", variant: "warning" });
       return;
     }
 
@@ -102,6 +108,9 @@ export function NodeRedCard() {
       if (cmd === "nodered-flows") {
         updateFlowList(raw);
       }
+      if (cmd === "nodered-deploy" || cmd === "nodered-add-flow") {
+        toast({ message: `${label} successful`, variant: "success" });
+      }
       try {
         setResponse(JSON.stringify(JSON.parse(raw), null, 2));
       } catch {
@@ -112,6 +121,7 @@ export function NodeRedCard() {
         setNodeRedStatus("offline");
       }
       setResponse(String(err));
+      toast({ message: String(err), variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -146,48 +156,49 @@ export function NodeRedCard() {
     reader.readAsText(file);
   }
 
-  const statusMeta = {
-    unknown: {
-      label: "Unknown",
-      badge: "● Not pinged yet",
-      className: "bg-amber-50 text-amber-700 dark:bg-amber-950",
-    },
-    online: {
-      label: "Online",
-      badge: "● Reachable",
-      className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950",
-    },
-    offline: {
-      label: "Offline",
-      badge: "● Not reachable",
-      className: "bg-red-50 text-red-600 dark:bg-red-950",
-    },
+  const statusState: StatusValue =
+    nodeRedStatus === "online"
+      ? "online"
+      : nodeRedStatus === "offline"
+        ? "offline"
+        : "unknown";
+  const statusLabel = {
+    unknown: "Unknown",
+    online: "Online",
+    offline: "Offline",
   }[nodeRedStatus];
 
   return (
-    <div className="space-y-3.5">
+    <div className="flex flex-col gap-4">
       <section className="grid gap-3.5 md:grid-cols-2">
-        <div className="rounded-xl border bg-card px-[18px] py-[15px] shadow-sm">
-          <div className="mb-2 text-[0.65rem] font-bold uppercase tracking-[0.07em] text-muted-foreground">
+        <div className="rounded-xl border bg-card px-4 py-3.5 shadow-sm">
+          <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
             Node-RED Status
           </div>
-          <div className="text-[0.95rem] font-bold leading-none tracking-tight">
-            {statusMeta.label}
-          </div>
-          <div
-            className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[0.68rem] font-semibold ${statusMeta.className}`}
-          >
-            {statusMeta.badge}
+          <div className="flex items-center justify-between">
+            <span className="text-base font-bold tracking-tight">
+              {statusLabel}
+            </span>
+            <StatusBadge
+              status={statusState}
+              label={
+                nodeRedStatus === "online"
+                  ? "Reachable"
+                  : nodeRedStatus === "offline"
+                    ? "Not reachable"
+                    : "Not pinged yet"
+              }
+            />
           </div>
         </div>
-        <div className="rounded-xl border bg-card px-[18px] py-[15px] shadow-sm">
-          <div className="mb-2 text-[0.65rem] font-bold uppercase tracking-[0.07em] text-muted-foreground">
+        <div className="rounded-xl border bg-card px-4 py-3.5 shadow-sm">
+          <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
             Deployed Flows
           </div>
-          <div className="text-[1.4rem] font-bold leading-none tracking-tight">
+          <div className="text-2xl font-bold leading-none tracking-tight">
             {flowCount}
           </div>
-          <div className="mt-1 text-[0.7rem] text-muted-foreground">
+          <div className="mt-1 text-xs text-muted-foreground">
             last fetched: {lastFetched}
           </div>
         </div>
@@ -196,7 +207,7 @@ export function NodeRedCard() {
       <Card>
         <CardHeader>
           <CardTitle>
-            <Network className="h-4 w-4" />
+            <Network className="size-4" />
             Controls
           </CardTitle>
         </CardHeader>
@@ -207,7 +218,7 @@ export function NodeRedCard() {
               onClick={() => send("nodered-ping", "Ping")}
               disabled={loading}
             >
-              <Activity className="h-3 w-3" />
+              <Activity className="size-3" />
               Ping
             </Button>
             <Button
@@ -215,7 +226,7 @@ export function NodeRedCard() {
               onClick={() => send("nodered-state", "Get State")}
               disabled={loading}
             >
-              <AlertCircle className="h-3 w-3" />
+              <AlertCircle className="size-3" />
               Get State
             </Button>
             <Button
@@ -223,15 +234,15 @@ export function NodeRedCard() {
               onClick={() => send("nodered-flows", "Get Flows")}
               disabled={loading}
             >
-              <List className="h-3 w-3" />
+              <List className="size-3" />
               Get Flows
             </Button>
-            <span className="h-[18px] w-px bg-border" />
+            <Separator orientation="vertical" className="h-5" />
             <Button
               onClick={() => send("nodered-deploy", "Deploy Flows")}
               disabled={loading}
             >
-              <Play className="h-3 w-3" />
+              <Play className="size-3" />
               Deploy Flows
             </Button>
             <Button
@@ -239,16 +250,16 @@ export function NodeRedCard() {
               onClick={() => send("nodered-add-flow", "Add Flow")}
               disabled={loading}
             >
-              <Plus className="h-3 w-3" />
+              <Plus className="size-3" />
               Add Flow
             </Button>
           </div>
 
           {(loading || response) && (
-            <pre className="mt-2.5 max-h-[120px] overflow-y-auto rounded-lg bg-zinc-950 px-3.5 py-2.5 font-mono text-[0.75rem] leading-relaxed text-zinc-400">
+            <pre className="mt-2.5 max-h-30 overflow-y-auto rounded-lg bg-zinc-950 px-3.5 py-2.5 font-mono text-xs leading-relaxed text-zinc-400">
               {loading ? (
                 <span className="flex items-center gap-2">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <Loader2 className="size-3.5 animate-spin" />
                   {lastCmd}...
                 </span>
               ) : (
@@ -257,23 +268,23 @@ export function NodeRedCard() {
             </pre>
           )}
 
-          <div className="my-[18px] h-px bg-border" />
-          <div className="mb-2 text-[0.65rem] font-bold uppercase tracking-[0.07em] text-muted-foreground">
+          <Separator className="my-4" />
+          <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
             Upload Flow File
           </div>
 
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-full rounded-xl border-2 border-dashed bg-transparent px-6 py-[26px] text-center text-[0.8rem] text-muted-foreground transition hover:border-primary hover:bg-accent"
+            className="w-full rounded-xl border-2 border-dashed bg-transparent px-6 py-6 text-center text-sm text-muted-foreground transition hover:border-primary hover:bg-accent"
           >
-            <Upload className="mx-auto mb-2 h-[26px] w-[26px] opacity-50" />
+            <Upload className="mx-auto mb-2 size-6 opacity-50" />
             <div className="mt-1 font-semibold text-foreground">
               Drop a JSON flow file here
             </div>
-            <div className="mt-0.5 text-[0.72rem]">or click to browse</div>
+            <div className="mt-0.5 text-xs">or click to browse</div>
           </button>
-          <div className="mt-2 text-[0.75rem] text-muted-foreground">
+          <div className="mt-2 text-xs text-muted-foreground">
             {fileName || "No file selected"}
           </div>
           <input
@@ -289,7 +300,7 @@ export function NodeRedCard() {
       <Card>
         <CardHeader>
           <CardTitle>
-            <FileJson className="h-4 w-4" />
+            <FileJson className="size-4" />
             Flow List
           </CardTitle>
           <Button
@@ -298,7 +309,7 @@ export function NodeRedCard() {
             onClick={() => send("nodered-flows", "Get Flows")}
             disabled={loading}
           >
-            <RefreshCw className="h-3 w-3" />
+            <RefreshCw className="size-3" />
             Refresh
           </Button>
         </CardHeader>
@@ -307,16 +318,16 @@ export function NodeRedCard() {
             flowItems.map((flow) => (
               <div
                 key={flow.id ?? `${flow.type}-${flow.name}-${flow.label}`}
-                className="flex items-center gap-[13px] border-b px-[18px] py-[13px] last:border-b-0"
+                className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
               >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent text-primary">
-                  <FileJson className="h-3.5 w-3.5" />
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent text-primary">
+                  <FileJson className="size-3.5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[0.825rem] font-semibold">
+                  <div className="text-sm font-semibold">
                     {flow.label || flow.name || flow.type || "Unnamed flow"}
                   </div>
-                  <div className="truncate font-mono text-[0.7rem] text-muted-foreground">
+                  <div className="truncate font-mono text-xs text-muted-foreground">
                     {flow.id ?? "no id"}
                     {flow.type ? ` · ${flow.type}` : ""}
                   </div>
@@ -324,22 +335,18 @@ export function NodeRedCard() {
                 <button
                   type="button"
                   onClick={() => setResponse(JSON.stringify(flow, null, 2))}
-                  className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[0.75rem] font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 >
                   Details
                 </button>
               </div>
             ))
           ) : (
-            <div className="px-6 py-11 text-center text-muted-foreground">
-              <FileJson className="mx-auto mb-2.5 h-[34px] w-[34px] opacity-25" />
-              <h3 className="mb-1 text-[0.85rem] font-semibold text-foreground">
-                No flows loaded
-              </h3>
-              <p className="text-[0.775rem]">
-                Click "Get Flows" or deploy a JSON file to populate this list.
-              </p>
-            </div>
+            <EmptyState
+              icon={<FileJson className="size-8" />}
+              title="No flows loaded"
+              description='Click "Get Flows" or deploy a JSON file to populate this list.'
+            />
           )}
         </div>
       </Card>
@@ -348,9 +355,9 @@ export function NodeRedCard() {
         <button
           type="button"
           onClick={() => setResponse("")}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
-          <X className="h-3 w-3" />
+          <X className="size-3" />
           Clear response
         </button>
       )}

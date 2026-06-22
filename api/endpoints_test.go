@@ -4,6 +4,7 @@
 package api_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -82,8 +83,9 @@ func newAgentServer(t *testing.T) (*httptest.Server, *agentmocks.Service) {
 
 	svc := agentmocks.NewService(t)
 	logger := mglog.NewMock()
+	svc.On("SetPushEvent", mock.Anything).Maybe().Return()
 
-	return httptest.NewServer(api.MakeHandler(svc, logger, nil, "instance-id")), svc
+	return httptest.NewServer(api.MakeHandler(svc, logger, nil)), svc
 }
 
 func TestPublish(t *testing.T) {
@@ -164,95 +166,6 @@ func TestPublish(t *testing.T) {
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error while decoding response body: %s", tc.desc, err))
 			assert.Equal(t, "agent", body.Service)
 			assert.Equal(t, tc.response, body.Response)
-		})
-	}
-}
-
-func TestExec(t *testing.T) {
-	svcErr := mgerrors.New("exec failed")
-
-	cases := []struct {
-		desc      string
-		req       string
-		status    int
-		mockSetup func(*agentmocks.Service)
-		err       error
-		response  string
-	}{
-		{
-			desc: "execute command",
-			req: toJSON(map[string]string{
-				"bn": "device:",
-				"n":  "exec",
-				"vs": "ls",
-			}),
-			status: http.StatusOK,
-			mockSetup: func(svc *agentmocks.Service) {
-				svc.On("Execute", "device", "ls").Return("done", nil)
-			},
-			response: "done",
-		},
-		{
-			desc:   "execute malformed request",
-			req:    toJSON(map[string]string{"bn": "device:", "n": "wrong", "vs": "ls"}),
-			status: http.StatusBadRequest,
-			err:    agent.ErrMalformedEntity,
-		},
-		{
-			desc:   "execute invalid json",
-			req:    "}",
-			status: http.StatusBadRequest,
-		},
-		{
-			desc: "execute service error",
-			req: toJSON(map[string]string{
-				"bn": "device:",
-				"n":  "exec",
-				"vs": "ls",
-			}),
-			status: http.StatusInternalServerError,
-			mockSetup: func(svc *agentmocks.Service) {
-				svc.On("Execute", "device", "ls").Return("", svcErr)
-			},
-			err: svcErr,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.desc, func(t *testing.T) {
-			ts, svc := newAgentServer(t)
-			defer ts.Close()
-
-			if tc.mockSetup != nil {
-				tc.mockSetup(svc)
-			}
-
-			req := testRequest{
-				client:      ts.Client(),
-				method:      http.MethodPost,
-				url:         ts.URL + "/exec",
-				contentType: contentType,
-				body:        strings.NewReader(tc.req),
-			}
-
-			res, err := req.make()
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %s", tc.desc, err))
-			assert.Equal(t, tc.status, res.StatusCode, fmt.Sprintf("%s: expected status code %d got %d", tc.desc, tc.status, res.StatusCode))
-
-			if tc.status != http.StatusOK {
-				return
-			}
-
-			var body struct {
-				BaseName string `json:"bn"`
-				Name     string `json:"n"`
-				Value    string `json:"vs"`
-			}
-			err = json.NewDecoder(res.Body).Decode(&body)
-			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error while decoding response body: %s", tc.desc, err))
-			assert.Equal(t, "device:", body.BaseName)
-			assert.Equal(t, "exec", body.Name)
-			assert.Equal(t, tc.response, body.Value)
 		})
 	}
 }
@@ -942,6 +855,187 @@ func TestOTAStatus(t *testing.T) {
 			assert.Nil(t, err)
 			assert.Equal(t, tc.info.Busy, body.Busy, tc.desc)
 			assert.Equal(t, tc.info.LastError, body.LastError, tc.desc)
+		})
+	}
+}
+
+func TestOTAAbort(t *testing.T) {
+	svcErr := mgerrors.New("no OTA in progress")
+
+	cases := []struct {
+		desc      string
+		status    int
+		mockSetup func(*agentmocks.Service)
+	}{
+		{
+			desc:   "abort in-progress OTA",
+			status: http.StatusOK,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("OTAAbort").Return(nil)
+			},
+		},
+		{
+			desc:   "abort with no OTA running returns error",
+			status: http.StatusInternalServerError,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("OTAAbort").Return(svcErr)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			ts, svc := newAgentServer(t)
+			defer ts.Close()
+			tc.mockSetup(svc)
+
+			req := testRequest{
+				client: ts.Client(),
+				method: http.MethodPost,
+				url:    ts.URL + "/ota/abort",
+			}
+
+			res, err := req.make()
+			assert.Nil(t, err)
+			assert.Equal(t, tc.status, res.StatusCode, tc.desc)
+		})
+	}
+}
+
+func TestOTAData(t *testing.T) {
+	firmware := []byte("fake agent binary content")
+
+	cases := []struct {
+		desc      string
+		body      []byte
+		sha256    string
+		status    int
+		mockSetup func(*agentmocks.Service)
+	}{
+		{
+			desc:   "upload firmware with sha256",
+			body:   firmware,
+			sha256: "abc123def456",
+			status: http.StatusAccepted,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("OTAFromData", mock.Anything, firmware, "abc123def456").
+					Return(nil).Maybe()
+			},
+		},
+		{
+			desc:      "missing sha256 query param returns bad request",
+			body:      firmware,
+			sha256:    "",
+			status:    http.StatusBadRequest,
+			mockSetup: func(_ *agentmocks.Service) {},
+		},
+		{
+			desc:      "empty body returns bad request",
+			body:      []byte{},
+			sha256:    "abc123",
+			status:    http.StatusBadRequest,
+			mockSetup: func(_ *agentmocks.Service) {},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			ts, svc := newAgentServer(t)
+			defer ts.Close()
+			tc.mockSetup(svc)
+
+			url := ts.URL + "/ota/data"
+			if tc.sha256 != "" {
+				url += "?sha256=" + tc.sha256
+			}
+
+			req := testRequest{
+				client:      ts.Client(),
+				method:      http.MethodPost,
+				url:         url,
+				contentType: "application/octet-stream",
+				body:        bytes.NewReader(tc.body),
+			}
+
+			res, err := req.make()
+			assert.Nil(t, err)
+			assert.Equal(t, tc.status, res.StatusCode, tc.desc)
+		})
+	}
+}
+
+func TestControl(t *testing.T) {
+	svcErr := mgerrors.New("control failed")
+
+	cases := []struct {
+		desc      string
+		body      string
+		status    int
+		mockSetup func(*agentmocks.Service)
+	}{
+		{
+			desc:   "stop agent",
+			body:   toJSON(map[string]any{"command": "stop"}),
+			status: http.StatusAccepted,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("Control", "http", "stop").Return(nil)
+			},
+		},
+		{
+			desc:   "start agent",
+			body:   toJSON(map[string]any{"command": "start"}),
+			status: http.StatusAccepted,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("Control", "http", "start").Return(nil)
+			},
+		},
+		{
+			desc:   "reload config",
+			body:   toJSON(map[string]any{"command": "reload"}),
+			status: http.StatusAccepted,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("Control", "http", "reload").Return(nil)
+			},
+		},
+		{
+			desc:      "invalid command returns bad request",
+			body:      toJSON(map[string]any{"command": "bogus"}),
+			status:    http.StatusBadRequest,
+			mockSetup: func(_ *agentmocks.Service) {},
+		},
+		{
+			desc:   "service error returns internal server error",
+			body:   toJSON(map[string]any{"command": "stop"}),
+			status: http.StatusInternalServerError,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("Control", "http", "stop").Return(svcErr)
+			},
+		},
+		{
+			desc:      "invalid JSON returns bad request",
+			body:      "}",
+			status:    http.StatusBadRequest,
+			mockSetup: func(_ *agentmocks.Service) {},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			ts, svc := newAgentServer(t)
+			defer ts.Close()
+			tc.mockSetup(svc)
+
+			req := testRequest{
+				client:      ts.Client(),
+				method:      http.MethodPost,
+				url:         ts.URL + "/control",
+				contentType: contentType,
+				body:        strings.NewReader(tc.body),
+			}
+
+			res, err := req.make()
+			assert.Nil(t, err)
+			assert.Equal(t, tc.status, res.StatusCode, tc.desc)
 		})
 	}
 }

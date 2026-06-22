@@ -1,7 +1,33 @@
 // Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useRef, useState } from "preact/hooks";
+import { Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+
+const TIME_OPTIONS = [
+  { value: "0", label: "All time" },
+  { value: "60", label: "Last 1m" },
+  { value: "300", label: "Last 5m" },
+  { value: "900", label: "Last 15m" },
+  { value: "1800", label: "Last 30m" },
+  { value: "3600", label: "Last 1h" },
+] as const;
+
+function parseTimeSeconds(line: string): number | null {
+  const m = line.match(/^(\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return null;
+  return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+}
+
+function secondsSince(lineSeconds: number, nowSeconds: number): number {
+  return lineSeconds <= nowSeconds
+    ? nowSeconds - lineSeconds
+    : 86400 - lineSeconds + nowSeconds;
+}
 
 type Level = "DEBUG" | "INFO" | "WARN" | "ERROR" | "unknown";
 
@@ -32,6 +58,9 @@ export function LogsPage() {
   const [lines, setLines] = useState<string[]>([]);
   const [paused, setPaused] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [levelFilter, setLevelFilter] = useState<Level | "ALL">("ALL");
+  const [search, setSearch] = useState("");
+  const [timeFilter, setTimeFilter] = useState<number>(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pausedRef = useRef(false);
 
@@ -59,65 +88,116 @@ export function LogsPage() {
     }
   }, [lines, paused]);
 
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const nowSec = Math.floor(Date.now() / 1000) % 86400;
+    return lines.filter((line) => {
+      if (levelFilter !== "ALL" && parseLevel(line) !== levelFilter)
+        return false;
+      if (q && !line.toLowerCase().includes(q)) return false;
+      if (timeFilter > 0) {
+        const ls = parseTimeSeconds(line);
+        if (ls === null || secondsSince(ls, nowSec) > timeFilter) return false;
+      }
+      return true;
+    });
+  }, [lines, levelFilter, search, timeFilter]);
+
   return (
     <div className="flex h-full flex-col gap-4 p-4 sm:p-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold">Agent Logs</h1>
-          <p className="text-sm text-[var(--muted)]">
+          <p className="text-sm text-muted-foreground">
             Live log stream from the agent process
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span
-            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-semibold ${
-              connected
-                ? "bg-emerald-500/15 text-emerald-300"
-                : "bg-red-500/15 text-red-300"
-            }`}
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-current" />
-            {connected ? "Streaming" : "Disconnected"}
-          </span>
-          <button
-            type="button"
+          <StatusBadge
+            status={connected ? "online" : "offline"}
+            label={connected ? "Streaming" : "Disconnected"}
+            pulse={connected}
+          />
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search logs…"
+                value={search}
+                onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
+                className="h-9 w-40 pl-8 text-xs"
+              />
+            </div>
+            <Select
+              value={levelFilter}
+              onChange={(e) =>
+                setLevelFilter(
+                  (e.target as HTMLSelectElement).value as Level | "ALL",
+                )
+              }
+              className="h-9 w-28 text-xs"
+            >
+              <option value="ALL">All levels</option>
+              <option value="DEBUG">DEBUG</option>
+              <option value="INFO">INFO</option>
+              <option value="WARN">WARN</option>
+              <option value="ERROR">ERROR</option>
+            </Select>
+            <Select
+              value={String(timeFilter)}
+              onChange={(e) =>
+                setTimeFilter(Number((e.target as HTMLSelectElement).value))
+              }
+              className="h-9 w-28 text-xs"
+            >
+              {TIME_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setPaused((p) => !p)}
-            className="rounded-md border border-[var(--border)] bg-[var(--card-bg)] px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors"
           >
             {paused ? "Resume" : "Pause"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setLines([])}
-            className="rounded-md border border-[var(--border)] bg-[var(--card-bg)] px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors"
-          >
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setLines([])}>
             Clear
-          </button>
+          </Button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden rounded-xl border border-[var(--border)] shadow-sm">
+      <div className="flex-1 overflow-hidden rounded-xl border border-border shadow-sm">
         <div className="flex items-center gap-2 bg-zinc-800 px-4 py-2.5">
           <div className="flex gap-1.5">
-            <span className="h-3 w-3 rounded-full bg-red-500" />
-            <span className="h-3 w-3 rounded-full bg-yellow-400" />
-            <span className="h-3 w-3 rounded-full bg-green-500" />
+            <span className="size-3 rounded-full bg-red-500" />
+            <span className="size-3 rounded-full bg-yellow-400" />
+            <span className="size-3 rounded-full bg-green-500" />
           </div>
           <span className="mx-auto font-mono text-xs text-zinc-400">
             magistrala-agent — logs
           </span>
-          <span className="text-xs text-zinc-500">{lines.length} lines</span>
+          <span className="text-xs text-zinc-500">
+            {filtered.length}
+            {filtered.length !== lines.length && ` / ${lines.length}`} lines
+          </span>
         </div>
 
         <div className="h-[calc(100vh-260px)] overflow-y-auto bg-zinc-900 p-4 font-mono text-xs leading-relaxed">
-          {lines.length === 0 ? (
+          {filtered.length === 0 ? (
             <p className="text-zinc-500">
-              {connected
-                ? "Waiting for log entries…"
-                : "Connecting to log stream…"}
+              {lines.length === 0
+                ? connected
+                  ? "Waiting for log entries…"
+                  : "Connecting to log stream…"
+                : "No logs match the current filter."}
             </p>
           ) : (
-            lines.map((line, i) => {
+            filtered.map((line, i) => {
               const level = parseLevel(line);
               return (
                 <div

@@ -51,12 +51,12 @@ type config struct {
 	MqttCert             string `env:"MG_AGENT_MQTT_CLIENT_CERT"              envDefault:"client.cert"`
 	MqttPrivateKey       string `env:"MG_AGENT_MQTT_CLIENT_KEY"               envDefault:"client.key"`
 	HeartbeatInterval    string `env:"MG_AGENT_HEARTBEAT_INTERVAL"            envDefault:"10s"`
-	TelemetryInterval    string `env:"MG_AGENT_TELEMETRY_INTERVAL"             envDefault:"30s"`
-	TelemetryIncludeTemp string `env:"MG_AGENT_TELEMETRY_INCLUDE_TEMPERATURE"  envDefault:"true"`
-	TelemetryIncludeNet  string `env:"MG_AGENT_TELEMETRY_INCLUDE_NETWORK"      envDefault:"true"`
-	TelemetryIncludeLoad string `env:"MG_AGENT_TELEMETRY_INCLUDE_LOAD"         envDefault:"true"`
+	TelemetryInterval    string `env:"MG_AGENT_TELEMETRY_INTERVAL"            envDefault:"30s"`
+	TelemetryIncludeTemp string `env:"MG_AGENT_TELEMETRY_INCLUDE_TEMPERATURE" envDefault:"true"`
+	TelemetryIncludeNet  string `env:"MG_AGENT_TELEMETRY_INCLUDE_NETWORK"     envDefault:"true"`
+	TelemetryIncludeLoad string `env:"MG_AGENT_TELEMETRY_INCLUDE_LOAD"        envDefault:"true"`
 	TermSessionTimeout   string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT"      envDefault:"60s"`
-	OTAEnabled           string `env:"MG_AGENT_OTA_ENABLED"                   envDefault:"false"`
+	OTAEnabled           string `env:"MG_AGENT_OTA_ENABLED"                   envDefault:"true"`
 	OTABinaryPath        string `env:"MG_AGENT_OTA_BINARY_PATH"               envDefault:"/usr/local/bin/agent"`
 	OTADownloadDir       string `env:"MG_AGENT_OTA_DOWNLOAD_DIR"              envDefault:"/tmp"`
 	BootstrapURL         string `env:"MG_AGENT_BOOTSTRAP_URL"                 envDefault:""`
@@ -73,8 +73,8 @@ type config struct {
 	DeviceDBPath         string `env:"MG_AGENT_DEVICE_DB_PATH"                envDefault:"/var/lib/agent/devices.db"`
 	ConfigPath           string `env:"MG_AGENT_CONFIG_PATH"                   envDefault:"agent-config.json"`
 	CommandSecret        string `env:"MG_AGENT_COMMAND_SECRET"                envDefault:""`
-	WatchdogInterval     string `env:"MG_AGENT_WATCHDOG_INTERVAL"            envDefault:"0s"`
-	WatchdogTimeout      string `env:"MG_AGENT_WATCHDOG_TIMEOUT"             envDefault:"60s"`
+	WatchdogInterval     string `env:"MG_AGENT_WATCHDOG_INTERVAL"             envDefault:"0s"`
+	WatchdogTimeout      string `env:"MG_AGENT_WATCHDOG_TIMEOUT"              envDefault:"60s"`
 }
 
 var (
@@ -246,7 +246,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", cfg.Server.Port),
-		Handler: api.MakeHandler(svc, logger, stream, ""),
+		Handler: api.MakeHandler(svc, logger, stream),
 	}
 
 	g.Go(func() error {

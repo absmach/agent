@@ -34,5 +34,7 @@ RUN apk update && apk add make && \
     mv build/magistrala-$SVC /exe
 
 FROM alpine:3.24
+# For debugging purposes, socat is installed to create virtual serial ports
+RUN apk add socat
 COPY --from=builder /exe /
-ENTRYPOINT ["/exe"]
+ENTRYPOINT ["/bin/sh", "-c", "socat -d -d pty,raw,echo=0,link=/dev/ttyV0 pty,raw,echo=0,link=/dev/ttyV1 & exec /exe"]

@@ -5,9 +5,9 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"syscall"
 
 	"github.com/absmach/agent"
@@ -38,29 +38,6 @@ func pubEndpoint(svc agent.Service) endpoint.Endpoint {
 			Service:  svcName,
 			Response: "publish",
 		}, nil
-	}
-}
-
-func execEndpoint(svc agent.Service) endpoint.Endpoint {
-	return func(_ context.Context, request any) (any, error) {
-		req := request.(execReq)
-
-		if err := req.validate(); err != nil {
-			return nil, err
-		}
-
-		uuid := strings.TrimSuffix(req.BaseName, ":")
-		out, err := svc.Execute(uuid, req.Value)
-		if err != nil {
-			return nil, err
-		}
-
-		resp := execRes{
-			BaseName: req.BaseName,
-			Name:     "exec",
-			Value:    out,
-		}
-		return resp, nil
 	}
 }
 
@@ -243,5 +220,159 @@ func resetEndpoint(svc agent.Service) endpoint.Endpoint {
 func otaStatusEndpoint(svc agent.Service) endpoint.Endpoint {
 	return func(_ context.Context, _ any) (any, error) {
 		return otaStatusRes{OTAStatusInfo: svc.OTAStatus()}, nil
+	}
+}
+
+func otaAbortEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, _ any) (any, error) {
+		if err := svc.OTAAbort(); err != nil {
+			return nil, err
+		}
+		return otaAbortRes{Status: "aborted"}, nil
+	}
+}
+
+func otaDataEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(ctx context.Context, request any) (any, error) {
+		req := request.(otaDataReq)
+		if err := req.validate(); err != nil {
+			return nil, err
+		}
+		otaCtx := context.WithoutCancel(ctx)
+		go func() {
+			_ = svc.OTAFromData(otaCtx, req.Data, req.SHA256Hex)
+		}()
+		return otaTriggerRes{Status: "triggered"}, nil
+	}
+}
+
+func controlEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		req := request.(controlReq)
+		if err := req.validate(); err != nil {
+			return nil, err
+		}
+		if err := svc.Control("http", req.Command); err != nil {
+			return nil, err
+		}
+		return controlRes{
+			Service:  svcName,
+			Response: "control",
+			Command:  req.Command,
+		}, nil
+	}
+}
+
+func openDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(ctx context.Context, request any) (any, error) {
+		id := request.(string)
+		if err := svc.OpenDevice(ctx, id); err != nil {
+			return nil, err
+		}
+		return simpleRes{Service: svcName, Response: "opened"}, nil
+	}
+}
+
+func closeDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		id := request.(string)
+		if err := svc.CloseDevice(id); err != nil {
+			return nil, err
+		}
+		return simpleRes{Service: svcName, Response: "closed"}, nil
+	}
+}
+
+func readDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		req := request.(decodeIDPayload)
+		n := req.Bytes
+		if n <= 0 {
+			n = 1024
+		}
+		data, err := svc.ReadDevice(req.ID, n)
+		if err != nil {
+			return nil, err
+		}
+		return deviceReadRes{Data: fmt.Sprintf("%x", data)}, nil
+	}
+}
+
+func writeDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		req := request.(decodeIDPayload)
+		n, err := svc.WriteDevice(req.ID, req.Data)
+		if err != nil {
+			return nil, err
+		}
+		return deviceWriteRes{Bytes: n}, nil
+	}
+}
+
+func runtimeConfigGetEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		keys := []string{
+			agent.KeyLogLevel,
+			agent.KeyHeartbeatInterval,
+			agent.KeyTelemetryInterval,
+			agent.KeyTerminalSessionTimeout,
+			agent.KeyCommandSecret,
+			agent.KeyBsValid,
+		}
+		result := make(map[string]string)
+		for _, k := range keys {
+			val, err := svc.GetRuntimeConfig(k)
+			if err != nil {
+				result[k] = ""
+			} else {
+				result[k] = val
+			}
+		}
+		return runtimeConfigRes{Config: result}, nil
+	}
+}
+
+func runtimeConfigSetEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(ctx context.Context, request any) (any, error) {
+		req := request.(runtimeConfigReq)
+		if err := req.validate(); err != nil {
+			return nil, err
+		}
+		if err := svc.SetRuntimeConfig(ctx, req.Key, req.Value); err != nil {
+			return nil, err
+		}
+		return simpleRes{Service: svcName, Response: "ok"}, nil
+	}
+}
+
+func telemetryDataEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, _ any) (any, error) {
+		return svc.Telemetry(), nil
+	}
+}
+
+func addServiceEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		req := request.(addServiceReq)
+		if err := req.validate(); err != nil {
+			return nil, err
+		}
+		if err := svc.RegisterService(req.Name, req.Type); err != nil {
+			return nil, err
+		}
+		return simpleRes{Service: svcName, Response: "registered"}, nil
+	}
+}
+
+func removeServiceEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		id := request.(string)
+		if id == "" {
+			return nil, agent.ErrMalformedEntity
+		}
+		if err := svc.RemoveService(id); err != nil {
+			return nil, err
+		}
+		return removeDeviceRes{}, nil
 	}
 }

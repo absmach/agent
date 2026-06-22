@@ -41,15 +41,6 @@ func NewMetrics(svc agent.Service, counter metrics.Counter, latency metrics.Hist
 	}
 }
 
-func (ms *metricsMiddleware) Execute(uuid, cmdStr string) (string, error) {
-	defer func(begin time.Time) {
-		ms.counter.With("method", "execute").Add(1)
-		ms.latency.With("method", "execute").Observe(time.Since(begin).Seconds())
-	}(time.Now())
-
-	return ms.svc.Execute(uuid, cmdStr)
-}
-
 func (ms *metricsMiddleware) Control(uuid, cmdStr string) error {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "control").Add(1)
@@ -149,6 +140,24 @@ func (ms *metricsMiddleware) UpdateLiveness(svcname, svctype string) error {
 	return ms.svc.UpdateLiveness(svcname, svctype)
 }
 
+func (ms *metricsMiddleware) RegisterService(svcname, svctype string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "register_service").Add(1)
+		ms.latency.With("method", "register_service").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.RegisterService(svcname, svctype)
+}
+
+func (ms *metricsMiddleware) RemoveService(svcname string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "remove_service").Add(1)
+		ms.latency.With("method", "remove_service").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return ms.svc.RemoveService(svcname)
+}
+
 func (ms *metricsMiddleware) OTA(ctx context.Context, url, sha256hex string, size uint64) error {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "ota").Add(1)
@@ -191,6 +200,10 @@ func (ms *metricsMiddleware) DeviceManager(ctx context.Context, uuid, cmdStr str
 
 func (ms *metricsMiddleware) OTAStatus() agent.OTAStatusInfo {
 	return ms.svc.OTAStatus()
+}
+
+func (ms *metricsMiddleware) Telemetry() agent.TelemetryData {
+	return ms.svc.Telemetry()
 }
 
 func (ms *metricsMiddleware) OTAAbort() error {
@@ -240,4 +253,56 @@ func (ms *metricsMiddleware) MarkDeviceSeen(id string) error {
 		ms.latency.With("method", "mark_device_seen").Observe(time.Since(begin).Seconds())
 	}(time.Now())
 	return ms.svc.MarkDeviceSeen(id)
+}
+
+func (ms *metricsMiddleware) OpenDevice(ctx context.Context, id string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "open_device").Add(1)
+		ms.latency.With("method", "open_device").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+	return ms.svc.OpenDevice(ctx, id)
+}
+
+func (ms *metricsMiddleware) CloseDevice(id string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "close_device").Add(1)
+		ms.latency.With("method", "close_device").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+	return ms.svc.CloseDevice(id)
+}
+
+func (ms *metricsMiddleware) ReadDevice(id string, n int) ([]byte, error) {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "read_device").Add(1)
+		ms.latency.With("method", "read_device").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+	return ms.svc.ReadDevice(id, n)
+}
+
+func (ms *metricsMiddleware) WriteDevice(id, hexData string) (int, error) {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "write_device").Add(1)
+		ms.latency.With("method", "write_device").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+	return ms.svc.WriteDevice(id, hexData)
+}
+
+func (ms *metricsMiddleware) GetRuntimeConfig(key string) (string, error) {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "get_runtime_config").Add(1)
+		ms.latency.With("method", "get_runtime_config").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+	return ms.svc.GetRuntimeConfig(key)
+}
+
+func (ms *metricsMiddleware) SetRuntimeConfig(ctx context.Context, key, value string) error {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "set_runtime_config").Add(1)
+		ms.latency.With("method", "set_runtime_config").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+	return ms.svc.SetRuntimeConfig(ctx, key, value)
+}
+
+func (ms *metricsMiddleware) SetPushEvent(fn func(string)) {
+	ms.svc.SetPushEvent(fn)
 }

@@ -199,7 +199,7 @@ Setting `bs_valid` to `0` deletes the cached bootstrap profile. On next restart,
 
 ## Execute Commands (exec subsystem)
 
-The `exec` subsystem runs allowlisted shell commands on the agent host.
+The `exec` subsystem runs allowlisted shell commands on the agent host via MQTT. **This subsystem is no longer accessible through the web UI** - use the new **Terminal** page for interactive shell access.
 
 ### Allowlisted Commands
 
@@ -241,7 +241,7 @@ Commands are executed directly (not via a shell), so shell operators like `&&`, 
     "bn": "req-1",
     "bt": 1781192641.2791781,
     "n": "ls -la",
-    "vs": "total 22096\ndrwxr-xr-x    1 root     root             6 Jun 11 15:39 .\ndrwxr-xr-x    1 root     root             6 Jun 11 15:39 ..\n-rwxr-xr-x    1 root     root             0 Jun 11 15:39 .dockerenv\ndrwxr-xr-x    1 root     root           858 Dec 17 07:03 bin\ndrwxr-xr-x    5 root     root           340 Jun 11 15:39 dev\ndrwxr-xr-x    1 root     root            56 Jun 11 15:39 etc\n-rwxr-xr-x    1 root     root      22622370 Jun 11 15:39 exe\ndrwxr-xr-x    1 root     root             0 Dec 17 07:03 home\ndrwxr-xr-x    1 root     root           146 Dec 17 07:03 lib\ndrwxr-xr-x    1 root     root            28 Dec 17 07:03 media\ndrwxr-xr-x    1 root     root             0 Dec 17 07:03 mnt\ndrwxr-xr-x    1 root     root             0 Dec 17 07:03 opt\ndr-xr-xr-x 1073 root     root             0 Jun 11 15:39 proc\ndrwx------    1 root     root             0 Dec 17 07:03 root\ndrwxr-xr-x    1 root     root             8 Dec 17 07:03 run\ndrwxr-xr-x    1 root     root           810 Dec 17 07:03 sbin\ndrwxr-xr-x    1 root     root             0 Dec 17 07:03 srv\ndr-xr-xr-x   13 root     root             0 Jun 11 15:39 sys\ndrwxrwxrwt    1 root     root             0 Dec 17 07:03 tmp\ndrwxr-xr-x    1 root     root            40 Dec 17 07:03 usr\ndrwxr-xr-x    1 root     root             6 Dec 17 07:03 var\n"
+    "vs": "total 22096\ndrwxr-xr-x    1 root     root             6 Jun 11 15:39 .\ndrwxr-xr-x    1 root     root             6 Jun 11 15:39 ..\n-rwxr-xr-x    1 root     root      22622370 Jun 11 15:39 exe\ndrwxr-xr-x    1 root     root             0 Jun 11 15:39 bin\ndrwxr-xr-x    5 root     root           340 Jun 11 15:39 dev\ndrwxr-xr-x    1 root     root             56 Jun 11 15:39 etc\n-rwxr-xr-x    1 root     root      22622370 Jun 11 15:39 exe\ndrwxr-xr-x    1 root     root             0 Jun 11 15:39 home\ndrwxr-xr-x    1 root     root             146 Jun 11 15:39 lib\ndrwxr-xr-x    1 root     root            28 Jun 11 15:39 media\ndrwxr-xr-x    1 root     root             0 Jun 11 15:39 mnt\ndrwxr-xr-x    1 root     root             0 Jun 11 15:39 opt\ndr-xr-xr-x    1073 root     root             0 Jun 11 15:39 proc\ndrwx------    1 root     root             0 Jun 11 15:39 root\ndrwxr-xr-x    1 root     root             8 Jun 11 15:39 run\ndrwxr-xr-x    1 root     root           810 Jun 11 15:39 sbin\ndrwxr-xr-x    1 root     root             0 Jun 11 15:39 srv\ndr-xr-xr-x   13 root     root             0 Jun 11 15:39 sys\ndrwxrwxrwt    1 root     root             0 Jun 11 15:39 tmp\ndrwxr-xr-x    1 root     root            40 Jun 11 15:39 usr\ndrwxr-xr-x    1 root     root             6 Dec 17 07:03 var\n"
   }
 ]
 ```

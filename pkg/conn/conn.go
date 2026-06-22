@@ -37,7 +37,6 @@ const (
 	otaDataTopic = "ota"
 
 	control = "control"
-	exec    = "exec"
 	config  = "config"
 	service = "service"
 	term    = "term"
@@ -180,19 +179,6 @@ func (b *broker) registerBuiltins() {
 			uuid, cmdStr := extractCmd(pack)
 			log.Info("Control command", slog.String("uuid", uuid), slog.String("command", cmdStr))
 			return svc.Control(uuid, cmdStr)
-		},
-	})
-
-	b.Register(Command{
-		Name:         exec,
-		Description:  "Execute an allowlisted shell command",
-		Usage:        "exec,<command>[,arg...]",
-		RequiresAuth: true,
-		Handler: func(_ context.Context, pack senml.Pack) error {
-			uuid, cmdStr := extractCmd(pack)
-			log.Info("Execute command", slog.String("uuid", uuid), slog.String("command", cmdStr))
-			_, err := svc.Execute(uuid, cmdStr)
-			return err
 		},
 	})
 

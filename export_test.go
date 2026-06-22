@@ -17,12 +17,6 @@ func ApplyConfigEntryForTest(cfg *Config, key, val string) {
 	ApplyConfigEntry(cfg, key, val)
 }
 
-func ChangeDirForTest(workDir string, cmd []string) (string, string, error) {
-	ag := &agent{workDir: workDir}
-	output, err := ag.changeDir(cmd)
-	return output, ag.workDir, err
-}
-
 func NormalizeNodeRedFlowForTest(cfg Config, flow string) string {
 	ag := &agent{config: &cfg}
 	return ag.normalizeNodeRedFlow(flow)

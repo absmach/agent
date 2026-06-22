@@ -13,7 +13,6 @@ import (
 
 var (
 	_ magistrala.Response = (*publishRes)(nil)
-	_ magistrala.Response = (*execRes)(nil)
 	_ magistrala.Response = (*addConfigRes)(nil)
 	_ magistrala.Response = (*viewConfigRes)(nil)
 	_ magistrala.Response = (*viewServicesRes)(nil)
@@ -34,24 +33,6 @@ func (res publishRes) Headers() map[string]string {
 }
 
 func (res publishRes) Empty() bool {
-	return false
-}
-
-type execRes struct {
-	BaseName string `json:"bn"`
-	Name     string `json:"n"`
-	Value    string `json:"vs"`
-}
-
-func (res execRes) Code() int {
-	return http.StatusOK
-}
-
-func (res execRes) Headers() map[string]string {
-	return map[string]string{}
-}
-
-func (res execRes) Empty() bool {
 	return false
 }
 
@@ -229,6 +210,40 @@ func (res otaTriggerRes) Empty() bool {
 	return false
 }
 
+type otaAbortRes struct {
+	Status string `json:"status"`
+}
+
+func (res otaAbortRes) Code() int {
+	return http.StatusOK
+}
+
+func (res otaAbortRes) Headers() map[string]string {
+	return map[string]string{}
+}
+
+func (res otaAbortRes) Empty() bool {
+	return false
+}
+
+type controlRes struct {
+	Service  string `json:"service"`
+	Response string `json:"response"`
+	Command  string `json:"command"`
+}
+
+func (res controlRes) Code() int {
+	return http.StatusAccepted
+}
+
+func (res controlRes) Headers() map[string]string {
+	return map[string]string{}
+}
+
+func (res controlRes) Empty() bool {
+	return false
+}
+
 type otaStatusRes struct {
 	agent.OTAStatusInfo
 }
@@ -242,5 +257,70 @@ func (res otaStatusRes) Headers() map[string]string {
 }
 
 func (res otaStatusRes) Empty() bool {
+	return false
+}
+
+type simpleRes struct {
+	Service  string `json:"service"`
+	Response string `json:"response"`
+}
+
+func (res simpleRes) Code() int {
+	return http.StatusOK
+}
+
+func (res simpleRes) Headers() map[string]string {
+	return map[string]string{}
+}
+
+func (res simpleRes) Empty() bool {
+	return false
+}
+
+type runtimeConfigRes struct {
+	Config map[string]string `json:"config"`
+}
+
+func (res runtimeConfigRes) Code() int {
+	return http.StatusOK
+}
+
+func (res runtimeConfigRes) Headers() map[string]string {
+	return map[string]string{}
+}
+
+func (res runtimeConfigRes) Empty() bool {
+	return false
+}
+
+type deviceReadRes struct {
+	Data string `json:"data"`
+}
+
+func (res deviceReadRes) Code() int {
+	return http.StatusOK
+}
+
+func (res deviceReadRes) Headers() map[string]string {
+	return map[string]string{}
+}
+
+func (res deviceReadRes) Empty() bool {
+	return false
+}
+
+type deviceWriteRes struct {
+	Bytes int `json:"bytes"`
+}
+
+func (res deviceWriteRes) Code() int {
+	return http.StatusOK
+}
+
+func (res deviceWriteRes) Headers() map[string]string {
+	return map[string]string{}
+}
+
+func (res deviceWriteRes) Empty() bool {
 	return false
 }
