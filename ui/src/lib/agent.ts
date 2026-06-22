@@ -76,6 +76,16 @@ function subscribe(cb: EventCallback): () => void {
   };
 }
 
+/** Subscribes to WebSocket events of a given type. Returns an unsubscribe function. */
+export function useWSEvent(type: string, cb: EventCallback): void {
+  useEffect(() => {
+    const unsub = subscribe((event) => {
+      if (event.type === type) cb(event);
+    });
+    return unsub;
+  }, [type]);
+}
+
 /** Uses WebSocket events to track agent link liveness, falling back to polling. */
 export function useAgentStatus(intervalMs = 30000): LinkStatus {
   const [status, setStatus] = useState<LinkStatus>("checking");

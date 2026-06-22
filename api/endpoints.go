@@ -223,6 +223,46 @@ func otaStatusEndpoint(svc agent.Service) endpoint.Endpoint {
 	}
 }
 
+func otaAbortEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, _ any) (any, error) {
+		if err := svc.OTAAbort(); err != nil {
+			return nil, err
+		}
+		return otaAbortRes{Status: "aborted"}, nil
+	}
+}
+
+func otaDataEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(ctx context.Context, request any) (any, error) {
+		req := request.(otaDataReq)
+		if err := req.validate(); err != nil {
+			return nil, err
+		}
+		otaCtx := context.WithoutCancel(ctx)
+		go func() {
+			_ = svc.OTAFromData(otaCtx, req.Data, req.SHA256Hex)
+		}()
+		return otaTriggerRes{Status: "triggered"}, nil
+	}
+}
+
+func controlEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		req := request.(controlReq)
+		if err := req.validate(); err != nil {
+			return nil, err
+		}
+		if err := svc.Control("http", req.Command); err != nil {
+			return nil, err
+		}
+		return controlRes{
+			Service:  svcName,
+			Response: "control",
+			Command:  req.Command,
+		}, nil
+	}
+}
+
 func openDeviceEndpoint(svc agent.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		id := request.(string)

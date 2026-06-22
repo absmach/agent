@@ -210,6 +210,40 @@ func (res otaTriggerRes) Empty() bool {
 	return false
 }
 
+type otaAbortRes struct {
+	Status string `json:"status"`
+}
+
+func (res otaAbortRes) Code() int {
+	return http.StatusOK
+}
+
+func (res otaAbortRes) Headers() map[string]string {
+	return map[string]string{}
+}
+
+func (res otaAbortRes) Empty() bool {
+	return false
+}
+
+type controlRes struct {
+	Service  string `json:"service"`
+	Response string `json:"response"`
+	Command  string `json:"command"`
+}
+
+func (res controlRes) Code() int {
+	return http.StatusAccepted
+}
+
+func (res controlRes) Headers() map[string]string {
+	return map[string]string{}
+}
+
+func (res controlRes) Empty() bool {
+	return false
+}
+
 type otaStatusRes struct {
 	agent.OTAStatusInfo
 }

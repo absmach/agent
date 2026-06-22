@@ -57,6 +57,11 @@ const (
 	ctrlReload = "reload"
 	ctrlStatus = "status"
 
+	// Exported aliases for use by the HTTP API layer.
+	CtrlStop   = ctrlStop
+	CtrlStart  = ctrlStart
+	CtrlReload = ctrlReload
+
 	export = "export"
 
 	KeyLogLevel               = "log_level"
@@ -263,13 +268,24 @@ type Service interface {
 	// SetRuntimeConfig sets a runtime-configurable key to the given value.
 	SetRuntimeConfig(ctx context.Context, key, value string) error
 
+	// SetPushEvent registers a callback invoked when a subsystem state changes
+	// (e.g. OTA progress, config updates, device list changes) so the HTTP API
+	// can push real-time WebSocket events to connected UI clients.
+	SetPushEvent(fn func(string))
+
 	DeviceService
 }
 
-// OTAStatusInfo reports the current state of the OTA subsystem.
+// OTAStatusInfo reports the current state of the OTA subsystem. The progress
+// fields mirror the retained MQTT status message so HTTP clients can render a
+// live progress bar without subscribing to MQTT.
 type OTAStatusInfo struct {
-	Busy      bool   `json:"busy"`
-	LastError string `json:"last_error,omitempty"`
+	Busy      bool    `json:"busy"`
+	State     string  `json:"state,omitempty"`
+	Bytes     int64   `json:"bytes"`
+	Total     int64   `json:"total"`
+	Progress  float64 `json:"progress"`
+	LastError string  `json:"last_error,omitempty"`
 }
 
 // TelemetryData holds the current gateway telemetry readings.
@@ -314,6 +330,10 @@ type agent struct {
 	otaLastErr          string
 	otaCancel           context.CancelFunc
 	otaAborted          atomic.Bool
+	otaState            string
+	otaBytes            int64
+	otaTotal            int64
+	otaProgress         float64
 	bootstrapCachePath  string
 	runCtx              context.Context
 	paused              atomic.Bool
@@ -1358,6 +1378,10 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	}
 	a.otaBusy.Store(true)
 	a.otaLastErr = ""
+	a.otaState = strings.ToLower(ota.StateTriggered.String())
+	a.otaBytes = 0
+	a.otaTotal = 0
+	a.otaProgress = 0
 	a.otaCancel = otaCancel
 	a.otaAborted.Store(false)
 	a.otaMu.Unlock()
@@ -1384,9 +1408,6 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 	}
 
 	runErr := ota.Run(otaCtx, otaCfg, url, sha256hex, size, progressFn)
-	if a.pushEvent != nil {
-		a.pushEvent("ota")
-	}
 	if runErr != nil {
 		a.otaMu.Lock()
 		if context.Cause(otaCtx) != nil || otaCtx.Err() != nil {
@@ -1420,6 +1441,10 @@ func (a *agent) OTAFromData(ctx context.Context, data []byte, sha256hex string) 
 	}
 	a.otaBusy.Store(true)
 	a.otaLastErr = ""
+	a.otaState = strings.ToLower(ota.StateTriggered.String())
+	a.otaBytes = 0
+	a.otaTotal = 0
+	a.otaProgress = 0
 	a.otaCancel = otaCancel
 	a.otaAborted.Store(false)
 	a.otaMu.Unlock()
@@ -1461,7 +1486,8 @@ func (a *agent) OTAFromData(ctx context.Context, data []byte, sha256hex string) 
 }
 
 // publishOTAStatus publishes a retained OTA status SenML record to statusTopic.
-// errMsg is appended as an "error" field only when non-empty.
+// errMsg is appended as an "error" field only when non-empty. The latest state
+// and progress are also stored so HTTP clients can read them via OTAStatus.
 func (a *agent) publishOTAStatus(statusTopic string, qos byte, state ota.State, bytesWritten, totalBytes int64, progress float64, errMsg string) {
 	now := float64(time.Now().UnixNano()) / float64(time.Second)
 	stateStr := strings.ToLower(state.String())
@@ -1482,6 +1508,13 @@ func (a *agent) publishOTAStatus(statusTopic string, qos byte, state ota.State, 
 		return
 	}
 
+	a.otaMu.Lock()
+	a.otaState = stateStr
+	a.otaBytes = bytesWritten
+	a.otaTotal = totalBytes
+	a.otaProgress = progress
+	a.otaMu.Unlock()
+
 	a.logger.Info("OTA progress",
 		slog.String("state", stateStr),
 		slog.Float64("progress", progress),
@@ -1489,6 +1522,12 @@ func (a *agent) publishOTAStatus(statusTopic string, qos byte, state ota.State, 
 
 	token := a.mqttClient.Publish(statusTopic, qos, true, b)
 	token.Wait()
+
+	// Notify WS subscribers so the UI can refresh status in real time without
+	// relying solely on HTTP polling.
+	if a.pushEvent != nil {
+		a.pushEvent("ota")
+	}
 }
 
 func (a *agent) OTAAbort() error {
@@ -1503,16 +1542,23 @@ func (a *agent) OTAAbort() error {
 	}
 	a.otaAborted.Store(true)
 	cancel()
+	// Notify WS subscribers that the OTA state changed.
+	if a.pushEvent != nil {
+		a.pushEvent("ota")
+	}
 	return nil
 }
 
 func (a *agent) OTAStatus() OTAStatusInfo {
 	a.otaMu.Lock()
-	lastErr := a.otaLastErr
-	a.otaMu.Unlock()
+	defer a.otaMu.Unlock()
 	return OTAStatusInfo{
 		Busy:      a.otaBusy.Load(),
-		LastError: lastErr,
+		State:     a.otaState,
+		Bytes:     a.otaBytes,
+		Total:     a.otaTotal,
+		Progress:  a.otaProgress,
+		LastError: a.otaLastErr,
 	}
 }
 

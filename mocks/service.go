@@ -1625,6 +1625,39 @@ func (_c *Service_SetRuntimeConfig_Call) RunAndReturn(run func(ctx context.Conte
 	return _c
 }
 
+// SetPushEvent provides a mock function for the type Service
+func (_mock *Service) SetPushEvent(fn func(string)) {
+	_mock.Called(fn)
+}
+
+// Service_SetPushEvent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetPushEvent'
+type Service_SetPushEvent_Call struct {
+	*mock.Call
+}
+
+// SetPushEvent is a helper method to define mock.On call
+//   - fn func(string)
+func (_e *Service_Expecter) SetPushEvent(fn interface{}) *Service_SetPushEvent_Call {
+	return &Service_SetPushEvent_Call{Call: _e.mock.On("SetPushEvent", fn)}
+}
+
+func (_c *Service_SetPushEvent_Call) Run(run func(fn func(string))) *Service_SetPushEvent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(func(string)))
+	})
+	return _c
+}
+
+func (_c *Service_SetPushEvent_Call) Return() *Service_SetPushEvent_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *Service_SetPushEvent_Call) RunAndReturn(run func(fn func(string))) *Service_SetPushEvent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Shutdown provides a mock function for the type Service
 func (_mock *Service) Shutdown() {
 	_mock.Called()

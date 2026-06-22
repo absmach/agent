@@ -6,8 +6,10 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/absmach/agent"
 	"github.com/absmach/agent/pkg/logstream"
@@ -42,11 +44,9 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 	go hub.Run()
 	r.Get("/ws", hub.ServeHTTP)
 
-	if a, ok := svc.(interface{ SetPushEvent(func(string)) }); ok {
-		a.SetPushEvent(func(typeName string) {
-			PushEvent(WSEvent{Type: typeName})
-		})
-	}
+	svc.SetPushEvent(func(typeName string) {
+		PushEvent(WSEvent{Type: typeName})
+	})
 
 	r.Post("/pub", kithttp.NewServer(
 		pubEndpoint(svc),
@@ -182,6 +182,24 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 		EncodeResponse,
 		opts...,
 	).ServeHTTP)
+	r.Post("/ota/abort", kithttp.NewServer(
+		otaAbortEndpoint(svc),
+		decodeRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Post("/ota/data", kithttp.NewServer(
+		otaDataEndpoint(svc),
+		decodeOTADataRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Post("/control", kithttp.NewServer(
+		controlEndpoint(svc),
+		decodeControlRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
 
 	r.Get("/telemetry/data", kithttp.NewServer(
 		telemetryDataEndpoint(svc),
@@ -297,4 +315,21 @@ func decodeDeviceWriteRequest(_ context.Context, r *http.Request) (any, error) {
 	}
 	req.ID = id
 	return req, nil
+}
+
+func decodeControlRequest(_ context.Context, r *http.Request) (any, error) {
+	req := controlReq{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
+	}
+	return req, nil
+}
+
+func decodeOTADataRequest(_ context.Context, r *http.Request) (any, error) {
+	sha256hex := strings.TrimSpace(r.URL.Query().Get("sha256"))
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
+	}
+	return otaDataReq{Data: data, SHA256Hex: sha256hex}, nil
 }

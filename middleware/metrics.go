@@ -302,3 +302,7 @@ func (ms *metricsMiddleware) SetRuntimeConfig(ctx context.Context, key, value st
 	}(time.Now())
 	return ms.svc.SetRuntimeConfig(ctx, key, value)
 }
+
+func (ms *metricsMiddleware) SetPushEvent(fn func(string)) {
+	ms.svc.SetPushEvent(fn)
+}

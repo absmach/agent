@@ -1,7 +1,14 @@
 // Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
-import { ChevronRight, RefreshCw } from "lucide-react";
+import {
+  ChevronRight,
+  Loader2,
+  Pause,
+  Play,
+  RefreshCw,
+  RotateCw,
+} from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
 import { CommitLink } from "@/components/commit-link";
 import { navGroups } from "@/components/layout/nav";
@@ -9,6 +16,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Module } from "@/components/ui/module";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toaster";
 import { useAgentStatus } from "@/lib/agent";
 import { cn, formatDuration } from "@/lib/utils";
 import { UI_BASE } from "@/routes";
@@ -89,10 +97,13 @@ function Field({
 
 export function HomePage() {
   const status = useAgentStatus();
+  const { toast } = useToast();
   const [health, setHealth] = useState<Health | null>(null);
   const [runtime, setRuntime] = useState<Runtime | null>(null);
   const [telemetry, setTelemetry] = useState<TelemetryCfg | null>(null);
   const [loading, setLoading] = useState(true);
+  const [paused, setPaused] = useState(false);
+  const [lifecycleBusy, setLifecycleBusy] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -110,6 +121,40 @@ export function HomePage() {
   useEffect(() => {
     load();
   }, []);
+
+  async function sendControl(command: "stop" | "start" | "reload") {
+    setLifecycleBusy(command);
+    try {
+      const res = await fetch("/control", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command }),
+      });
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.error) msg = body.error;
+        } catch {
+          // ignore
+        }
+        throw new Error(msg);
+      }
+      const verb =
+        command === "stop"
+          ? "Agent paused"
+          : command === "start"
+            ? "Agent resumed"
+            : "Config reloaded";
+      toast({ message: verb, variant: "success" });
+      if (command === "stop") setPaused(true);
+      else if (command === "start") setPaused(false);
+    } catch (e) {
+      toast({ message: String(e), variant: "error" });
+    } finally {
+      setLifecycleBusy(null);
+    }
+  }
 
   const online = status === "online";
   const healthy = health?.status && /pass|ok|up|healthy/i.test(health.status);
@@ -274,6 +319,70 @@ export function HomePage() {
               {r.label}
             </span>
           ))}
+        </div>
+        <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border pt-4">
+          <span className="label-eyebrow mr-1">Lifecycle</span>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-xs",
+              paused
+                ? "border-amber-500/30 bg-amber-500/10 text-amber-500"
+                : "border-success/30 bg-success/10 text-success",
+            )}
+          >
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                paused ? "bg-amber-500" : "bg-success",
+              )}
+            />
+            {paused ? "Paused" : "Running"}
+          </span>
+          <div className="ml-auto flex flex-wrap gap-1.5">
+            {paused ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => sendControl("start")}
+                disabled={lifecycleBusy !== null}
+              >
+                {lifecycleBusy === "start" ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <Play className="size-3" />
+                )}
+                Resume
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => sendControl("stop")}
+                disabled={lifecycleBusy !== null}
+              >
+                {lifecycleBusy === "stop" ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <Pause className="size-3" />
+                )}
+                Pause
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => sendControl("reload")}
+              disabled={lifecycleBusy !== null}
+              title="Re-apply persisted config overrides without restarting"
+            >
+              {lifecycleBusy === "reload" ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <RotateCw className="size-3" />
+              )}
+              Reload
+            </Button>
+          </div>
         </div>
       </Module>
 

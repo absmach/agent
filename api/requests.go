@@ -3,9 +3,7 @@
 
 package api
 
-import (
-	"github.com/absmach/agent"
-)
+import "github.com/absmach/agent"
 
 type serverConfig struct {
 	Port string `json:"port"`
@@ -122,6 +120,40 @@ func (req otaTriggerReq) validate() error {
 		return agent.ErrMalformedEntity
 	}
 	return nil
+}
+
+// otaDataReq carries a raw firmware binary for MQTT-style OTA installation
+// (the HTTP equivalent of publishing to the ota data topic). The SHA-256 hash
+// is mandatory because there is no sidecar fallback for data-delivered firmware.
+type otaDataReq struct {
+	Data      []byte
+	SHA256Hex string
+}
+
+func (req otaDataReq) validate() error {
+	if req.SHA256Hex == "" {
+		return agent.ErrMalformedEntity
+	}
+	if len(req.Data) == 0 {
+		return agent.ErrMalformedEntity
+	}
+	return nil
+}
+
+// controlReq drives the agent lifecycle control subcommands (stop, start,
+// reload) over HTTP. The response is published to the MQTT control channel
+// exactly as if the command had arrived over MQTT.
+type controlReq struct {
+	Command string `json:"command"`
+}
+
+func (req controlReq) validate() error {
+	switch req.Command {
+	case agent.CtrlStop, agent.CtrlStart, agent.CtrlReload:
+		return nil
+	default:
+		return agent.ErrMalformedEntity
+	}
 }
 
 type runtimeConfigReq struct {
