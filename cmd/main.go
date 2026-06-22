@@ -222,19 +222,6 @@ func main() {
 		}
 	}()
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger, devices, store, levelVar, c.BootstrapCachePath)
-	if err != nil {
-		logger.Error("Error in agent service", slog.Any("error", err))
-		exitCode = 1
-		return
-	}
-
-	svc = middleware.NewLogging(svc, logger)
-	counter, latency := prometheus.MakeMetrics("agent", "api")
-	svc = middleware.NewMetrics(svc, counter, latency)
-	b := conn.NewBroker(svc, mqttClient, cfg.Channels.CtrlChan(), cfg.DomainID, logger)
-	onReconnect = b.Resubscribe
-
 	// Health supervisor: periodically checks subsystem liveness and restarts
 	// the process if the agent remains unhealthy for longer than the timeout.
 	// When running under systemd, it also sends periodic WATCHDOG=1
@@ -254,6 +241,19 @@ func main() {
 		Timeout:  wdTimeout,
 	}, logger)
 	sup.Register(health.NewMQTTChecker(mqttClient))
+
+	svc, err := agent.New(ctx, mqttClient, &cfg, noderedClient, logger, devices, store, levelVar, c.BootstrapCachePath, sup)
+	if err != nil {
+		logger.Error("Error in agent service", slog.Any("error", err))
+		exitCode = 1
+		return
+	}
+
+	svc = middleware.NewLogging(svc, logger)
+	counter, latency := prometheus.MakeMetrics("agent", "api")
+	svc = middleware.NewMetrics(svc, counter, latency)
+	b := conn.NewBroker(svc, mqttClient, cfg.Channels.CtrlChan(), cfg.DomainID, logger)
+	onReconnect = b.Resubscribe
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", cfg.Server.Port),

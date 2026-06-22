@@ -22,6 +22,7 @@ import (
 
 	cfgstore "github.com/absmach/agent/pkg/config"
 	"github.com/absmach/agent/pkg/devicemgr"
+	"github.com/absmach/agent/pkg/health"
 	"github.com/absmach/agent/pkg/iface"
 	"github.com/absmach/agent/pkg/nodered"
 	"github.com/absmach/agent/pkg/ota"
@@ -273,6 +274,10 @@ type Service interface {
 	// can push real-time WebSocket events to connected UI clients.
 	SetPushEvent(fn func(string))
 
+	// Health returns whether the agent is currently healthy according to the
+	// health supervisor. Returns true when the supervisor is disabled.
+	Health() bool
+
 	DeviceService
 }
 
@@ -337,10 +342,11 @@ type agent struct {
 	bootstrapCachePath  string
 	runCtx              context.Context
 	paused              atomic.Bool
+	health              *health.Supervisor
 }
 
 // New returns agent service implementation.
-func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store cfgstore.Store, levelVar *slog.LevelVar, bootstrapCachePath string) (Service, error) {
+func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, logger *slog.Logger, devices *devicemgr.Manager, store cfgstore.Store, levelVar *slog.LevelVar, bootstrapCachePath string, sup *health.Supervisor) (Service, error) {
 	ag := &agent{
 		ctx:                 ctx,
 		mqttClient:          mc,
@@ -357,6 +363,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 		startupConfig:       *cfg,
 		bootstrapCachePath:  bootstrapCachePath,
 		runCtx:              ctx,
+		health:              sup,
 	}
 
 	if devices != nil {
@@ -383,6 +390,13 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 
 func (a *agent) SetPushEvent(fn func(string)) {
 	a.pushEvent = fn
+}
+
+func (a *agent) Health() bool {
+	if a.health == nil {
+		return true
+	}
+	return a.health.IsHealthy()
 }
 
 func (a *agent) Control(uuid, cmdStr string) error {

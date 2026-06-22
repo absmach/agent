@@ -85,7 +85,7 @@ func newService(t *testing.T, cfg agent.Config, store cfgstore.Store, devices ..
 		mgr = devices[0]
 	}
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr, store, nil, "")
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), mgr, store, nil, "", nil)
 	return svc, mqttClient, nodeRed, err
 }
 
@@ -118,7 +118,7 @@ func TestSelfHeartbeatPublishesRichPayload(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, "")
+	_, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, "", nil)
 	require.NoError(t, err)
 
 	select {
@@ -746,7 +746,7 @@ func TestBsValidCacheInvalidation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, s, nil, cachePath)
+	svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, s, nil, cachePath, nil)
 	require.NoError(t, err)
 
 	assert.FileExists(t, cachePath, "cache file should exist before invalidation")
@@ -1241,7 +1241,7 @@ func TestPing(t *testing.T) {
 			t.Cleanup(cancel)
 
 			svc, err := agent.New(ctx, mqttClient, &cfg, nodeRed,
-				slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, "")
+				slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, "", nil)
 			require.NoError(t, err)
 
 			select {

@@ -84,6 +84,7 @@ func newAgentServer(t *testing.T) (*httptest.Server, *agentmocks.Service) {
 	svc := agentmocks.NewService(t)
 	logger := mglog.NewMock()
 	svc.On("SetPushEvent", mock.Anything).Maybe().Return()
+	svc.On("Health").Return(true).Maybe()
 
 	return httptest.NewServer(api.MakeHandler(svc, logger, nil)), svc
 }

@@ -14,7 +14,8 @@ import (
 
 const (
 	healthContentType = "application/health+json"
-	healthStatus      = "pass"
+	healthStatusPass  = "pass"
+	healthStatusFail  = "fail"
 )
 
 type healthInfo struct {
@@ -48,7 +49,7 @@ func getInstanceID() string {
 	return "unknown"
 }
 
-func health() http.HandlerFunc {
+func health(svc agent.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", healthContentType)
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -56,8 +57,13 @@ func health() http.HandlerFunc {
 			return
 		}
 
+		status := healthStatusPass
+		if !svc.Health() {
+			status = healthStatusFail
+		}
+
 		res := healthInfo{
-			Status:      healthStatus,
+			Status:      status,
 			Version:     agent.Version,
 			Commit:      agent.Commit,
 			Description: "agent service",
