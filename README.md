@@ -1,21 +1,14 @@
 # Magistrala IoT Agent
 
-![badge](https://github.com/absmach/agent/workflows/Go/badge.svg)
-![ci][ci]
-![release][release]
-[![go report card][grc-badge]][grc-url]
-[![license][license]](LICENSE)
-[![chat][gitter-badge]][gitter]
-
 <p align="center">
   <img width="30%" height="30%" src="./docs/img/agent.png">
 </p>
 
-Magistrala IoT Agent is a communication, execution and software management agent for the [Magistrala][magistrala] IoT platform. It runs on edge devices and bridges local services (Node-RED, terminal) with a Magistrala deployment over MQTT. That Magistrala deployment can be local or cloud-hosted. A built-in web UI is included for local management.
+Magistrala IoT Agent is a communication, execution and software management agent for the [Magistrala](https://github.com/absmach/magistrala) IoT platform. It runs on edge devices and bridges local services (Node-RED, terminal) with a Magistrala deployment over MQTT. That Magistrala deployment can be local or cloud-hosted. A built-in web UI is included for local management.
 
 ## Features
 
-- **MQTT command & control** — remote shell execution, config management, process reset over [SenML][senml] JSON via Magistrala MQTT
+- **MQTT command & control** — remote shell execution, config management, process reset over [SenML](https://tools.ietf.org/html/rfc8428) JSON via Magistrala MQTT
 - **Node-RED integration** — deploy, fetch, and manage Node-RED flows over MQTT or HTTP
 - **Interactive terminal** — full PTY sessions tunneled over MQTT
 - **Periodic telemetry** — uptime, memory, CPU temperature, disk usage, load averages, wireless RSSI
@@ -123,11 +116,3 @@ Per-feature documentation with configuration, MQTT topic maps, and copy-paste te
 ## License
 
 [Apache-2.0](LICENSE)
-
-[grc-badge]: https://goreportcard.com/badge/github.com/absmach/agent
-[grc-url]: https://goreportcard.com/report/github.com/absmach/agent
-[license]: https://img.shields.io/badge/license-Apache%20v2.0-blue.svg
-[magistrala]: https://github.com/absmach/magistrala
-[senml]: https://tools.ietf.org/html/rfc8428
-[ci]: https://github.com/absmach/agent/actions/workflows/ci.yml/badge.svg
-[release]: https://github.com/absmach/agent/actions/workflows/release.yml/badge.svg
