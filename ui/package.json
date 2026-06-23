@@ -15,16 +15,16 @@
     "@wterm/dom": "^0.3.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^1.17.0",
+    "lucide-react": "^1.21.0",
     "preact": "^10.29.2",
     "preact-iso": "^2.9.1",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.16",
+    "@biomejs/biome": "^2.5.0",
     "@preact/preset-vite": "^2.9.5",
-    "@tailwindcss/vite": "^4.1.18",
-    "@types/node": "^25.9.3",
+    "@tailwindcss/vite": "^4.3.1",
+    "@types/node": "^26.0.0",
     "tailwindcss": "^4.3.0",
     "typescript": "~6.0.3",
     "vite": "^8.0.16"
