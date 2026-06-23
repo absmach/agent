@@ -177,6 +177,30 @@ func markDeviceSeenEndpoint(svc agent.Service) endpoint.Endpoint {
 	}
 }
 
+func backupDevicesEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, _ any) (any, error) {
+		b, err := svc.BackupDevices()
+		if err != nil {
+			return nil, err
+		}
+		return backupDevicesRes{Backup: b}, nil
+	}
+}
+
+func restoreDevicesEndpoint(svc agent.Service) endpoint.Endpoint {
+	return func(_ context.Context, request any) (any, error) {
+		req := request.(restoreDevicesReq)
+		if err := req.validate(); err != nil {
+			return nil, err
+		}
+		n, err := svc.RestoreDevices(req.Backup, req.Replace)
+		if err != nil {
+			return nil, err
+		}
+		return restoreDevicesRes{Imported: n}, nil
+	}
+}
+
 func decodeIDFromPath(_ context.Context, r *http.Request) (any, error) {
 	return chi.URLParam(r, "id"), nil
 }

@@ -406,6 +406,32 @@ func (lm *loggingMiddleware) MarkDeviceSeen(id string) (err error) {
 	return lm.svc.MarkDeviceSeen(id)
 }
 
+func (lm *loggingMiddleware) BackupDevices() (backup devicemgr.Backup, err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.Int("devices", len(backup.Devices))}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("BackupDevices failed.", args...)
+			return
+		}
+		lm.logger.Info("BackupDevices completed.", args...)
+	}(time.Now())
+	return lm.svc.BackupDevices()
+}
+
+func (lm *loggingMiddleware) RestoreDevices(b devicemgr.Backup, replace bool) (n int, err error) {
+	defer func(begin time.Time) {
+		args := []any{slog.String("duration", time.Since(begin).String()), slog.Bool("replace", replace), slog.Int("imported", n)}
+		if err != nil {
+			args = append(args, slog.String("error", err.Error()))
+			lm.logger.Warn("RestoreDevices failed.", args...)
+			return
+		}
+		lm.logger.Info("RestoreDevices completed.", args...)
+	}(time.Now())
+	return lm.svc.RestoreDevices(b, replace)
+}
+
 func (lm *loggingMiddleware) OpenDevice(ctx context.Context, id string) (err error) {
 	defer func(begin time.Time) {
 		args := []any{slog.String("duration", time.Since(begin).String()), slog.String("id", id)}

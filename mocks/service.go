@@ -1930,3 +1930,122 @@ func (_c *Service_WriteDevice_Call) RunAndReturn(run func(id string, hexData str
 	_c.Call.Return(run)
 	return _c
 }
+
+// BackupDevices provides a mock function for the type Service
+func (_mock *Service) BackupDevices() (devicemgr.Backup, error) {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for BackupDevices")
+	}
+
+	var r0 devicemgr.Backup
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func() (devicemgr.Backup, error)); ok {
+		return returnFunc()
+	}
+	if returnFunc, ok := ret.Get(0).(func() devicemgr.Backup); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(devicemgr.Backup)
+	}
+	if returnFunc, ok := ret.Get(1).(func() error); ok {
+		r1 = returnFunc()
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// Service_BackupDevices_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BackupDevices'
+type Service_BackupDevices_Call struct {
+	*mock.Call
+}
+
+// BackupDevices is a helper method to define mock.On call
+func (_e *Service_Expecter) BackupDevices() *Service_BackupDevices_Call {
+	return &Service_BackupDevices_Call{Call: _e.mock.On("BackupDevices")}
+}
+
+func (_c *Service_BackupDevices_Call) Run(run func()) *Service_BackupDevices_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *Service_BackupDevices_Call) Return(backup devicemgr.Backup, err error) *Service_BackupDevices_Call {
+	_c.Call.Return(backup, err)
+	return _c
+}
+
+func (_c *Service_BackupDevices_Call) RunAndReturn(run func() (devicemgr.Backup, error)) *Service_BackupDevices_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RestoreDevices provides a mock function for the type Service
+func (_mock *Service) RestoreDevices(b devicemgr.Backup, replace bool) (int, error) {
+	ret := _mock.Called(b, replace)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RestoreDevices")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(devicemgr.Backup, bool) (int, error)); ok {
+		return returnFunc(b, replace)
+	}
+	if returnFunc, ok := ret.Get(0).(func(devicemgr.Backup, bool) int); ok {
+		r0 = returnFunc(b, replace)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(devicemgr.Backup, bool) error); ok {
+		r1 = returnFunc(b, replace)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// Service_RestoreDevices_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RestoreDevices'
+type Service_RestoreDevices_Call struct {
+	*mock.Call
+}
+
+// RestoreDevices is a helper method to define mock.On call
+//   - b devicemgr.Backup
+//   - replace bool
+func (_e *Service_Expecter) RestoreDevices(b interface{}, replace interface{}) *Service_RestoreDevices_Call {
+	return &Service_RestoreDevices_Call{Call: _e.mock.On("RestoreDevices", b, replace)}
+}
+
+func (_c *Service_RestoreDevices_Call) Run(run func(b devicemgr.Backup, replace bool)) *Service_RestoreDevices_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 devicemgr.Backup
+		if args[0] != nil {
+			arg0 = args[0].(devicemgr.Backup)
+		}
+		var arg1 bool
+		if args[1] != nil {
+			arg1 = args[1].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *Service_RestoreDevices_Call) Return(n int, err error) *Service_RestoreDevices_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *Service_RestoreDevices_Call) RunAndReturn(run func(b devicemgr.Backup, replace bool) (int, error)) *Service_RestoreDevices_Call {
+	_c.Call.Return(run)
+	return _c
+}

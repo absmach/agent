@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/absmach/agent/pkg/iface"
 )
@@ -21,23 +22,40 @@ type Manager struct {
 	interfaces map[string]iface.Interface
 	ifaceCfg   iface.Config
 	lastRead   map[string][]byte
+	notifier   Notifier
 }
 
 const maxLastRead = 4096
 
+// Option customises a Manager at construction time.
+type Option func(*Manager)
+
+// WithWebhook configures the Manager to deliver device lifecycle events to the
+// HTTP endpoint described by cfg. With an empty cfg.URL it is a no-op.
+func WithWebhook(cfg WebhookConfig) Option {
+	return func(m *Manager) {
+		m.notifier = newWebhookNotifier(cfg)
+	}
+}
+
 // New creates a Manager backed by a BoltDB store at dbPath.
-func New(dbPath string, cfg ProvisionConfig, ifaceCfg iface.Config) (*Manager, error) {
+func New(dbPath string, cfg ProvisionConfig, ifaceCfg iface.Config, opts ...Option) (*Manager, error) {
 	store, err := NewStore(dbPath)
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{
+	m := &Manager{
 		store:      store,
 		provision:  newProvisionClient(cfg),
 		interfaces: make(map[string]iface.Interface),
 		ifaceCfg:   ifaceCfg,
 		lastRead:   make(map[string][]byte),
-	}, nil
+		notifier:   nopNotifier{},
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m, nil
 }
 
 // Close releases all open interfaces and the store.
@@ -54,7 +72,20 @@ func (m *Manager) Close() error {
 			errs = append(errs, fmt.Errorf("close interface %s: %w", id, err))
 		}
 	}
+	if err := m.notifier.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("close webhook notifier: %w", err))
+	}
 	return errors.Join(append(errs, m.store.Close())...)
+}
+
+// emit delivers a lifecycle event to the configured notifier. It never blocks.
+func (m *Manager) emit(eventType, deviceID string, device *Device) {
+	m.notifier.Notify(Event{
+		Type:      eventType,
+		DeviceID:  deviceID,
+		Timestamp: time.Now().UTC(),
+		Device:    device,
+	})
 }
 
 // Add provisions a new downstream device via the Magistrala SDK,
@@ -70,6 +101,9 @@ func (m *Manager) Add(ctx context.Context, name, externalID, externalKey string,
 	if err := m.store.Save(d); err != nil {
 		return d, fmt.Errorf("save device %s: %w", d.ID, err)
 	}
+	// d is a local value not mutated after this point, so &d is safe to hand to
+	// the async notifier.
+	m.emit(EventDeviceAdded, d.ID, &d)
 	return d, nil
 }
 
@@ -87,7 +121,11 @@ func (m *Manager) Remove(id string) error {
 			return fmt.Errorf("close interface %s: %w", id, err)
 		}
 	}
-	return m.store.Remove(id)
+	if err := m.store.Remove(id); err != nil {
+		return err
+	}
+	m.emit(EventDeviceRemoved, id, nil)
+	return nil
 }
 
 // Get retrieves a single device.
@@ -107,7 +145,11 @@ func (m *Manager) Count() (int, error) {
 
 // MarkSeen updates LastSeen and Active for a device (called when a device sends data).
 func (m *Manager) MarkSeen(id string) error {
-	return m.store.MarkSeen(id)
+	if err := m.store.MarkSeen(id); err != nil {
+		return err
+	}
+	m.emit(EventDeviceSeen, id, nil)
+	return nil
 }
 
 // FindByAddr returns the first active device matching the given interface type
@@ -148,6 +190,7 @@ func (m *Manager) OpenIface(id string) error {
 	m.interfaces[id] = ifc
 	m.mu.Unlock()
 	_ = m.store.MarkActive(id)
+	m.emit(EventDeviceIfaceOpened, id, nil)
 	return nil
 }
 
@@ -166,6 +209,7 @@ func (m *Manager) CloseIface(id string) error {
 		return fmt.Errorf("close interface for device %s: %w", id, err)
 	}
 	_ = m.store.MarkInactive(id)
+	m.emit(EventDeviceIfaceClosed, id, nil)
 	return nil
 }
 

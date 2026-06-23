@@ -107,6 +107,18 @@ func MakeHandler(svc agent.Service, logger *slog.Logger, stream *logstream.Strea
 		EncodeResponse,
 		opts...,
 	).ServeHTTP)
+	r.Get("/devices/backup", kithttp.NewServer(
+		backupDevicesEndpoint(svc),
+		decodeRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
+	r.Post("/devices/restore", kithttp.NewServer(
+		restoreDevicesEndpoint(svc),
+		decodeRestoreDevicesRequest,
+		EncodeResponse,
+		opts...,
+	).ServeHTTP)
 	r.Get("/devices/{id}", kithttp.NewServer(
 		getDeviceEndpoint(svc),
 		decodeIDFromPath,
@@ -260,6 +272,21 @@ func decodeNodeRedRequest(_ context.Context, r *http.Request) (any, error) {
 func decodeAddDeviceRequest(_ context.Context, r *http.Request) (any, error) {
 	req := addDeviceReq{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
+	}
+	return req, nil
+}
+
+// maxRestoreBodyBytes caps the device-registry restore upload (16 MiB is ample
+// for tens of thousands of device records) so a malformed or hostile request
+// cannot exhaust memory.
+const maxRestoreBodyBytes = 16 << 20
+
+func decodeRestoreDevicesRequest(_ context.Context, r *http.Request) (any, error) {
+	req := restoreDevicesReq{
+		Replace: strings.EqualFold(r.URL.Query().Get("replace"), "true"),
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxRestoreBodyBytes)).Decode(&req.Backup); err != nil {
 		return nil, mgerrors.Wrap(apiutil.ErrMalformedRequestBody, err)
 	}
 	return req, nil

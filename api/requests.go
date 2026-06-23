@@ -3,7 +3,10 @@
 
 package api
 
-import "github.com/absmach/agent"
+import (
+	"github.com/absmach/agent"
+	"github.com/absmach/agent/pkg/devicemgr"
+)
 
 type serverConfig struct {
 	Port string `json:"port"`
@@ -117,6 +120,20 @@ type addDeviceReq struct {
 func (req addDeviceReq) validate() error {
 	if req.Name == "" || req.ExtID == "" || req.ExtKey == "" || req.IfaceType == "" || req.IfaceAddr == "" {
 		return agent.ErrMalformedEntity
+	}
+	return nil
+}
+
+type restoreDevicesReq struct {
+	Backup  devicemgr.Backup
+	Replace bool
+}
+
+func (req restoreDevicesReq) validate() error {
+	for _, d := range req.Backup.Devices {
+		if d.ID == "" {
+			return agent.ErrMalformedEntity
+		}
 	}
 	return nil
 }

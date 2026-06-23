@@ -749,6 +749,124 @@ func TestMarkDeviceSeen(t *testing.T) {
 	}
 }
 
+func TestBackupDevices(t *testing.T) {
+	svcErr := mgerrors.New("backup failed")
+	backup := devicemgr.Backup{
+		SchemaVersion: devicemgr.CurrentSchemaVersion,
+		Devices:       []devicemgr.Device{{ID: "dev-id-1", Name: "sensor-a"}},
+	}
+
+	cases := []struct {
+		desc      string
+		status    int
+		mockSetup func(*agentmocks.Service)
+	}{
+		{
+			desc:   "backup returns snapshot",
+			status: http.StatusOK,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("BackupDevices").Return(backup, nil)
+			},
+		},
+		{
+			desc:   "service error",
+			status: http.StatusInternalServerError,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("BackupDevices").Return(devicemgr.Backup{}, svcErr)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			ts, svc := newAgentServer(t)
+			defer ts.Close()
+			tc.mockSetup(svc)
+
+			req := testRequest{
+				client: ts.Client(),
+				method: http.MethodGet,
+				url:    ts.URL + "/devices/backup",
+			}
+
+			res, err := req.make()
+			assert.Nil(t, err)
+			assert.Equal(t, tc.status, res.StatusCode, tc.desc)
+		})
+	}
+}
+
+func TestRestoreDevices(t *testing.T) {
+	svcErr := mgerrors.New("restore failed")
+	validBody := toJSON(devicemgr.Backup{
+		SchemaVersion: devicemgr.CurrentSchemaVersion,
+		Devices:       []devicemgr.Device{{ID: "dev-id-1", Name: "sensor-a"}},
+	})
+
+	cases := []struct {
+		desc      string
+		url       string
+		body      string
+		status    int
+		mockSetup func(*agentmocks.Service)
+	}{
+		{
+			desc:   "merge restore",
+			url:    "/devices/restore",
+			body:   validBody,
+			status: http.StatusOK,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("RestoreDevices", mock.Anything, false).Return(1, nil)
+			},
+		},
+		{
+			desc:   "replace restore",
+			url:    "/devices/restore?replace=true",
+			body:   validBody,
+			status: http.StatusOK,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("RestoreDevices", mock.Anything, true).Return(1, nil)
+			},
+		},
+		{
+			desc:      "invalid JSON returns bad request",
+			url:       "/devices/restore",
+			body:      "}",
+			status:    http.StatusBadRequest,
+			mockSetup: func(_ *agentmocks.Service) {},
+		},
+		{
+			desc:   "service error",
+			url:    "/devices/restore",
+			body:   validBody,
+			status: http.StatusInternalServerError,
+			mockSetup: func(svc *agentmocks.Service) {
+				svc.On("RestoreDevices", mock.Anything, false).Return(0, svcErr)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			ts, svc := newAgentServer(t)
+			defer ts.Close()
+			tc.mockSetup(svc)
+
+			req := testRequest{
+				client:      ts.Client(),
+				method:      http.MethodPost,
+				url:         ts.URL + tc.url,
+				contentType: contentType,
+				body:        strings.NewReader(tc.body),
+			}
+
+			res, err := req.make()
+			assert.Nil(t, err)
+			assert.Equal(t, tc.status, res.StatusCode, tc.desc)
+		})
+	}
+}
+
 func TestOTATrigger(t *testing.T) {
 	validBody := toJSON(map[string]any{
 		"url":    "https://example.com/agent.bin",

@@ -6,33 +6,124 @@ package devicemgr
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/absmach/agent/pkg/iface"
 	bolt "go.etcd.io/bbolt"
 )
 
-var devicesBucket = []byte("devices")
+var (
+	devicesBucket = []byte("devices")
+	metaBucket    = []byte("meta")
+)
+
+// schemaVersionKey stores the on-disk registry schema version in the meta
+// bucket. It lets the store migrate older database files forward on open.
+var schemaVersionKey = []byte("schema_version")
+
+// CurrentSchemaVersion is the schema version written by this build of the
+// store. Bump it and add a migration to migrations when the on-disk layout
+// changes.
+const CurrentSchemaVersion = 1
+
+// migrations maps a source schema version to the function that upgrades the
+// database from that version to the next one. Migrations run in order inside a
+// single write transaction when the store is opened.
+var migrations = map[int]func(tx *bolt.Tx) error{
+	// 0 -> 1: baseline. Ensure the devices bucket exists. Older agent builds
+	// created the devices bucket but never tracked a schema version, so they
+	// are treated as version 0 and upgraded in place without data loss.
+	0: func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists(devicesBucket)
+		return err
+	},
+}
 
 // Store persists devices in a BoltDB file.
 type Store struct {
 	db *bolt.DB
 }
 
-// NewStore opens (or creates) the BoltDB file at path.
+// NewStore opens (or creates) the BoltDB file at path and runs any pending
+// schema migrations so the registry is usable across agent upgrades.
 func NewStore(path string) (*Store, error) {
 	db, err := bolt.Open(path, 0o600, nil)
 	if err != nil {
 		return nil, fmt.Errorf("open device store: %w", err)
 	}
 	if err := db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists(devicesBucket)
-		return err
+		if _, err := tx.CreateBucketIfNotExists(devicesBucket); err != nil {
+			return err
+		}
+		if _, err := tx.CreateBucketIfNotExists(metaBucket); err != nil {
+			return err
+		}
+		return nil
 	}); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("create devices bucket: %w", err)
+		return nil, fmt.Errorf("create device buckets: %w", err)
 	}
-	return &Store{db: db}, nil
+	s := &Store{db: db}
+	if err := s.migrate(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate device store: %w", err)
+	}
+	return s, nil
+}
+
+// migrate brings the on-disk schema up to CurrentSchemaVersion by running each
+// pending migration in sequence. It is a no-op once the database is current.
+func (s *Store) migrate() error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		meta := tx.Bucket(metaBucket)
+		from := readSchemaVersion(meta)
+		if from > CurrentSchemaVersion {
+			return fmt.Errorf("device store schema version %d is newer than supported version %d", from, CurrentSchemaVersion)
+		}
+		for v := from; v < CurrentSchemaVersion; v++ {
+			migrate, ok := migrations[v]
+			if !ok {
+				return fmt.Errorf("missing migration from schema version %d", v)
+			}
+			if err := migrate(tx); err != nil {
+				return fmt.Errorf("apply migration %d->%d: %w", v, v+1, err)
+			}
+		}
+		return writeSchemaVersion(meta, CurrentSchemaVersion)
+	})
+}
+
+// readSchemaVersion returns the schema version recorded in the meta bucket,
+// or 0 when no version has been written yet (fresh or pre-versioning database).
+func readSchemaVersion(meta *bolt.Bucket) int {
+	v := meta.Get(schemaVersionKey)
+	if v == nil {
+		return 0
+	}
+	n, err := strconv.Atoi(string(v))
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+func writeSchemaVersion(meta *bolt.Bucket, version int) error {
+	return meta.Put(schemaVersionKey, []byte(strconv.Itoa(version)))
+}
+
+// SchemaVersion returns the schema version currently stored on disk.
+func (s *Store) SchemaVersion() (int, error) {
+	var version int
+	err := s.db.View(func(tx *bolt.Tx) error {
+		meta := tx.Bucket(metaBucket)
+		if meta == nil {
+			return fmt.Errorf("bucket %q not found", metaBucket)
+		}
+		version = readSchemaVersion(meta)
+		return nil
+	})
+	return version, err
 }
 
 // Close closes the underlying database.

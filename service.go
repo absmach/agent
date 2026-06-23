@@ -171,6 +171,13 @@ type DeviceService interface {
 
 	// MarkDeviceSeen records a live heartbeat for a downstream device.
 	MarkDeviceSeen(id string) error
+
+	// BackupDevices returns a portable snapshot of the downstream device registry.
+	BackupDevices() (devicemgr.Backup, error)
+
+	// RestoreDevices loads a device registry snapshot. When replace is true the
+	// existing registry is cleared first. It returns the number of devices written.
+	RestoreDevices(b devicemgr.Backup, replace bool) (int, error)
 }
 
 // Service specifies API for publishing messages and subscribing to topics.
@@ -1638,6 +1645,24 @@ func (a *agent) MarkDeviceSeen(id string) error {
 		a.pushEvent("devices")
 	}
 	return err
+}
+
+func (a *agent) BackupDevices() (devicemgr.Backup, error) {
+	if a.devices == nil {
+		return devicemgr.Backup{}, errDeviceManagerDisabled
+	}
+	return a.devices.Backup()
+}
+
+func (a *agent) RestoreDevices(b devicemgr.Backup, replace bool) (int, error) {
+	if a.devices == nil {
+		return 0, errDeviceManagerDisabled
+	}
+	n, err := a.devices.Restore(b, replace)
+	if err == nil && a.pushEvent != nil {
+		a.pushEvent("devices")
+	}
+	return n, err
 }
 
 func (a *agent) Reset(ctx context.Context, mode string) error {

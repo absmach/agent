@@ -176,6 +176,38 @@ func (res markDeviceSeenRes) Empty() bool {
 	return true
 }
 
+type backupDevicesRes struct {
+	devicemgr.Backup
+}
+
+func (res backupDevicesRes) Code() int {
+	return http.StatusOK
+}
+
+func (res backupDevicesRes) Headers() map[string]string {
+	return map[string]string{}
+}
+
+func (res backupDevicesRes) Empty() bool {
+	return false
+}
+
+type restoreDevicesRes struct {
+	Imported int `json:"imported"`
+}
+
+func (res restoreDevicesRes) Code() int {
+	return http.StatusOK
+}
+
+func (res restoreDevicesRes) Headers() map[string]string {
+	return map[string]string{}
+}
+
+func (res restoreDevicesRes) Empty() bool {
+	return false
+}
+
 type resetRes struct {
 	Service  string `json:"service"`
 	Response string `json:"response"`
