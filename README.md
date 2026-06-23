@@ -115,7 +115,7 @@ Per-feature documentation with configuration, MQTT topic maps, and copy-paste te
 | [telemetry.md](docs/telemetry.md) | Periodic uptime telemetry, payload format, runtime configuration, test recipes                              |
 | [heartbeat.md](docs/heartbeat.md) | Self-heartbeat and service liveness tracking, interval configuration, test recipes                          |
 | [terminal.md](docs/terminal.md)   | Interactive terminal sessions over MQTT, session lifecycle, PTY management, test recipes                    |
-| [devices.md](docs/devices.md)     | Downstream device provisioning, physical interfaces, device CRUD, telemetry scheduler, test recipes         |
+| [devices.md](docs/devices.md)     | Downstream device provisioning, physical interfaces, device CRUD, backup/restore, lifecycle webhooks, telemetry scheduler, test recipes |
 | [bootstrap.md](docs/bootstrap.md) | Profile-based provisioning flow, environment variables, cache management, test recipes                      |
 | [ota.md](docs/ota.md)             | Over-the-air binary updates, trigger payload, download/verify/replace cycle, status reporting, test recipes |
 | [health.md](docs/health.md)       | Health supervisor, systemd watchdog integration, MQTT connection monitoring, health check endpoints         |

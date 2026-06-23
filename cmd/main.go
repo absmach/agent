@@ -38,54 +38,57 @@ import (
 )
 
 type config struct {
-	LogLevel             string `env:"MG_AGENT_LOG_LEVEL"                     envDefault:"info"`
-	NodeRedURL           string `env:"MG_AGENT_NODERED_URL"                   envDefault:"http://localhost:1880/"`
-	MqttURL              string `env:"MG_AGENT_MQTT_URL"                      envDefault:"localhost:1883"`
-	HTTPPort             string `env:"MG_AGENT_HTTP_PORT"                     envDefault:"9999"`
-	MqttSkipTLSVer       string `env:"MG_AGENT_MQTT_SKIP_TLS"                 envDefault:"true"`
-	MqttMTLS             string `env:"MG_AGENT_MQTT_MTLS"                     envDefault:"false"`
-	MqttCA               string `env:"MG_AGENT_MQTT_CA"                       envDefault:"ca.crt"`
-	MqttQoS              string `env:"MG_AGENT_MQTT_QOS"                      envDefault:"0"`
-	MqttCmdQoS           string `env:"MG_AGENT_MQTT_CMD_QOS"                  envDefault:"1"`
-	MqttRetain           string `env:"MG_AGENT_MQTT_RETAIN"                   envDefault:"false"`
-	MqttCert             string `env:"MG_AGENT_MQTT_CLIENT_CERT"              envDefault:"client.cert"`
-	MqttPrivateKey       string `env:"MG_AGENT_MQTT_CLIENT_KEY"               envDefault:"client.key"`
-	HeartbeatInterval    string `env:"MG_AGENT_HEARTBEAT_INTERVAL"            envDefault:"10s"`
-	TelemetryInterval    string `env:"MG_AGENT_TELEMETRY_INTERVAL"            envDefault:"30s"`
-	TelemetryIncludeTemp string `env:"MG_AGENT_TELEMETRY_INCLUDE_TEMPERATURE" envDefault:"true"`
-	TelemetryIncludeNet  string `env:"MG_AGENT_TELEMETRY_INCLUDE_NETWORK"     envDefault:"true"`
-	TelemetryIncludeLoad string `env:"MG_AGENT_TELEMETRY_INCLUDE_LOAD"        envDefault:"true"`
-	TermSessionTimeout   string `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT"      envDefault:"60s"`
-	OTAEnabled           string `env:"MG_AGENT_OTA_ENABLED"                   envDefault:"true"`
-	OTABinaryPath        string `env:"MG_AGENT_OTA_BINARY_PATH"               envDefault:"/usr/local/bin/agent"`
-	OTADownloadDir       string `env:"MG_AGENT_OTA_DOWNLOAD_DIR"              envDefault:"/tmp"`
-	TransportType        string `env:"MG_AGENT_TRANSPORT"                    envDefault:"mqtt"`
-	CoAPURL              string `env:"MG_AGENT_COAP_URL"                     envDefault:"localhost:5683"`
-	CoAPPSK              string `env:"MG_AGENT_COAP_PSK"                     envDefault:""`
-	CoAPCertFile         string `env:"MG_AGENT_COAP_CERT_FILE"                envDefault:""`
-	CoAPKeyFile          string `env:"MG_AGENT_COAP_KEY_FILE"                 envDefault:""`
-	CoAPCAFile           string `env:"MG_AGENT_COAP_CA_FILE"                  envDefault:""`
-	CoAPSkipTLSVer       string `env:"MG_AGENT_COAP_SKIP_TLS"                 envDefault:"true"`
-	CoAPMaxObserve       string `env:"MG_AGENT_COAP_MAX_OBSERVE"              envDefault:"8"`
-	CoAPMaxRetransmits   string `env:"MG_AGENT_COAP_MAX_RETRANSMITS"          envDefault:"5"`
-	CoAPKeepAlive        string `env:"MG_AGENT_COAP_KEEP_ALIVE"               envDefault:"0"`
-	CoAPContentFormat    string `env:"MG_AGENT_COAP_CONTENT_FORMAT"           envDefault:"50"`
-	BootstrapURL         string `env:"MG_AGENT_BOOTSTRAP_URL"                 envDefault:""`
-	BootstrapExternalID  string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_ID"         envDefault:""`
-	BootstrapExternalKey string `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_KEY"        envDefault:""`
-	BootstrapRetries     string `env:"MG_AGENT_BOOTSTRAP_RETRIES"             envDefault:"5"`
-	BootstrapRetryDelay  string `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
-	BootstrapSkipTLS     string `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS"            envDefault:"false"`
-	BootstrapCachePath   string `env:"MG_AGENT_BOOTSTRAP_CACHE_PATH"          envDefault:"/var/lib/agent/bootstrap.json"`
-	ClientsURL           string `env:"MG_AGENT_CLIENTS_URL"                   envDefault:""`
-	ChannelsURL          string `env:"MG_AGENT_CHANNELS_URL"                  envDefault:""`
-	RulesEngineURL       string `env:"MG_AGENT_RULES_ENGINE_URL"              envDefault:""`
-	ProvisionToken       string `env:"MG_PAT"                                 envDefault:""`
-	DeviceDBPath         string `env:"MG_AGENT_DEVICE_DB_PATH"                envDefault:"/var/lib/agent/devices.db"`
-	ConfigPath           string `env:"MG_AGENT_CONFIG_PATH"                   envDefault:"agent-config.json"`
-	CommandSecret        string `env:"MG_AGENT_COMMAND_SECRET"                envDefault:""`
-	WatchdogInterval     string `env:"MG_AGENT_WATCHDOG_INTERVAL"             envDefault:"0s"`
-	WatchdogTimeout      string `env:"MG_AGENT_WATCHDOG_TIMEOUT"              envDefault:"60s"`
+	LogLevel             string   `env:"MG_AGENT_LOG_LEVEL"                     envDefault:"info"`
+	NodeRedURL           string   `env:"MG_AGENT_NODERED_URL"                   envDefault:"http://localhost:1880/"`
+	MqttURL              string   `env:"MG_AGENT_MQTT_URL"                      envDefault:"localhost:1883"`
+	HTTPPort             string   `env:"MG_AGENT_HTTP_PORT"                     envDefault:"9999"`
+	MqttSkipTLSVer       string   `env:"MG_AGENT_MQTT_SKIP_TLS"                 envDefault:"true"`
+	MqttMTLS             string   `env:"MG_AGENT_MQTT_MTLS"                     envDefault:"false"`
+	MqttCA               string   `env:"MG_AGENT_MQTT_CA"                       envDefault:"ca.crt"`
+	MqttQoS              string   `env:"MG_AGENT_MQTT_QOS"                      envDefault:"0"`
+	MqttCmdQoS           string   `env:"MG_AGENT_MQTT_CMD_QOS"                  envDefault:"1"`
+	MqttRetain           string   `env:"MG_AGENT_MQTT_RETAIN"                   envDefault:"false"`
+	MqttCert             string   `env:"MG_AGENT_MQTT_CLIENT_CERT"              envDefault:"client.cert"`
+	MqttPrivateKey       string   `env:"MG_AGENT_MQTT_CLIENT_KEY"               envDefault:"client.key"`
+	HeartbeatInterval    string   `env:"MG_AGENT_HEARTBEAT_INTERVAL"            envDefault:"10s"`
+	TelemetryInterval    string   `env:"MG_AGENT_TELEMETRY_INTERVAL"            envDefault:"30s"`
+	TelemetryIncludeTemp string   `env:"MG_AGENT_TELEMETRY_INCLUDE_TEMPERATURE" envDefault:"true"`
+	TelemetryIncludeNet  string   `env:"MG_AGENT_TELEMETRY_INCLUDE_NETWORK"     envDefault:"true"`
+	TelemetryIncludeLoad string   `env:"MG_AGENT_TELEMETRY_INCLUDE_LOAD"        envDefault:"true"`
+	TermSessionTimeout   string   `env:"MG_AGENT_TERMINAL_SESSION_TIMEOUT"      envDefault:"60s"`
+	OTAEnabled           string   `env:"MG_AGENT_OTA_ENABLED"                   envDefault:"true"`
+	OTABinaryPath        string   `env:"MG_AGENT_OTA_BINARY_PATH"               envDefault:"/usr/local/bin/agent"`
+	OTADownloadDir       string   `env:"MG_AGENT_OTA_DOWNLOAD_DIR"              envDefault:"/tmp"`
+	TransportType        string   `env:"MG_AGENT_TRANSPORT"                    envDefault:"mqtt"`
+	CoAPURL              string   `env:"MG_AGENT_COAP_URL"                     envDefault:"localhost:5683"`
+	CoAPPSK              string   `env:"MG_AGENT_COAP_PSK"                     envDefault:""`
+	CoAPCertFile         string   `env:"MG_AGENT_COAP_CERT_FILE"                envDefault:""`
+	CoAPKeyFile          string   `env:"MG_AGENT_COAP_KEY_FILE"                 envDefault:""`
+	CoAPCAFile           string   `env:"MG_AGENT_COAP_CA_FILE"                  envDefault:""`
+	CoAPSkipTLSVer       string   `env:"MG_AGENT_COAP_SKIP_TLS"                 envDefault:"true"`
+	CoAPMaxObserve       string   `env:"MG_AGENT_COAP_MAX_OBSERVE"              envDefault:"8"`
+	CoAPMaxRetransmits   string   `env:"MG_AGENT_COAP_MAX_RETRANSMITS"          envDefault:"5"`
+	CoAPKeepAlive        string   `env:"MG_AGENT_COAP_KEEP_ALIVE"               envDefault:"0"`
+	CoAPContentFormat    string   `env:"MG_AGENT_COAP_CONTENT_FORMAT"           envDefault:"50"`
+	BootstrapURL         string   `env:"MG_AGENT_BOOTSTRAP_URL"                 envDefault:""`
+	BootstrapExternalID  string   `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_ID"         envDefault:""`
+	BootstrapExternalKey string   `env:"MG_AGENT_BOOTSTRAP_EXTERNAL_KEY"        envDefault:""`
+	BootstrapRetries     string   `env:"MG_AGENT_BOOTSTRAP_RETRIES"             envDefault:"5"`
+	BootstrapRetryDelay  string   `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
+	BootstrapSkipTLS     string   `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS"            envDefault:"false"`
+	BootstrapCachePath   string   `env:"MG_AGENT_BOOTSTRAP_CACHE_PATH"          envDefault:"/var/lib/agent/bootstrap.json"`
+	ClientsURL           string   `env:"MG_AGENT_CLIENTS_URL"                   envDefault:""`
+	ChannelsURL          string   `env:"MG_AGENT_CHANNELS_URL"                  envDefault:""`
+	RulesEngineURL       string   `env:"MG_AGENT_RULES_ENGINE_URL"              envDefault:""`
+	ProvisionToken       string   `env:"MG_PAT"                                 envDefault:""`
+	DeviceDBPath         string   `env:"MG_AGENT_DEVICE_DB_PATH"                envDefault:"/var/lib/agent/devices.db"`
+	DeviceWebhookURL     string   `env:"MG_AGENT_DEVICE_WEBHOOK_URL"            envDefault:""`
+	DeviceWebhookSecret  string   `env:"MG_AGENT_DEVICE_WEBHOOK_SECRET"         envDefault:""`
+	DeviceWebhookEvents  []string `env:"MG_AGENT_DEVICE_WEBHOOK_EVENTS"         envSeparator:","`
+	ConfigPath           string   `env:"MG_AGENT_CONFIG_PATH"                   envDefault:"agent-config.json"`
+	CommandSecret        string   `env:"MG_AGENT_COMMAND_SECRET"                envDefault:""`
+	WatchdogInterval     string   `env:"MG_AGENT_WATCHDOG_INTERVAL"             envDefault:"0s"`
+	WatchdogTimeout      string   `env:"MG_AGENT_WATCHDOG_TIMEOUT"              envDefault:"60s"`
 }
 
 var (
@@ -210,7 +213,12 @@ func main() {
 		RulesEngineURL: rulesEngineURL,
 		Token:          provisionToken,
 		DomainID:       cfg.DomainID,
-	}, iface.Config{})
+	}, iface.Config{}, devicemgr.WithWebhook(devicemgr.WebhookConfig{
+		URL:    c.DeviceWebhookURL,
+		Secret: c.DeviceWebhookSecret,
+		Events: c.DeviceWebhookEvents,
+		Logger: logger,
+	}))
 	if err != nil {
 		logger.Error("Failed to open device store", slog.Any("error", err))
 		exitCode = 1

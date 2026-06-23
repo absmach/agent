@@ -255,6 +255,22 @@ func (ms *metricsMiddleware) MarkDeviceSeen(id string) error {
 	return ms.svc.MarkDeviceSeen(id)
 }
 
+func (ms *metricsMiddleware) BackupDevices() (devicemgr.Backup, error) {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "backup_devices").Add(1)
+		ms.latency.With("method", "backup_devices").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+	return ms.svc.BackupDevices()
+}
+
+func (ms *metricsMiddleware) RestoreDevices(b devicemgr.Backup, replace bool) (int, error) {
+	defer func(begin time.Time) {
+		ms.counter.With("method", "restore_devices").Add(1)
+		ms.latency.With("method", "restore_devices").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+	return ms.svc.RestoreDevices(b, replace)
+}
+
 func (ms *metricsMiddleware) OpenDevice(ctx context.Context, id string) error {
 	defer func(begin time.Time) {
 		ms.counter.With("method", "open_device").Add(1)

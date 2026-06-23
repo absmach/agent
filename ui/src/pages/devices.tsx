@@ -6,6 +6,8 @@ import {
   Cable,
   Copy,
   Cpu,
+  DatabaseBackup,
+  Download,
   Eye,
   EyeOff,
   Loader2,
@@ -20,7 +22,7 @@ import {
   Usb,
   Wifi,
 } from "lucide-react";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorAlert } from "@/components/error-alert";
 import { PageHeader } from "@/components/page-header";
@@ -308,6 +310,88 @@ export function DevicesPage() {
     toast({ message: "Channel ID copied", variant: "success" });
   }
 
+  const [backingUp, setBackingUp] = useState(false);
+  const restoreInputRef = useRef<HTMLInputElement>(null);
+  const [restoreData, setRestoreData] = useState<{
+    text: string;
+    count: number;
+    name: string;
+  } | null>(null);
+  const [restoring, setRestoring] = useState(false);
+
+  async function handleBackup() {
+    setBackingUp(true);
+    try {
+      const res = await fetch("/devices/backup");
+      if (!res.ok) throw new Error(await extractError(res));
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      a.download = `devices-backup-${stamp}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({
+        message: `Exported ${data.devices?.length ?? 0} device(s)`,
+        variant: "success",
+      });
+      setError("");
+    } catch (e) {
+      setError(`Backup failed: ${e}`);
+      toast({ message: String(e), variant: "error" });
+    } finally {
+      setBackingUp(false);
+    }
+  }
+
+  async function onRestoreFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ""; // reset so the same file can be re-selected
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || !Array.isArray(parsed.devices)) {
+        throw new Error("missing a devices array");
+      }
+      setRestoreData({ text, count: parsed.devices.length, name: file.name });
+    } catch (e) {
+      setError(`Invalid backup file: ${e}`);
+      toast({ message: `Invalid backup file: ${e}`, variant: "error" });
+    }
+  }
+
+  async function handleRestore(replace: boolean) {
+    if (!restoreData) return;
+    setRestoring(true);
+    try {
+      const res = await fetch(`/devices/restore?replace=${replace}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: restoreData.text,
+      });
+      if (!res.ok) throw new Error(await extractError(res));
+      const data = await res.json();
+      setRestoreData(null);
+      toast({
+        message: `Restored ${data.imported ?? 0} device(s)`,
+        variant: "success",
+      });
+      setError("");
+      await load();
+    } catch (e) {
+      setError(`Restore failed: ${e}`);
+      toast({ message: String(e), variant: "error" });
+    } finally {
+      setRestoring(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -323,6 +407,34 @@ export function DevicesPage() {
               )}
               Refresh
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleBackup}
+              disabled={backingUp || devices.length === 0}
+            >
+              {backingUp ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Download className="size-3" />
+              )}
+              Backup
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => restoreInputRef.current?.click()}
+            >
+              <DatabaseBackup className="size-3" />
+              Restore
+            </Button>
+            <input
+              ref={restoreInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={onRestoreFile}
+            />
             <Button size="sm" onClick={() => setShowAdd((s) => !s)}>
               <Plus className="size-3" />
               Add device
@@ -651,6 +763,60 @@ export function DevicesPage() {
             >
               <Upload className="size-3" />
               Send
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!restoreData}
+        onOpenChange={(v) => {
+          if (!v && !restoring) setRestoreData(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restore devices</DialogTitle>
+            <DialogDescription>
+              {restoreData?.name} contains {restoreData?.count ?? 0} device(s).
+              Choose how to apply it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 text-sm text-muted-foreground">
+            <p>
+              <strong className="text-foreground">Merge</strong> adds and
+              overwrites devices by ID, keeping any others already registered.
+            </p>
+            <p>
+              <strong className="text-foreground">Replace</strong> clears the
+              current registry first, so it ends up matching the backup exactly.
+            </p>
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={restoring}
+              onClick={() => setRestoreData(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={restoring}
+              onClick={() => handleRestore(false)}
+            >
+              {restoring ? <Loader2 className="size-3 animate-spin" /> : null}
+              Merge
+            </Button>
+            <Button
+              size="sm"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={restoring}
+              onClick={() => handleRestore(true)}
+            >
+              Replace
             </Button>
           </div>
         </DialogContent>
