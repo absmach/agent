@@ -101,7 +101,7 @@ type broker struct {
 	client    mqtt.Client
 	logger    *slog.Logger
 	channel   string
-	domainID  string
+	tenantID  string
 	ctx       context.Context
 	commands  map[string]Command
 	mu        sync.RWMutex
@@ -111,13 +111,13 @@ type broker struct {
 
 // NewBroker returns a new MQTT broker instance with all built-in command
 // handlers pre-registered.
-func NewBroker(svc agent.Service, client mqtt.Client, chann, domainID string, log *slog.Logger) MqttBroker {
+func NewBroker(svc agent.Service, client mqtt.Client, chann, tenantID string, log *slog.Logger) MqttBroker {
 	b := &broker{
 		svc:      svc,
 		client:   client,
 		logger:   log,
 		channel:  chann,
-		domainID: domainID,
+		tenantID: tenantID,
 		commands: make(map[string]Command),
 	}
 	b.registerBuiltins()
@@ -416,22 +416,22 @@ func (b *broker) Subscribe(ctx context.Context) error {
 }
 
 func (b *broker) subscribe() error {
-	topic := fmt.Sprintf("m/%s/c/%s/%s", b.domainID, b.channel, reqTopic)
+	topic := fmt.Sprintf("m/%s/c/%s/%s", b.tenantID, b.channel, reqTopic)
 	s := b.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) { b.handleMsg(msg) })
 	if err := s.Error(); s.Wait() && err != nil {
 		return err
 	}
-	topic = fmt.Sprintf("m/%s/c/%s/%s/#", b.domainID, b.channel, servTopic)
+	topic = fmt.Sprintf("m/%s/c/%s/%s/#", b.tenantID, b.channel, servTopic)
 	n := b.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) { b.handleBrokerMsg(msg) })
 	if err := n.Error(); n.Wait() && err != nil {
 		return err
 	}
-	topic = fmt.Sprintf("m/%s/c/%s/%s", b.domainID, b.channel, otaCfgTopic)
+	topic = fmt.Sprintf("m/%s/c/%s/%s", b.tenantID, b.channel, otaCfgTopic)
 	o := b.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) { b.handleOTACfgMsg(b.ctx, msg) })
 	if err := o.Error(); o.Wait() && err != nil {
 		return err
 	}
-	topic = fmt.Sprintf("m/%s/c/%s/%s", b.domainID, b.channel, otaDataTopic)
+	topic = fmt.Sprintf("m/%s/c/%s/%s", b.tenantID, b.channel, otaDataTopic)
 	d := b.client.Subscribe(topic, 0, func(_ mqtt.Client, msg mqtt.Message) { b.handleOTADataMsg(b.ctx, msg) })
 	if err := d.Error(); d.Wait() && err != nil {
 		return err

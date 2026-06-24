@@ -1,4 +1,4 @@
-# Magistrala Agent Documentation
+# Atom Agent Documentation
 
 Per-feature documentation with configuration, MQTT topic maps, and copy-paste test recipes.
 

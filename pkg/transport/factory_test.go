@@ -18,7 +18,7 @@ func TestFactoryCreateMQTTTransport(t *testing.T) {
 			Username: "test",
 			Password: "test",
 		},
-		DomainID: "test-domain",
+		TenantID: "test-tenant",
 		Channels: agent.ChanConfig{
 			CtrlID: "ctrl-channel",
 			DataID: "data-channel",
@@ -56,7 +56,7 @@ func TestFactoryCreateCoAPTransport(t *testing.T) {
 			KeepAlive:      0,
 			ContentFormat:  50,
 		},
-		DomainID: "test-domain",
+		TenantID: "test-tenant",
 		Channels: agent.ChanConfig{
 			CtrlID: "ctrl-channel",
 			DataID: "data-channel",
@@ -140,28 +140,28 @@ func TestMQTTPublisherBuildTopic(t *testing.T) {
 		{
 			name:     "control topic",
 			input:    TopicControl,
-			expected: "m/test-domain/c/ctrl-channel/res",
+			expected: "m/test-tenant/c/ctrl-channel/res",
 		},
 		{
 			name:     "data topic",
 			input:    TopicData,
-			expected: "m/test-domain/c/data-channel/gateway/telemetry",
+			expected: "m/test-tenant/c/data-channel/gateway/telemetry",
 		},
 		{
 			name:     "custom topic",
 			input:    "custom",
-			expected: "m/test-domain/c/ctrl-channel/res/custom",
+			expected: "m/test-tenant/c/ctrl-channel/res/custom",
 		},
 		{
 			name:     "empty topic uses default",
 			input:    "",
-			expected: "m/test-domain/c/ctrl-channel/res",
+			expected: "m/test-tenant/c/ctrl-channel/res",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			publisher := NewMQTTPublisher(nil, "test-domain", "ctrl-channel", "data-channel", TopicControl)
+			publisher := NewMQTTPublisher(nil, "test-tenant", "ctrl-channel", "data-channel", TopicControl)
 			result := publisher.buildTopic(tt.input)
 			if result != tt.expected {
 				t.Errorf("buildTopic(%s) = %s, want %s", tt.input, result, tt.expected)
@@ -179,28 +179,28 @@ func TestCoAPPublisherBuildPath(t *testing.T) {
 		{
 			name:     "control topic",
 			input:    TopicControl,
-			expected: "/m/test-domain/c/ctrl-channel/res",
+			expected: "/m/test-tenant/c/ctrl-channel/res",
 		},
 		{
 			name:     "data topic",
 			input:    TopicData,
-			expected: "/m/test-domain/c/data-channel/gateway/telemetry",
+			expected: "/m/test-tenant/c/data-channel/gateway/telemetry",
 		},
 		{
 			name:     "custom topic",
 			input:    "custom",
-			expected: "/m/test-domain/c/ctrl-channel/res/custom",
+			expected: "/m/test-tenant/c/ctrl-channel/res/custom",
 		},
 		{
 			name:     "empty topic uses default",
 			input:    "",
-			expected: "/m/test-domain/c/ctrl-channel/res",
+			expected: "/m/test-tenant/c/ctrl-channel/res",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			publisher := NewCoAPPublisher(nil, "test-domain", "ctrl-channel", "data-channel", TopicControl, 50)
+			publisher := NewCoAPPublisher(nil, "test-tenant", "ctrl-channel", "data-channel", TopicControl, 50)
 			result := publisher.buildPath(tt.input)
 			if result != tt.expected {
 				t.Errorf("buildPath(%s) = %s, want %s", tt.input, result, tt.expected)
@@ -275,7 +275,7 @@ func TestCoAPConfigDefaults(t *testing.T) {
 
 func TestMQTTConnectorIsConnected(t *testing.T) {
 	// Create a connector with nil client - should handle gracefully
-	connector := NewMQTTConnector(nil, "test-domain", "ctrl-channel", "data-channel", TopicControl)
+	connector := NewMQTTConnector(nil, "test-tenant", "ctrl-channel", "data-channel", TopicControl)
 
 	if connector == nil {
 		t.Fatal("NewMQTTConnector() returned nil")
@@ -316,7 +316,7 @@ func TestFactoryConfigValidation(t *testing.T) {
 					Username: "test",
 					Password: "test",
 				},
-				DomainID: "test-domain",
+				TenantID: "test-tenant",
 				Channels: agent.ChanConfig{
 					CtrlID: "ctrl-channel",
 					DataID: "data-channel",
@@ -332,7 +332,7 @@ func TestFactoryConfigValidation(t *testing.T) {
 					URL:        "localhost:5683",
 					SkipTLSVer: true,
 				},
-				DomainID: "test-domain",
+				TenantID: "test-tenant",
 				Channels: agent.ChanConfig{
 					CtrlID: "ctrl-channel",
 					DataID: "data-channel",
@@ -364,7 +364,7 @@ func TestFactoryConfigValidation(t *testing.T) {
 }
 
 func TestTopicPathMapping(t *testing.T) {
-	domainID := "test-domain"
+	tenantID := "test-tenant"
 	ctrlChannel := "ctrl-channel"
 	dataChannel := "data-channel"
 
@@ -377,35 +377,35 @@ func TestTopicPathMapping(t *testing.T) {
 		{
 			name:      "control topic",
 			input:     TopicControl,
-			mqttTopic: "m/test-domain/c/ctrl-channel/res",
-			coapPath:  "/m/test-domain/c/ctrl-channel/res",
+			mqttTopic: "m/test-tenant/c/ctrl-channel/res",
+			coapPath:  "/m/test-tenant/c/ctrl-channel/res",
 		},
 		{
 			name:      "data topic",
 			input:     TopicData,
-			mqttTopic: "m/test-domain/c/data-channel/gateway/telemetry",
-			coapPath:  "/m/test-domain/c/data-channel/gateway/telemetry",
+			mqttTopic: "m/test-tenant/c/data-channel/gateway/telemetry",
+			coapPath:  "/m/test-tenant/c/data-channel/gateway/telemetry",
 		},
 		{
 			name:      "custom suffix",
 			input:     "custom",
-			mqttTopic: "m/test-domain/c/ctrl-channel/res/custom",
-			coapPath:  "/m/test-domain/c/ctrl-channel/res/custom",
+			mqttTopic: "m/test-tenant/c/ctrl-channel/res/custom",
+			coapPath:  "/m/test-tenant/c/ctrl-channel/res/custom",
 		},
 		{
 			name:      "empty uses default",
 			input:     "",
-			mqttTopic: "m/test-domain/c/ctrl-channel/res",
-			coapPath:  "/m/test-domain/c/ctrl-channel/res",
+			mqttTopic: "m/test-tenant/c/ctrl-channel/res",
+			coapPath:  "/m/test-tenant/c/ctrl-channel/res",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mqttPublisher := NewMQTTPublisher(nil, domainID, ctrlChannel, dataChannel, TopicControl)
+			mqttPublisher := NewMQTTPublisher(nil, tenantID, ctrlChannel, dataChannel, TopicControl)
 			mqttResult := mqttPublisher.buildTopic(tt.input)
 
-			coapPublisher := NewCoAPPublisher(nil, domainID, ctrlChannel, dataChannel, TopicControl, 50)
+			coapPublisher := NewCoAPPublisher(nil, tenantID, ctrlChannel, dataChannel, TopicControl, 50)
 			coapResult := coapPublisher.buildPath(tt.input)
 
 			if mqttResult != tt.mqttTopic {

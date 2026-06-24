@@ -1,0 +1,284 @@
+// Copyright (c) Abstract Machines
+// SPDX-License-Identifier: Apache-2.0
+
+package atomsdk
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+)
+
+const (
+	createEntityMutation = `mutation($tid:ID!,$name:String!){
+		createEntity(input:{kind:device,name:$name,tenantId:$tid,attributes:{}}){id}
+	}`
+
+	createAPIKeyMutation = `mutation($eid:ID!,$desc:String!){
+		createApiKey(entityId:$eid,input:{description:$desc}){key}
+	}`
+
+	createResourceMutation = `mutation($tid:ID!,$name:String!,$oid:ID!){
+		createResource(input:{kind:"channel",name:$name,tenantId:$tid,ownerId:$oid,attributes:{}}){id}
+	}`
+
+	createPermissionBlockMutation = `mutation($tid:ID!,$cid:ID!,$aid1:ID!,$aid2:ID!){
+		createPermissionBlock(input:{
+			tenantId:$tid,
+			scopeMode:"object",
+			objectKind:"resource",
+			objectType:"resource:channel",
+			objectId:$cid,
+			effect:allow,
+			actionIds:[$aid1,$aid2]
+		}){id}
+	}`
+
+	createDirectPolicyMutation = `mutation($tid:ID!,$sid:ID!,$pbid:ID!){
+		createDirectPolicy(input:{tenantId:$tid,subjectKind:entity,subjectId:$sid,permissionBlockId:$pbid}){id}
+	}`
+
+	deleteEntityMutation = `mutation($id:ID!){
+		deleteEntity(id:$id)
+	}`
+
+	deleteResourceMutation = `mutation($id:ID!){
+		deleteResource(id:$id)
+	}`
+
+	actionsQuery = `query{
+		actions(limit:100,offset:0){items{id name}}
+	}`
+)
+
+type Config struct {
+	AtomURL string
+	Token   string
+}
+
+type SDK interface {
+	CreateEntity(ctx context.Context, name, tenantID string) (Entity, error)
+	CreateAPIKey(ctx context.Context, entityID, description string) (string, error)
+	CreateResource(ctx context.Context, name, tenantID, ownerID string) (Resource, error)
+	Connect(ctx context.Context, entityID, resourceID, tenantID string) error
+	DeleteEntity(ctx context.Context, id string) error
+	DeleteResource(ctx context.Context, id string) error
+}
+
+type Entity struct {
+	ID string
+}
+
+type Resource struct {
+	ID string
+}
+
+type graphQLResponse struct {
+	Data   map[string]any `json:"data"`
+	Errors []any          `json:"errors"`
+}
+
+type atomSDK struct {
+	cfg       Config
+	client    *http.Client
+	actionIDs map[string]string
+}
+
+func New(cfg Config) SDK {
+	return &atomSDK{
+		cfg: cfg,
+		client: &http.Client{
+			Transport: &http.Transport{},
+		},
+		actionIDs: make(map[string]string),
+	}
+}
+
+func (s *atomSDK) do(ctx context.Context, query string, vars map[string]any) (map[string]any, error) {
+	body := map[string]any{
+		"query":     query,
+		"variables": vars,
+	}
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal graphql request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.AtomURL, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("create graphql request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.cfg.Token != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.cfg.Token))
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("graphql request: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read graphql response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("graphql request failed with status %d: %s", resp.StatusCode, string(raw))
+	}
+	var gqlResp graphQLResponse
+	if err := json.Unmarshal(raw, &gqlResp); err != nil {
+		return nil, fmt.Errorf("unmarshal graphql response: %w", err)
+	}
+	if len(gqlResp.Errors) > 0 {
+		return nil, fmt.Errorf("graphql error: %v", gqlResp.Errors)
+	}
+	return gqlResp.Data, nil
+}
+
+func (s *atomSDK) findActionIDs(ctx context.Context, names ...string) (map[string]string, error) {
+	missing := make([]string, 0, len(names))
+	for _, n := range names {
+		if _, ok := s.actionIDs[n]; !ok {
+			missing = append(missing, n)
+		}
+	}
+	if len(missing) == 0 {
+		return s.actionIDs, nil
+	}
+	data, err := s.do(ctx, actionsQuery, nil)
+	if err != nil {
+		return nil, fmt.Errorf("query actions: %w", err)
+	}
+	actionsData, ok := data["actions"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("actions: unexpected response shape")
+	}
+	items, ok := actionsData["items"].([]any)
+	if !ok {
+		return nil, fmt.Errorf("actions.items: unexpected shape")
+	}
+	for _, item := range items {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := entry["id"].(string)
+		name, _ := entry["name"].(string)
+		if id != "" && name != "" {
+			s.actionIDs[name] = id
+		}
+	}
+	for _, n := range names {
+		if _, ok := s.actionIDs[n]; !ok {
+			return nil, fmt.Errorf("action %q not found on server", n)
+		}
+	}
+	return s.actionIDs, nil
+}
+
+func (s *atomSDK) CreateEntity(ctx context.Context, name, tenantID string) (Entity, error) {
+	data, err := s.do(ctx, createEntityMutation, map[string]any{
+		"tid":  tenantID,
+		"name": name,
+	})
+	if err != nil {
+		return Entity{}, err
+	}
+	ent, ok := data["createEntity"].(map[string]any)
+	if !ok {
+		return Entity{}, fmt.Errorf("createEntity: unexpected response shape")
+	}
+	id, _ := ent["id"].(string)
+	if id == "" {
+		return Entity{}, fmt.Errorf("createEntity: empty id in response")
+	}
+	return Entity{ID: id}, nil
+}
+
+func (s *atomSDK) CreateAPIKey(ctx context.Context, entityID, description string) (string, error) {
+	data, err := s.do(ctx, createAPIKeyMutation, map[string]any{
+		"eid":  entityID,
+		"desc": description,
+	})
+	if err != nil {
+		return "", err
+	}
+	keyData, ok := data["createApiKey"].(map[string]any)
+	if !ok {
+		return "", fmt.Errorf("createApiKey: unexpected response shape")
+	}
+	key, _ := keyData["key"].(string)
+	if key == "" {
+		return "", fmt.Errorf("createApiKey: empty key in response")
+	}
+	return key, nil
+}
+
+func (s *atomSDK) CreateResource(ctx context.Context, name, tenantID, ownerID string) (Resource, error) {
+	data, err := s.do(ctx, createResourceMutation, map[string]any{
+		"tid":  tenantID,
+		"oid":  ownerID,
+		"name": name,
+	})
+	if err != nil {
+		return Resource{}, err
+	}
+	res, ok := data["createResource"].(map[string]any)
+	if !ok {
+		return Resource{}, fmt.Errorf("createResource: unexpected response shape")
+	}
+	id, _ := res["id"].(string)
+	if id == "" {
+		return Resource{}, fmt.Errorf("createResource: empty id in response")
+	}
+	return Resource{ID: id}, nil
+}
+
+func (s *atomSDK) Connect(ctx context.Context, entityID, resourceID, tenantID string) error {
+	actionIDs, err := s.findActionIDs(ctx, "publish", "subscribe")
+	if err != nil {
+		return fmt.Errorf("lookup action ids: %w", err)
+	}
+
+	pbData, err := s.do(ctx, createPermissionBlockMutation, map[string]any{
+		"tid":  tenantID,
+		"cid":  resourceID,
+		"aid1": actionIDs["publish"],
+		"aid2": actionIDs["subscribe"],
+	})
+	if err != nil {
+		return fmt.Errorf("create permission block: %w", err)
+	}
+	pb, ok := pbData["createPermissionBlock"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("createPermissionBlock: unexpected response shape")
+	}
+	pbID, _ := pb["id"].(string)
+	if pbID == "" {
+		return fmt.Errorf("createPermissionBlock: empty id in response")
+	}
+	_, err = s.do(ctx, createDirectPolicyMutation, map[string]any{
+		"tid":  tenantID,
+		"sid":  entityID,
+		"pbid": pbID,
+	})
+	if err != nil {
+		return fmt.Errorf("create direct policy: %w", err)
+	}
+	return nil
+}
+
+func (s *atomSDK) DeleteEntity(ctx context.Context, id string) error {
+	_, err := s.do(ctx, deleteEntityMutation, map[string]any{
+		"id": id,
+	})
+	return err
+}
+
+func (s *atomSDK) DeleteResource(ctx context.Context, id string) error {
+	_, err := s.do(ctx, deleteResourceMutation, map[string]any{
+		"id": id,
+	})
+	return err
+}

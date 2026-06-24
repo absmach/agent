@@ -14,7 +14,7 @@ interface BootstrapInfo {
   active: boolean;
   external_id: string;
   external_key: string;
-  domain_id: string;
+  tenant_id: string;
   mqtt_url: string;
   mqtt_username: string;
   ctrl_channel_id: string;
@@ -36,14 +36,12 @@ export function BootstrapPage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      const hasBootstrap = !!(
-        data.provision?.clients_url || data.bootstrap_url
-      );
+      const hasBootstrap = !!(data.provision?.atom_url || data.bootstrap_url);
       setInfo({
-        active: hasBootstrap || !!data.domain_id,
+        active: hasBootstrap || !!data.tenant_id,
         external_id: data.bootstrap_external_id || "—",
         external_key: data.bootstrap_external_key || "—",
-        domain_id: data.domain_id || "—",
+        tenant_id: data.tenant_id || "—",
         mqtt_url: data.mqtt?.url || "—",
         mqtt_username: data.mqtt?.username || "—",
         ctrl_channel_id: data.channels?.ctrl_id || "—",
@@ -107,7 +105,7 @@ export function BootstrapPage() {
                 label="Provisioning"
                 value={info.active ? "Enabled" : "Disabled"}
               />
-              <DetailField label="Domain ID" value={info.domain_id} />
+              <DetailField label="Tenant ID" value={info.tenant_id} />
               <DetailField label="External ID" value={info.external_id} />
               <DetailField label="MQTT URL" value={info.mqtt_url} />
               <DetailField label="MQTT Username" value={info.mqtt_username} />

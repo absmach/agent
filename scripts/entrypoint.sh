@@ -4,8 +4,8 @@
 #
 # Generates flows_cred.json from bootstrap/env values before starting Node-RED.
 # Required env vars:
-#   MG_AGENT_CLIENT_ID      - Magistrala client ID (used as MQTT username)
-#   MG_AGENT_CLIENT_SECRET  - Magistrala client secret (used as MQTT password)
+#   MG_AGENT_GATEWAY_ID      - Magistrala gateway ID (used as MQTT username)
+#   MG_AGENT_GATEWAY_SECRET  - Magistrala gateway secret (used as MQTT password)
 
 set -e
 
@@ -132,9 +132,9 @@ async function fetchBootstrap() {
     const channels = content.channels || {};
 
     const values = {
-      MG_AGENT_CLIENT_ID: process.env.MG_AGENT_CLIENT_ID || mqtt.client_id || mqtt.username || "",
-      MG_AGENT_CLIENT_SECRET: process.env.MG_AGENT_CLIENT_SECRET || mqtt.secret || mqtt.password || "",
-      MG_AGENT_DOMAIN_ID: process.env.MG_AGENT_DOMAIN_ID || content.domain_id || "",
+      MG_AGENT_GATEWAY_ID: process.env.MG_AGENT_GATEWAY_ID || mqtt.gateway_id || mqtt.username || "",
+      MG_AGENT_GATEWAY_SECRET: process.env.MG_AGENT_GATEWAY_SECRET || mqtt.secret || mqtt.password || "",
+      MG_AGENT_TENANT_ID: process.env.MG_AGENT_TENANT_ID || content.tenant_id || "",
       MG_AGENT_CHANNEL: process.env.MG_AGENT_CHANNEL || telemetry.channel_id || channels.data_id || channels.id || "",
       MG_AGENT_CTRL_CHANNEL: process.env.MG_AGENT_CTRL_CHANNEL || commands.channel_id || channels.ctrl_id || channels.id || "",
       MG_AGENT_MQTT_URL: process.env.MG_AGENT_MQTT_URL || mqtt.url || ""
@@ -159,9 +159,9 @@ if [ -n "$BOOTSTRAP_EXPORTS" ]; then
 fi
 
 if [ -f "$CONFIG_FILE" ]; then
-    MG_AGENT_CLIENT_ID="${MG_AGENT_CLIENT_ID:-$(toml_value mqtt username)}"
-    MG_AGENT_CLIENT_SECRET="${MG_AGENT_CLIENT_SECRET:-$(toml_value mqtt password)}"
-    MG_AGENT_DOMAIN_ID="${MG_AGENT_DOMAIN_ID:-$(toml_value "" domain_id)}"
+    MG_AGENT_GATEWAY_ID="${MG_AGENT_GATEWAY_ID:-$(toml_value mqtt username)}"
+    MG_AGENT_GATEWAY_SECRET="${MG_AGENT_GATEWAY_SECRET:-$(toml_value mqtt password)}"
+    MG_AGENT_TENANT_ID="${MG_AGENT_TENANT_ID:-$(toml_value "" tenant_id)}"
     MG_AGENT_CHANNEL="${MG_AGENT_CHANNEL:-$(toml_value channels id)}"
     MG_AGENT_CTRL_CHANNEL="${MG_AGENT_CTRL_CHANNEL:-$(toml_value channels ctrl_id)}"
     MG_AGENT_MQTT_URL="${MG_AGENT_MQTT_URL:-$(toml_value mqtt url)}"
@@ -182,16 +182,19 @@ if [ -n "$MG_AGENT_MQTT_URL" ]; then
         MQTT_PORT="1883"
     fi
     case "$MQTT_SCHEME" in
-        ssl|tls|mqtts)
-            MQTT_USETLS="true"
-            ;;
+    ssl | tls | mqtts)
+        MQTT_USETLS="true"
+        ;;
+    tcp | mqtt)
+        MQTT_USETLS="false"
+        ;;
     esac
 fi
 
 MQTT_SKIP_TLS="${MG_AGENT_MQTT_SKIP_TLS:-$(toml_value mqtt skip_tls_ver)}"
-export MG_AGENT_CLIENT_ID
-export MG_AGENT_CLIENT_SECRET
-export MG_AGENT_DOMAIN_ID
+export MG_AGENT_GATEWAY_ID
+export MG_AGENT_GATEWAY_SECRET
+export MG_AGENT_TENANT_ID
 export MG_AGENT_CHANNEL
 export MG_AGENT_CTRL_CHANNEL
 export MQTT_HOST
@@ -201,12 +204,12 @@ export MQTT_SKIP_TLS
 
 if [ ! -f /data/.initialized ]; then
     cp /seed/nodered/settings.js /data/settings.js
-    cp /seed/nodered/flows.json  /data/flows.json
+    cp /seed/nodered/flows.json /data/flows.json
     touch /data/.initialized
 fi
 
 # Patch flows.json at every start using JSON-aware updates:
-#  - mqtt-broker nodes get host/port/TLS/client credentials from bootstrap/env
+#  - mqtt-broker nodes get host/port/TLS/gateway credentials from bootstrap/env
 #  - mqtt out nodes keep valid broker config references
 #  - function/topic strings get the provisioned Magistrala MQTT message topic
 node <<'NODE'
@@ -216,15 +219,15 @@ const flowFile = "/data/flows.json";
 const credFile = "/data/flows_cred.json";
 const tlsID = "magistrala-agent-tls";
 
-const clientID = process.env.MG_AGENT_CLIENT_ID || "";
-const clientSecret = process.env.MG_AGENT_CLIENT_SECRET || "";
-const domainID = process.env.MG_AGENT_DOMAIN_ID || "";
+const gatewayID = process.env.MG_AGENT_GATEWAY_ID || "";
+const gatewaySecret = process.env.MG_AGENT_GATEWAY_SECRET || "";
+const tenantID = process.env.MG_AGENT_TENANT_ID || "";
 const channelID = process.env.MG_AGENT_CHANNEL || "";
 const mqttHost = process.env.MQTT_HOST || "";
 const mqttPort = process.env.MQTT_PORT || "1883";
 const mqttUseTLS = process.env.MQTT_USETLS === "true";
 const mqttSkipTLS = process.env.MQTT_SKIP_TLS === "true";
-const dataTopic = `m/${domainID}/c/${channelID}/msg`;
+const dataTopic = `m/${tenantID}/c/${channelID}/msg`;
 const topicPattern = /m\/[^/"'\s]*\/c\/[^/"'\s]*\/(?:data|msg)/g;
 
 const flows = JSON.parse(fs.readFileSync(flowFile, "utf8"));
@@ -237,14 +240,14 @@ for (const node of nodes) {
       node.broker = mqttHost;
     }
     node.port = mqttPort;
-    node.clientid = clientID ? `${clientID}-nr` : node.clientid;
+    node.clientid = gatewayID ? `${gatewayID}-nr` : node.clientid;
     node.usetls = mqttUseTLS;
     if (mqttUseTLS && mqttSkipTLS) {
       node.tls = tlsID;
     } else {
       delete node.tls;
     }
-    node.credentials = { user: clientID, password: clientSecret };
+    node.credentials = { user: gatewayID, password: gatewaySecret };
   }
 
   if (node.type === "mqtt out" && brokerIDs.size === 1 && !brokerIDs.has(node.broker)) {
@@ -279,7 +282,7 @@ if (mqttUseTLS && mqttSkipTLS && !nodes.some((node) => node.id === tlsID)) {
 
 const credentials = {};
 for (const id of brokerIDs) {
-  credentials[id] = { user: clientID, password: clientSecret };
+  credentials[id] = { user: gatewayID, password: gatewaySecret };
 }
 
 fs.writeFileSync(flowFile, `${JSON.stringify(nodes, null, 4)}\n`);
@@ -303,12 +306,12 @@ const host        = process.env.MQTT_HOST             || "";
 const port        = parseInt(process.env.MQTT_PORT    || "1883", 10);
 const useTLS      = process.env.MQTT_USETLS           === "true";
 const skipTLS     = process.env.MQTT_SKIP_TLS         === "true";
-const clientID    = process.env.MG_AGENT_CLIENT_ID    || "";
-const secret      = process.env.MG_AGENT_CLIENT_SECRET || "";
-const domainID    = process.env.MG_AGENT_DOMAIN_ID    || "";
+const gatewayID   = process.env.MG_AGENT_GATEWAY_ID    || "";
+const secret      = process.env.MG_AGENT_GATEWAY_SECRET || "";
+const tenantID    = process.env.MG_AGENT_TENANT_ID    || "";
 const ctrlChannel = process.env.MG_AGENT_CTRL_CHANNEL || "";
 
-if (!host || !domainID || !ctrlChannel) {
+if (!host || !tenantID || !ctrlChannel) {
   process.stderr.write("Incomplete MQTT config, heartbeat disabled\n");
   process.exit(0);
 }
@@ -334,12 +337,12 @@ const intervalSec = parseDurationSec(process.env.MG_AGENT_HEARTBEAT_INTERVAL || 
 const publishMs   = Math.max(Math.floor(intervalSec * 0.8) * 1000, 1000);
 
 const brokerURL = (useTLS ? "mqtts" : "mqtt") + "://" + host + ":" + port;
-const topic     = "m/" + domainID + "/c/" + ctrlChannel + "/services/nodered/heartbeat";
+const topic     = "m/" + tenantID + "/c/" + ctrlChannel + "/services/nodered/heartbeat";
 const payload   = JSON.stringify([{"bn": "nodered:", "n": "service_type", "vs": "nodered"}]);
 
 const client = mqttLib.connect(brokerURL, {
-  clientId:          clientID + "-hb",
-  username:          clientID,
+  clientId:          gatewayID + "-hb",
+  username:          gatewayID,
   password:          secret,
   rejectUnauthorized: !skipTLS,
   reconnectPeriod:   5000,

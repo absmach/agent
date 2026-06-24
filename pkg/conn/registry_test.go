@@ -41,7 +41,7 @@ func discardLogger() *slog.Logger {
 func newTestBroker(t *testing.T, svc *agentmocks.Service) *broker {
 	t.Helper()
 	client := agentmocks.NewMQTTClient(t)
-	b := NewBroker(svc, client, "ctrl-channel", "domain-1", discardLogger()).(*broker)
+	b := NewBroker(svc, client, "ctrl-channel", "tenant-1", discardLogger()).(*broker)
 	b.ctx = context.Background()
 	return b
 }

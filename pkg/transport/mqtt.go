@@ -13,16 +13,16 @@ import (
 
 type MQTTPublisher struct {
 	client   paho.Client
-	domainID string
+	tenantID string
 	ctrlChan string
 	dataChan string
 	topic    string
 }
 
-func NewMQTTPublisher(client paho.Client, domainID, ctrlChan, dataChan, topic string) *MQTTPublisher {
+func NewMQTTPublisher(client paho.Client, tenantID, ctrlChan, dataChan, topic string) *MQTTPublisher {
 	return &MQTTPublisher{
 		client:   client,
-		domainID: domainID,
+		tenantID: tenantID,
 		ctrlChan: ctrlChan,
 		dataChan: dataChan,
 		topic:    topic,
@@ -42,26 +42,26 @@ func (m *MQTTPublisher) buildTopic(topic string) string {
 	}
 	switch topic {
 	case TopicControl:
-		return fmt.Sprintf("m/%s/c/%s/res", m.domainID, m.ctrlChan)
+		return fmt.Sprintf("m/%s/c/%s/res", m.tenantID, m.ctrlChan)
 	case TopicData:
-		return fmt.Sprintf("m/%s/c/%s/gateway/telemetry", m.domainID, m.dataChan)
+		return fmt.Sprintf("m/%s/c/%s/gateway/telemetry", m.tenantID, m.dataChan)
 	default:
-		return fmt.Sprintf("m/%s/c/%s/res/%s", m.domainID, m.ctrlChan, topic)
+		return fmt.Sprintf("m/%s/c/%s/res/%s", m.tenantID, m.ctrlChan, topic)
 	}
 }
 
 type MQTTConnector struct {
 	client   paho.Client
-	domainID string
+	tenantID string
 	ctrlChan string
 	dataChan string
 	topic    string
 }
 
-func NewMQTTConnector(client paho.Client, domainID, ctrlChan, dataChan, topic string) *MQTTConnector {
+func NewMQTTConnector(client paho.Client, tenantID, ctrlChan, dataChan, topic string) *MQTTConnector {
 	return &MQTTConnector{
 		client:   client,
-		domainID: domainID,
+		tenantID: tenantID,
 		ctrlChan: ctrlChan,
 		dataChan: dataChan,
 		topic:    topic,
@@ -88,11 +88,11 @@ func (m *MQTTConnector) buildTopic(topic string) string {
 	}
 	switch topic {
 	case TopicControl:
-		return fmt.Sprintf("m/%s/c/%s/res", m.domainID, m.ctrlChan)
+		return fmt.Sprintf("m/%s/c/%s/res", m.tenantID, m.ctrlChan)
 	case TopicData:
-		return fmt.Sprintf("m/%s/c/%s/gateway/telemetry", m.domainID, m.dataChan)
+		return fmt.Sprintf("m/%s/c/%s/gateway/telemetry", m.tenantID, m.dataChan)
 	default:
-		return fmt.Sprintf("m/%s/c/%s/res/%s", m.domainID, m.ctrlChan, topic)
+		return fmt.Sprintf("m/%s/c/%s/res/%s", m.tenantID, m.ctrlChan, topic)
 	}
 }
 
@@ -101,10 +101,10 @@ type MQTTBroker struct {
 	connector *MQTTConnector
 }
 
-func NewMQTTBroker(broker conn.MqttBroker, client paho.Client, domainID, ctrlChan, dataChan, topic string) *MQTTBroker {
+func NewMQTTBroker(broker conn.MqttBroker, client paho.Client, tenantID, ctrlChan, dataChan, topic string) *MQTTBroker {
 	return &MQTTBroker{
 		broker:    broker,
-		connector: NewMQTTConnector(client, domainID, ctrlChan, dataChan, topic),
+		connector: NewMQTTConnector(client, tenantID, ctrlChan, dataChan, topic),
 	}
 }
 

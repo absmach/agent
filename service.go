@@ -77,7 +77,7 @@ const (
 	keyTerminalSessionTimeout = KeyTerminalSessionTimeout
 	keyCommandSecret          = KeyCommandSecret
 	keyBsValid                = KeyBsValid
-	keyDomainID               = "domain_id"
+	keyTenantID               = "tenant_id"
 	keyChannelsCtrlID         = "channels_ctrl_id"
 	keyChannelsDataID         = "channels_data_id"
 	keyMqttURL                = "mqtt_url"
@@ -374,7 +374,7 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 	}
 
 	if devices != nil {
-		sched := newScheduler(devices, cfg.MQTT, cfg.DomainID, logger)
+		sched := newScheduler(devices, cfg.MQTT, cfg.TenantID, logger)
 		if err := sched.Start(ctx); err != nil {
 			logger.Warn("Failed to start device scheduler", slog.Any("error", err))
 		}
@@ -382,12 +382,12 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 	}
 
 	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat",
-		cfg.DomainID, cfg.Channels.DataChan())
+		cfg.TenantID, cfg.Channels.DataChan())
 	go ag.selfHeartbeat(ctx, topic, cfg.Heartbeat.Interval, cfg.MQTT.QoS)
 
 	if cfg.Telemetry.Interval > 0 {
 		telemetryTopic := fmt.Sprintf("m/%s/c/%s/gateway/telemetry",
-			cfg.DomainID, cfg.Channels.DataChan())
+			cfg.TenantID, cfg.Channels.DataChan())
 		ag.telemetryStarted.Store(true)
 		go ag.selfTelemetry(ctx, telemetryTopic, cfg.Telemetry.Interval, cfg.MQTT.QoS)
 	}
@@ -843,7 +843,7 @@ func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 				node["broker"] = host
 			}
 			node["port"] = port
-			node["clientid"] = cfg.MQTT.Username + "-nr"
+			node["gatewayid"] = cfg.MQTT.Username + "-nr"
 			node["usetls"] = useTLS
 			if useTLS && cfg.MQTT.SkipTLSVer {
 				node["tls"] = nodeRedTLSConfigID
@@ -856,12 +856,12 @@ func (a *agent) normalizeNodeRedFlow(flowJSON string) string {
 			}
 		case "function":
 			if fn, ok := node["func"].(string); ok {
-				node["func"] = patchNodeRedTopic(fn, cfg.DomainID, dataChannel)
+				node["func"] = patchNodeRedTopic(fn, cfg.TenantID, dataChannel)
 			}
 		}
 
 		if topic, ok := node["topic"].(string); ok {
-			node["topic"] = patchNodeRedTopic(topic, cfg.DomainID, dataChannel)
+			node["topic"] = patchNodeRedTopic(topic, cfg.TenantID, dataChannel)
 		}
 	})
 
@@ -931,11 +931,11 @@ func nodeRedMQTTEndpoint(rawURL string) (host, port string, useTLS bool) {
 	return host, port, useTLS
 }
 
-func patchNodeRedTopic(value, domainID, channelID string) string {
-	if domainID == "" || channelID == "" {
+func patchNodeRedTopic(value, tenantID, channelID string) string {
+	if tenantID == "" || channelID == "" {
 		return value
 	}
-	return nodeRedTopicPattern.ReplaceAllString(value, fmt.Sprintf("m/%s/c/%s/gateway/telemetry", domainID, channelID))
+	return nodeRedTopicPattern.ReplaceAllString(value, fmt.Sprintf("m/%s/c/%s/gateway/telemetry", tenantID, channelID))
 }
 
 func patchNodeRedValue(value any, patch func(map[string]any)) {
@@ -1370,10 +1370,10 @@ func (a *agent) RemoveService(svcname string) error {
 
 func (a *agent) Ping() error {
 	cfg := a.Config()
-	if cfg.DomainID == "" || cfg.Channels.DataChan() == "" {
-		return errors.New("ping: domain ID or data channel not configured")
+	if cfg.TenantID == "" || cfg.Channels.DataChan() == "" {
+		return errors.New("ping: tenant ID or data channel not configured")
 	}
-	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat", cfg.DomainID, cfg.Channels.DataChan())
+	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat", cfg.TenantID, cfg.Channels.DataChan())
 	payload, err := a.selfHeartbeatPayload()
 	if err != nil {
 		return err
@@ -1419,10 +1419,10 @@ func (a *agent) OTA(ctx context.Context, url, sha256hex string, size uint64) err
 		DownloadDir: cfg.OTA.DownloadDir,
 	}
 
-	domainID := cfg.DomainID
+	tenantID := cfg.TenantID
 	ctrlChan := cfg.Channels.CtrlChan()
 	qos := cfg.MQTT.QoS
-	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
+	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", tenantID, ctrlChan)
 
 	progressFn := func(state ota.State, bytesWritten, totalBytes int64, progress float64) {
 		a.publishOTAStatus(statusTopic, qos, state, bytesWritten, totalBytes, progress, "")
@@ -1486,10 +1486,10 @@ func (a *agent) OTAFromData(ctx context.Context, data []byte, sha256hex string) 
 		DownloadDir: cfg.OTA.DownloadDir,
 	}
 
-	domainID := cfg.DomainID
+	tenantID := cfg.TenantID
 	ctrlChan := cfg.Channels.CtrlChan()
 	qos := cfg.MQTT.QoS
-	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", domainID, ctrlChan)
+	statusTopic := fmt.Sprintf("m/%s/c/%s/ota/status", tenantID, ctrlChan)
 
 	progressFn := func(state ota.State, bytesWritten, totalBytes int64, progress float64) {
 		a.publishOTAStatus(statusTopic, qos, state, bytesWritten, totalBytes, progress, "")
@@ -1698,7 +1698,7 @@ func (a *agent) gracefulReset() error {
 
 	a.closeTerminals()
 
-	a.logger.Debug("disconnecting MQTT client")
+	a.logger.Debug("disconnecting MQTT gateway")
 	a.mqttClient.Disconnect(5000)
 	a.logger.Info("graceful reset complete")
 	return nil
@@ -1707,7 +1707,7 @@ func (a *agent) gracefulReset() error {
 func (a *agent) immediateReset() error {
 	a.saveResetReason(ResetImmediate)
 
-	a.logger.Debug("immediate reset, disconnecting MQTT client")
+	a.logger.Debug("immediate reset, disconnecting MQTT gateway")
 	a.mqttClient.Disconnect(100)
 	a.logger.Info("immediate reset complete")
 	return nil
@@ -1734,10 +1734,10 @@ func (a *agent) saveResetReason(mode string) {
 
 func (a *agent) sendGoodbyeHeartbeat() {
 	cfg := a.Config()
-	if cfg.DomainID == "" || cfg.Channels.DataChan() == "" {
+	if cfg.TenantID == "" || cfg.Channels.DataChan() == "" {
 		return
 	}
-	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat", cfg.DomainID, cfg.Channels.DataChan())
+	topic := fmt.Sprintf("m/%s/c/%s/gateway/heartbeat", cfg.TenantID, cfg.Channels.DataChan())
 
 	svcType := "agent"
 	heartbeat := false
@@ -1854,7 +1854,7 @@ func (a *agent) revertToStartup(key string) {
 // ApplyConfigEntry updates cfg in place for the known settable keys.
 // Used at startup to replay persisted overrides before the agent starts.
 //
-// Keys for bootstrap-derived fields (domain_id, channels_*, mqtt_*) are
+// Keys for bootstrap-derived fields (tenant_id, channels_*, mqtt_*) are
 // applied at startup only. They are not included in settableKeys and
 // cannot be modified via runtime MQTT set commands.
 func ApplyConfigEntry(cfg *Config, key, val string) {
@@ -1875,8 +1875,8 @@ func ApplyConfigEntry(cfg *Config, key, val string) {
 		}
 	case keyCommandSecret:
 		cfg.CommandSecret = val
-	case keyDomainID:
-		cfg.DomainID = val
+	case keyTenantID:
+		cfg.TenantID = val
 	case keyChannelsCtrlID:
 		cfg.Channels.CtrlID = val
 	case keyChannelsDataID:
@@ -1926,7 +1926,7 @@ func (a *agent) applyLiveUpdate(key, val string) {
 				a.telemetryStarted.Store(true)
 				cfg := a.Config()
 				telemetryTopic := fmt.Sprintf("m/%s/c/%s/gateway/telemetry",
-					cfg.DomainID, cfg.Channels.DataChan())
+					cfg.TenantID, cfg.Channels.DataChan())
 				go a.selfTelemetry(a.ctx, telemetryTopic, 0, cfg.MQTT.QoS)
 			}
 			select {
@@ -1957,14 +1957,14 @@ func (a *agent) configFallback(key string) string {
 
 func (a *agent) getTopic(topic string) (t string) {
 	cfg := a.Config()
-	domainID := cfg.DomainID
+	tenantID := cfg.TenantID
 	switch topic {
 	case control:
-		t = fmt.Sprintf("m/%s/c/%s/res", domainID, cfg.Channels.CtrlChan())
+		t = fmt.Sprintf("m/%s/c/%s/res", tenantID, cfg.Channels.CtrlChan())
 	case data:
-		t = fmt.Sprintf("m/%s/c/%s/gateway/telemetry", domainID, cfg.Channels.DataChan())
+		t = fmt.Sprintf("m/%s/c/%s/gateway/telemetry", tenantID, cfg.Channels.DataChan())
 	default:
-		t = fmt.Sprintf("m/%s/c/%s/res/%s", domainID, cfg.Channels.CtrlChan(), topic)
+		t = fmt.Sprintf("m/%s/c/%s/res/%s", tenantID, cfg.Channels.CtrlChan(), topic)
 	}
 	return t
 }
