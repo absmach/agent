@@ -277,11 +277,11 @@ Device identity, MQTT credentials, domain ID, and telemetry/commands channel IDs
 
 ## Topic Map
 
-| Direction        | Topic                                    | QoS | Description                                            |
-| ---------------- | ---------------------------------------- | --- | ------------------------------------------------------ |
-| Cloud → Agent    | `m/<domain-id>/c/<ctrl-chan>/req`        | 1   | Node-RED commands via `nodered` or `control` subsystem |
-| Agent → Cloud    | `m/<domain-id>/c/<ctrl-chan>/res`        | 1   | Command response                                       |
-| Node-RED → Cloud | `m/<domain-id>/c/<telemetry-chan>/gateway/telemetry` | 0 | SenML telemetry published by deployed flows  |
+| Direction        | Topic                                                | QoS | Description                                            |
+| ---------------- | ---------------------------------------------------- | --- | ------------------------------------------------------ |
+| Cloud → Agent    | `m/<domain-id>/c/<ctrl-chan>/req`                    | 1   | Node-RED commands via `nodered` or `control` subsystem |
+| Agent → Cloud    | `m/<domain-id>/c/<ctrl-chan>/res`                    | 1   | Command response                                       |
+| Node-RED → Cloud | `m/<domain-id>/c/<telemetry-chan>/gateway/telemetry` | 0   | SenML telemetry published by deployed flows            |
 
 ## MQTT Test Recipes
 

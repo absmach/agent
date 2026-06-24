@@ -69,7 +69,9 @@ The entire registry can be exported to a portable JSON snapshot and re-imported,
 {
   "schema_version": 1,
   "exported_at": "2026-06-23T08:00:00Z",
-  "devices": [{ "id": "...", "name": "...", "interface_type": "serial", "...": "..." }]
+  "devices": [
+    { "id": "...", "name": "...", "interface_type": "serial", "...": "..." }
+  ]
 }
 ```
 
@@ -387,16 +389,16 @@ curl -s -X POST http://localhost:9999/devices \
 
 ## HTTP API
 
-| Method   | Path                          | Description                                  |
-| -------- | ----------------------------- | -------------------------------------------- |
-| `GET`    | `/devices`                    | List all devices                             |
-| `GET`    | `/devices/{id}`               | Get a device                                 |
-| `POST`   | `/devices`                    | Add a device                                 |
-| `DELETE` | `/devices/{id}`               | Remove a device                              |
-| `POST`   | `/devices/{id}/seen`          | Mark device as seen                          |
-| `GET`    | `/devices/backup`             | Export the registry as a JSON snapshot       |
-| `POST`   | `/devices/restore`            | Import a snapshot (`?replace=true` to reset) |
-| `POST`   | `/devices/{id}/open`          | Open the device's physical interface         |
-| `POST`   | `/devices/{id}/close`         | Close the device's physical interface        |
-| `POST`   | `/devices/{id}/read`          | Read bytes from the device                   |
-| `POST`   | `/devices/{id}/write`         | Write bytes to the device                    |
+| Method   | Path                  | Description                                  |
+| -------- | --------------------- | -------------------------------------------- |
+| `GET`    | `/devices`            | List all devices                             |
+| `GET`    | `/devices/{id}`       | Get a device                                 |
+| `POST`   | `/devices`            | Add a device                                 |
+| `DELETE` | `/devices/{id}`       | Remove a device                              |
+| `POST`   | `/devices/{id}/seen`  | Mark device as seen                          |
+| `GET`    | `/devices/backup`     | Export the registry as a JSON snapshot       |
+| `POST`   | `/devices/restore`    | Import a snapshot (`?replace=true` to reset) |
+| `POST`   | `/devices/{id}/open`  | Open the device's physical interface         |
+| `POST`   | `/devices/{id}/close` | Close the device's physical interface        |
+| `POST`   | `/devices/{id}/read`  | Read bytes from the device                   |
+| `POST`   | `/devices/{id}/write` | Write bytes to the device                    |
