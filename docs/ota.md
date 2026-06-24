@@ -87,13 +87,13 @@ During the OTA operation, the agent publishes a **retained** SenML status messag
 ]
 ```
 
-| Field      | Unit | Description                                                                               |
-| ---------- | ---- | ----------------------------------------------------------------------------------------- |
-| `state`    | —    | `triggered`, `downloading`, `verifying`, `ready`, `restarting`, or `aborted`              |
-| `bytes`    | `By` | Bytes written to disk so far (meaningful during `downloading`)                            |
-| `total`    | `By` | Total expected bytes (content length; `0` when unknown)                                   |
-| `progress` | `%`  | Percentage complete, 0–100                                                                |
-| `error`    | —    | Error message; present only on failure (state `aborted`)                                  |
+| Field      | Unit | Description                                                                  |
+| ---------- | ---- | ---------------------------------------------------------------------------- |
+| `state`    | —    | `triggered`, `downloading`, `verifying`, `ready`, `restarting`, or `aborted` |
+| `bytes`    | `By` | Bytes written to disk so far (meaningful during `downloading`)               |
+| `total`    | `By` | Total expected bytes (content length; `0` when unknown)                      |
+| `progress` | `%`  | Percentage complete, 0–100                                                   |
+| `error`    | —    | Error message; present only on failure (state `aborted`)                     |
 
 Because the message is **retained**, a subscriber that connects mid-update (or after it) reads the last published status immediately. On failure, a final status carrying the `error` field is published.
 

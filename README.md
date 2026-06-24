@@ -1,21 +1,14 @@
 # Magistrala IoT Agent
 
-![badge](https://github.com/absmach/agent/workflows/Go/badge.svg)
-![ci][ci]
-![release][release]
-[![go report card][grc-badge]][grc-url]
-[![license][license]](LICENSE)
-[![chat][gitter-badge]][gitter]
-
 <p align="center">
   <img width="30%" height="30%" src="./docs/img/agent.png">
 </p>
 
-Magistrala IoT Agent is a communication, execution and software management agent for the [Magistrala][magistrala] IoT platform. It runs on edge devices and bridges local services (Node-RED, terminal) with a Magistrala deployment over MQTT. That Magistrala deployment can be local or cloud-hosted. A built-in web UI is included for local management.
+Magistrala IoT Agent is a communication, execution and software management agent for the [Magistrala](https://github.com/absmach/magistrala) IoT platform. It runs on edge devices and bridges local services (Node-RED, terminal) with a Magistrala deployment over MQTT. That Magistrala deployment can be local or cloud-hosted. A built-in web UI is included for local management.
 
 ## Features
 
-- **MQTT command & control** — remote shell execution, config management, process reset over [SenML][senml] JSON via Magistrala MQTT
+- **MQTT command & control** — remote shell execution, config management, process reset over [SenML](https://tools.ietf.org/html/rfc8428) JSON via Magistrala MQTT
 - **Node-RED integration** — deploy, fetch, and manage Node-RED flows over MQTT or HTTP
 - **Interactive terminal** — full PTY sessions tunneled over MQTT
 - **Periodic telemetry** — uptime, memory, CPU temperature, disk usage, load averages, wireless RSSI
@@ -77,9 +70,9 @@ A web-based management UI at `http://localhost:9999` provides:
 ## Running without Docker
 
 ```bash
-MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<external-id> \
-MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<external-key> \
-MG_AGENT_BOOTSTRAP_URL=http://localhost:9013/clients/bootstrap \
+MG_AGENT_BOOTSTRAP_EXTERNAL_ID='<external-id>' \
+MG_AGENT_BOOTSTRAP_EXTERNAL_KEY='<external-key>' \
+MG_AGENT_BOOTSTRAP_URL='http://localhost:9013/clients/bootstrap' \
 build/magistrala-agent
 ```
 
@@ -89,18 +82,18 @@ Configuration comes from environment variables plus the rendered bootstrap profi
 
 Key variables:
 
-| Variable                          | Description                              | Default                              |
-| --------------------------------- | ---------------------------------------- | ------------------------------------ |
-| `MG_AGENT_HTTP_PORT`              | Agent HTTP port                          | `9999`                               |
-| `MG_AGENT_MQTT_URL`               | MQTT broker URL                          | `localhost:1883`                     |
-| `MG_AGENT_NODERED_URL`            | Node-RED API URL                         | `http://localhost:1880/`             |
-| `MG_AGENT_BROKER_URL`             | FluxMQ (AMQP) broker URL                 | `amqp://guest:guest@localhost:5682/` |
-| `MG_AGENT_HEARTBEAT_INTERVAL`     | Heartbeat interval                       | `10s`                                |
-| `MG_AGENT_TELEMETRY_INTERVAL`     | Telemetry interval (`0s` to disable)     | `30s`                                |
-| `MG_AGENT_LOG_LEVEL`              | Log level                                | `info`                               |
-| `MG_AGENT_BOOTSTRAP_URL`          | Bootstrap base URL                       |                                      |
-| `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`  | Bootstrap external ID                    |                                      |
-| `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` | Bootstrap external key                   |                                      |
+| Variable                          | Description                          | Default                              |
+| --------------------------------- | ------------------------------------ | ------------------------------------ |
+| `MG_AGENT_HTTP_PORT`              | Agent HTTP port                      | `9999`                               |
+| `MG_AGENT_MQTT_URL`               | MQTT broker URL                      | `localhost:1883`                     |
+| `MG_AGENT_NODERED_URL`            | Node-RED API URL                     | `http://localhost:1880/`             |
+| `MG_AGENT_BROKER_URL`             | FluxMQ (AMQP) broker URL             | `amqp://guest:guest@localhost:5682/` |
+| `MG_AGENT_HEARTBEAT_INTERVAL`     | Heartbeat interval                   | `10s`                                |
+| `MG_AGENT_TELEMETRY_INTERVAL`     | Telemetry interval (`0s` to disable) | `30s`                                |
+| `MG_AGENT_LOG_LEVEL`              | Log level                            | `info`                               |
+| `MG_AGENT_BOOTSTRAP_URL`          | Bootstrap base URL                   |                                      |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`  | Bootstrap external ID                |                                      |
+| `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` | Bootstrap external key               |                                      |
 
 Per-feature env vars are documented in each feature doc below.
 
@@ -108,26 +101,18 @@ Per-feature env vars are documented in each feature doc below.
 
 Per-feature documentation with configuration, MQTT topic maps, and copy-paste test recipes:
 
-| Document                     | Description                                                                                                 |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| [control.md](docs/control.md)     | Command dispatch, runtime config get/set/reset, token authentication, exec subsystem, test recipes          |
-| [nodered.md](docs/nodered.md)     | Node-RED integration, flow deployment, provisioning, HTTP and MQTT management, test recipes                 |
-| [telemetry.md](docs/telemetry.md) | Periodic uptime telemetry, payload format, runtime configuration, test recipes                              |
-| [heartbeat.md](docs/heartbeat.md) | Self-heartbeat and service liveness tracking, interval configuration, test recipes                          |
-| [terminal.md](docs/terminal.md)   | Interactive terminal sessions over MQTT, session lifecycle, PTY management, test recipes                    |
+| Document                          | Description                                                                                                                             |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| [control.md](docs/control.md)     | Command dispatch, runtime config get/set/reset, token authentication, exec subsystem, test recipes                                      |
+| [nodered.md](docs/nodered.md)     | Node-RED integration, flow deployment, provisioning, HTTP and MQTT management, test recipes                                             |
+| [telemetry.md](docs/telemetry.md) | Periodic uptime telemetry, payload format, runtime configuration, test recipes                                                          |
+| [heartbeat.md](docs/heartbeat.md) | Self-heartbeat and service liveness tracking, interval configuration, test recipes                                                      |
+| [terminal.md](docs/terminal.md)   | Interactive terminal sessions over MQTT, session lifecycle, PTY management, test recipes                                                |
 | [devices.md](docs/devices.md)     | Downstream device provisioning, physical interfaces, device CRUD, backup/restore, lifecycle webhooks, telemetry scheduler, test recipes |
-| [bootstrap.md](docs/bootstrap.md) | Profile-based provisioning flow, environment variables, cache management, test recipes                      |
-| [ota.md](docs/ota.md)             | Over-the-air binary updates, trigger payload, download/verify/replace cycle, status reporting, test recipes |
-| [health.md](docs/health.md)       | Health supervisor, systemd watchdog integration, MQTT connection monitoring, health check endpoints         |
+| [bootstrap.md](docs/bootstrap.md) | Profile-based provisioning flow, environment variables, cache management, test recipes                                                  |
+| [ota.md](docs/ota.md)             | Over-the-air binary updates, trigger payload, download/verify/replace cycle, status reporting, test recipes                             |
+| [health.md](docs/health.md)       | Health supervisor, systemd watchdog integration, MQTT connection monitoring, health check endpoints                                     |
 
 ## License
 
 [Apache-2.0](LICENSE)
-
-[grc-badge]: https://goreportcard.com/badge/github.com/absmach/agent
-[grc-url]: https://goreportcard.com/report/github.com/absmach/agent
-[license]: https://img.shields.io/badge/license-Apache%20v2.0-blue.svg
-[magistrala]: https://github.com/absmach/magistrala
-[senml]: https://tools.ietf.org/html/rfc8428
-[ci]: https://github.com/absmach/agent/actions/workflows/ci.yml/badge.svg
-[release]: https://github.com/absmach/agent/actions/workflows/release.yml/badge.svg
