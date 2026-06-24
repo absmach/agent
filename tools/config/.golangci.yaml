@@ -62,6 +62,8 @@ linters:
         - mosquitto
     goconst:
       ignore-tests: true
+      ignore-string-values:
+        - "tid"
     staticcheck:
       checks:
         - -ST1000

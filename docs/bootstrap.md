@@ -11,14 +11,14 @@ The bootstrap subsystem handles profile-based provisioning. At startup, the agen
    ```json
    {
      "content": "{ \"device_id\": \"...\", \"mqtt\": { ... } }",
-     "client_key": "",
-     "client_cert": "",
+     "gateway_key": "",
+     "gateway_cert": "",
      "ca_cert": ""
    }
    ```
-5. **Merge with env config** — bootstrap fields override env defaults for `domain_id`, `channels`, and `mqtt`.
+5. **Merge with env config** — bootstrap fields override env defaults for `tenant_id`, `channels`, and `mqtt`.
 6. **Persist** — bootstrap fields are saved to the persistent config store (`agent-config.json`).
-7. **Load certificates** — if mTLS is configured, client and CA certs are loaded.
+7. **Load certificates** — if mTLS is configured, gateway and CA certs are loaded.
 8. **Connect MQTT** — the agent connects using the bootstrap-provided credentials.
 
 ## Rendered Profile Content
@@ -27,17 +27,17 @@ The `content` field from the bootstrap response decodes to:
 
 ```json
 {
-  "device_id": "<client-id>",
+  "device_id": "<gateway-id>",
   "external_id": "<external-id>",
-  "domain_id": "<domain-id>",
+  "tenant_id": "<tenant-id>",
   "mqtt": {
     "url": "ssl://host.docker.internal:8883",
-    "client_id": "<client-id>",
-    "secret": "<client-secret>"
+    "client_id": "<gateway-id>",
+    "secret": "<gateway-secret>"
   },
   "telemetry": {
     "channel_id": "<telemetry-channel-id>",
-    "topic": "m/<domain-id>/c/<telemetry-channel-id>/msg"
+    "topic": "m/<tenant-id>/c/<telemetry-channel-id>/msg"
   },
   "commands": {
     "channel_id": "<commands-channel-id>"
@@ -79,7 +79,7 @@ Bootstrap-derived fields persisted in the store:
 
 | Key                | Source                              |
 | ------------------ | ----------------------------------- |
-| `domain_id`        | Bootstrap profile                   |
+| `tenant_id`        | Bootstrap profile                   |
 | `channels_ctrl_id` | Bootstrap profile                   |
 | `channels_data_id` | Bootstrap profile                   |
 | `mqtt_url`         | Bootstrap profile                   |
@@ -94,17 +94,17 @@ Bootstrap-derived fields persisted in the store:
 ```bash
 export MG_AGENT_BOOTSTRAP_EXTERNAL_ID="<device-external-id>"
 export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="<device-external-key>"
-export MG_DOMAIN_ID="<domain-id>"
+export MG_TENANT_ID="<tenant-id>"
 export MG_PAT="<personal-access-token>"
 make run_provision
 ```
 
 The provisioning script creates:
 
-1. A Client (device) with credentials
+1. A Gateway with credentials
 2. Telemetry and commands Channels
 3. A Bootstrap Profile and Enrollment with `external_id` and `external_key`
-4. Profile bindings to the provisioned client and channels
+4. Profile bindings to the provisioned gateway and channels
 5. A Rule Engine rule with `save_senml` output for telemetry
 
 ### Cloud provisioning
@@ -115,7 +115,7 @@ export MG_AGENT_MQTT_URL=ssl://messaging.magistrala.absmach.eu:8883
 export MG_AGENT_MQTT_SKIP_TLS=false
 export MG_AGENT_BOOTSTRAP_EXTERNAL_ID="<device-external-id>"
 export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="<device-external-key>"
-export MG_DOMAIN_ID="<domain-id>"
+export MG_TENANT_ID="<tenant-id>"
 export MG_PAT="<pat>"
 make run_provision
 ```
@@ -134,8 +134,8 @@ curl -s 'http://localhost:9013/clients/bootstrap/<external-id>' \
 
 ```json
 {
-  "id": "fa846d56-3100-44aa-8385-3a88cb437a5a",
-  "content": "{\n  \"commands\": {\n    \"channel_id\": \"bc9a0af7-6d0f-4806-aa5a-61d68c0a7cf7\"\n  },\n  \"device_id\": \"fa846d56-3100-44aa-8385-3a88cb437a5a\",\n  \"domain_id\": \"e9692c28-b730-4797-8a15-2e25c08f9641\",\n  \"external_id\": \"019eb690777d7452ba898a66f5cc9cb8\",\n  \"mqtt\": {\n    \"client_id\": \"ffec2491-0de1-4051-9e75-ad2e2d241627\",\n    \"secret\": \"30c775d7-3504-42c6-976c-52c02474bf2f\",\n    \"url\": \"ssl://host.docker.internal:8883\"\n  },\n  \"provision\": {\n    \"channels_url\": \"http://channels:9005\",\n    \"clients_url\": \"http://clients:9006\",\n    \"rules_engine_url\": \"http://rules:9008\",\n    \"token\": \"pat_TurQa8bRR72vtZguCtIIe8ZTeaSkqkinkhLxSqPo7bw=_PoOG@UuEadfD!F7TcWYzsDKSxLB%3mzlh1M\\u0026MmLIky0M8A2Ui9f9J^4DuzZ@O0rjCA-cvgjbuFjOofOwreHL-j\\u0026CcgffH7FzwoDC\"\n  },\n  \"telemetry\": {\n    \"channel_id\": \"b465a688-c1ca-417d-a36f-71f6f1be2409\",\n    \"topic\": \"\\u003cno value\\u003e\"\n  }\n}"
+  "id": "<gateway-entity-id>",
+  "content": "{\n  \"commands\": {\n    \"channel_id\": \"<commands-channel-id>\"\n  },\n  \"device_id\": \"<gateway-entity-id>\",\n  \"tenant_id\": \"<tenant-id>\",\n  \"external_id\": \"<external-id>\",\n  \"mqtt\": {\n    \"client_id\": \"<gateway-entity-id>\",\n    \"secret\": \"<client-secret>\",\n    \"url\": \"ssl://host.docker.internal:8883\"\n  },\n  \"provision\": {\n    \"channels_url\": \"http://channels:9005\",\n    \"clients_url\": \"http://clients:9006\",\n    \"rules_engine_url\": \"http://rules:9008\",\n    \"token\": \"<personal-access-token>\"\n  },\n  \"telemetry\": {\n    \"channel_id\": \"<telemetry-channel-id>\",\n    \"topic\": \"m/<tenant-id>/c/<telemetry-channel-id>/msg\"\n  }\n}"
 }
 ```
 
@@ -144,8 +144,8 @@ curl -s 'http://localhost:9013/clients/bootstrap/<external-id>' \
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"set,bs_valid,0"}]'
 ```
 
@@ -156,8 +156,8 @@ This sets `bs_valid` to `0` and deletes the cached bootstrap profile. On the **n
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"get,bs_valid"}]'
 ```
 
@@ -177,7 +177,7 @@ build/magistrala-agent
 After a successful bootstrap fetch, the agent logs:
 
 ```json
-{"level":"INFO","msg":"Client connected","client_name":"<client-id>"}
+{"level":"INFO","msg":"Gateway connected","gateway_name":"<gateway-id>"}
 {"level":"INFO","msg":"Agent service started","port":"9999"}
 ```
 

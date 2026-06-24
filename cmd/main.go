@@ -48,8 +48,8 @@ type config struct {
 	MqttQoS              string   `env:"MG_AGENT_MQTT_QOS"                      envDefault:"0"`
 	MqttCmdQoS           string   `env:"MG_AGENT_MQTT_CMD_QOS"                  envDefault:"1"`
 	MqttRetain           string   `env:"MG_AGENT_MQTT_RETAIN"                   envDefault:"false"`
-	MqttCert             string   `env:"MG_AGENT_MQTT_CLIENT_CERT"              envDefault:"client.cert"`
-	MqttPrivateKey       string   `env:"MG_AGENT_MQTT_CLIENT_KEY"               envDefault:"client.key"`
+	MqttCert             string   `env:"MG_AGENT_MQTT_GATEWAY_CERT"             envDefault:"gateway.cert"`
+	MqttPrivateKey       string   `env:"MG_AGENT_MQTT_GATEWAY_KEY"              envDefault:"gateway.key"`
 	HeartbeatInterval    string   `env:"MG_AGENT_HEARTBEAT_INTERVAL"            envDefault:"10s"`
 	TelemetryInterval    string   `env:"MG_AGENT_TELEMETRY_INTERVAL"            envDefault:"30s"`
 	TelemetryIncludeTemp string   `env:"MG_AGENT_TELEMETRY_INCLUDE_TEMPERATURE" envDefault:"true"`
@@ -77,8 +77,7 @@ type config struct {
 	BootstrapRetryDelay  string   `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
 	BootstrapSkipTLS     string   `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS"            envDefault:"false"`
 	BootstrapCachePath   string   `env:"MG_AGENT_BOOTSTRAP_CACHE_PATH"          envDefault:"/var/lib/agent/bootstrap.json"`
-	ClientsURL           string   `env:"MG_AGENT_CLIENTS_URL"                   envDefault:""`
-	ChannelsURL          string   `env:"MG_AGENT_CHANNELS_URL"                  envDefault:""`
+	AtomURL              string   `env:"ATOM_URL"                               envDefault:""`
 	RulesEngineURL       string   `env:"MG_AGENT_RULES_ENGINE_URL"              envDefault:""`
 	ProvisionToken       string   `env:"MG_PAT"                                 envDefault:""`
 	DeviceDBPath         string   `env:"MG_AGENT_DEVICE_DB_PATH"                envDefault:"/var/lib/agent/devices.db"`
@@ -189,16 +188,13 @@ func main() {
 	noderedClient := nodered.NewClient(cfg.NodeRed.URL, logger)
 
 	// Bootstrap-based deployments receive all provision fields via the profile
-	// template (clients_url, channels_url, rules_engine_url, token).
+	// template (atom_url, rules_engine_url, token).
 	// The env-var fallbacks below are only used in non-bootstrap setups.
-	clientsURL := cfg.Provision.ClientsURL
-	if clientsURL == "" {
-		clientsURL = c.ClientsURL
+	atomURL := cfg.Provision.AtomURL
+	if atomURL == "" {
+		atomURL = c.AtomURL
 	}
-	channelsURL := cfg.Provision.ChannelsURL
-	if channelsURL == "" {
-		channelsURL = c.ChannelsURL
-	}
+
 	rulesEngineURL := cfg.Provision.RulesEngineURL
 	if rulesEngineURL == "" {
 		rulesEngineURL = c.RulesEngineURL
@@ -208,11 +204,10 @@ func main() {
 		provisionToken = c.ProvisionToken
 	}
 	devices, err := devicemgr.New(c.DeviceDBPath, devicemgr.ProvisionConfig{
-		ClientsURL:     clientsURL,
-		ChannelsURL:    channelsURL,
+		AtomURL:        atomURL,
 		RulesEngineURL: rulesEngineURL,
 		Token:          provisionToken,
-		DomainID:       cfg.DomainID,
+		TenantID:       cfg.TenantID,
 	}, iface.Config{}, devicemgr.WithWebhook(devicemgr.WebhookConfig{
 		URL:    c.DeviceWebhookURL,
 		Secret: c.DeviceWebhookSecret,
@@ -260,7 +255,7 @@ func main() {
 	svc = middleware.NewLogging(svc, logger)
 	counter, latency := prometheus.MakeMetrics("agent", "api")
 	svc = middleware.NewMetrics(svc, counter, latency)
-	b := conn.NewBroker(svc, mqttClient, cfg.Channels.CtrlChan(), cfg.DomainID, logger)
+	b := conn.NewBroker(svc, mqttClient, cfg.Channels.CtrlChan(), cfg.TenantID, logger)
 	onReconnect = b.Resubscribe
 
 	srv := &http.Server{
@@ -294,8 +289,8 @@ func main() {
 
 func validateRuntimeConfig(cfg agent.Config) error {
 	missing := []string{}
-	if cfg.DomainID == "" {
-		missing = append(missing, "domain_id")
+	if cfg.TenantID == "" {
+		missing = append(missing, "tenant_id")
 	}
 	if err := cfg.Channels.Validate(); err != nil {
 		missing = append(missing, err.Error())
@@ -325,7 +320,7 @@ func hasBootstrapConfig(cfg config) bool {
 }
 
 func hasBootstrapCredentials(cfg agent.Config) bool {
-	if cfg.DomainID == "" {
+	if cfg.TenantID == "" {
 		return false
 	}
 	if cfg.Channels.CtrlID == "" || cfg.Channels.DataID == "" {
@@ -335,7 +330,7 @@ func hasBootstrapCredentials(cfg agent.Config) bool {
 		return false
 	}
 	if cfg.MQTT.MTLS {
-		if cfg.MQTT.ClientCert == "" || cfg.MQTT.ClientKey == "" {
+		if cfg.MQTT.GatewayCert == "" || cfg.MQTT.GatewayKey == "" {
 			if cfg.MQTT.CertPath == "" || cfg.MQTT.PrivKeyPath == "" {
 				return false
 			}
@@ -354,8 +349,8 @@ func hasBootstrapCredentials(cfg agent.Config) bool {
 // created with 0o600 permissions (owner read/write only) and the password is
 // needed to reconnect when mTLS is not in use.
 func persistBootstrapFields(store pkgconfig.Store, cfg agent.Config, logger *slog.Logger) {
-	if err := store.Set("domain_id", cfg.DomainID); err != nil {
-		logger.Warn("Failed to persist domain_id", slog.Any("error", err))
+	if err := store.Set("tenant_id", cfg.TenantID); err != nil {
+		logger.Warn("Failed to persist tenant_id", slog.Any("error", err))
 	}
 	if err := store.Set("channels_ctrl_id", cfg.Channels.CtrlID); err != nil {
 		logger.Warn("Failed to persist channels_ctrl_id", slog.Any("error", err))
@@ -499,12 +494,12 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 func connectToMQTTBroker(conf agent.MQTTConfig, logger *slog.Logger, onConnect func()) (mqtt.Client, error) {
 	name := conf.Username
 	conn := func(client mqtt.Client) {
-		logger.Info("Client connected", slog.String("client_name", name))
+		logger.Info("Gagteway connected", slog.String("gateway_name", name))
 		onConnect()
 	}
 
 	lost := func(client mqtt.Client, err error) {
-		logger.Info("Client disconnected", slog.String("client_name", name))
+		logger.Info("Gagteway disconnected", slog.String("gateway_name", name))
 	}
 
 	opts := mqtt.NewClientOptions().
@@ -536,7 +531,7 @@ func connectToMQTTBroker(conf agent.MQTTConfig, logger *slog.Logger, onConnect f
 		opts.SetTLSConfig(cfg)
 		opts.SetProtocolVersion(4)
 	} else if strings.HasPrefix(conf.URL, "ssl://") || strings.HasPrefix(conf.URL, "tls://") {
-		// Standard TLS using system cert pool (no client certs).
+		// Standard TLS using system cert pool (no gateway certs).
 		rootCAs, _ := x509.SystemCertPool()
 		if rootCAs == nil {
 			rootCAs = x509.NewCertPool()
@@ -579,9 +574,9 @@ func loadCertificate(cnfg agent.MQTTConfig) (agent.MQTTConfig, error) {
 		c.CA = caByte
 	}
 
-	if c.ClientCert != "" && c.ClientKey != "" {
-		cc = []byte(c.ClientCert)
-		pk = []byte(c.ClientKey)
+	if c.GatewayCert != "" && c.GatewayKey != "" {
+		cc = []byte(c.GatewayCert)
+		pk = []byte(c.GatewayKey)
 		cert, err := tls.X509KeyPair(cc, pk)
 		if err != nil {
 			return c, err

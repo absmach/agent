@@ -20,8 +20,8 @@ import { useToast } from "@/components/ui/toaster";
 
 interface Config {
   httpPort: string;
-  clientID: string;
-  clientKey: string;
+  gatewayID: string;
+  gatewayKey: string;
   ctrlChannelID: string;
   dataChannelID: string;
   logLevel: string;
@@ -42,8 +42,8 @@ interface Config {
 
 const emptyConfig: Config = {
   httpPort: "",
-  clientID: "",
-  clientKey: "",
+  gatewayID: "",
+  gatewayKey: "",
   ctrlChannelID: "",
   dataChannelID: "",
   logLevel: "info",
@@ -145,8 +145,8 @@ export function ConfigCard() {
       const data = await res.json();
       setConfig({
         httpPort: data.server?.port ?? "",
-        clientID: data.mqtt?.username ?? "",
-        clientKey: data.mqtt?.password ?? "",
+        gatewayID: data.mqtt?.username ?? "",
+        gatewayKey: data.mqtt?.password ?? "",
         ctrlChannelID: data.channels?.ctrl_id ?? "",
         dataChannelID: data.channels?.data_id ?? "",
         logLevel: data.log?.level ?? "info",
@@ -203,8 +203,8 @@ export function ConfigCard() {
     } else {
       body.mqtt = {
         url: config.mqttURL,
-        username: config.clientID,
-        password: config.clientKey,
+        username: config.gatewayID,
+        password: config.gatewayKey,
       };
     }
     return body;
@@ -339,11 +339,11 @@ export function ConfigCard() {
                 "Content Format",
                 "Content format ID (e.g. 110 for SenML+JSON)",
               )}
-              {field("coapCert", "Client Cert", "TLS client certificate")}
+              {field("coapCert", "Gateway Cert", "TLS gateway certificate")}
               <SecretField
                 id="coapKey"
-                label="Client Key"
-                placeholder="TLS client private key"
+                label="Gateway Key"
+                placeholder="TLS gateway private key"
                 value={config.coapKey}
                 onInput={(e) =>
                   setConfig((c) => ({
@@ -357,19 +357,19 @@ export function ConfigCard() {
           ) : (
             <>
               {field(
-                "clientID",
-                "Client ID",
-                "Magistrala client ID (MQTT username)",
+                "gatewayID",
+                "Gateway ID",
+                "Magistrala gateway ID (MQTT username)",
               )}
               <SecretField
-                id="clientKey"
-                label="Client Key"
-                placeholder="Magistrala client secret (MQTT password)"
-                value={config.clientKey}
+                id="gatewayKey"
+                label="Gateway Key"
+                placeholder="Magistrala gateway secret (MQTT password)"
+                value={config.gatewayKey}
                 onInput={(e) =>
                   setConfig((c) => ({
                     ...c,
-                    clientKey: (e.target as HTMLInputElement).value,
+                    gatewayKey: (e.target as HTMLInputElement).value,
                   }))
                 }
               />

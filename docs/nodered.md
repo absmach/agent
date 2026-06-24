@@ -42,27 +42,27 @@ open http://localhost:9999
 open http://localhost:1880
 ```
 
-## Provisioning with Magistrala
+## Provisioning with Atom
 
-If you have a running Magistrala instance, use the provisioning script to automatically create Clients, Channels, Bootstrap Profile resources, and Rule Engine rules:
+If you have a running Atom instance, use the provisioning script to automatically create entities, resources, and bootstrap profiles:
 
 ```bash
 export MG_AGENT_BOOTSTRAP_EXTERNAL_ID="<device-external-id>"
 export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="<device-external-key>"
 export MG_PAT="<personal-access-token>"
-export MG_DOMAIN_ID="<domain-id>"
+export MG_TENANT_ID="<tenant-id>"
 make run_provision
 ```
 
 Use your real PAT in the shell, but do not commit it to files. The agent and Node-RED do not consume a generated `config.toml`; they fetch the rendered bootstrap profile at startup.
 
-The PAT used for provisioning must be able to create bootstrap configs, rules, clients, and channels in the target domain. The script expects scopes such as:
+The PAT used for provisioning must be able to create bootstrap configs, rules, devices, and channels in the target tenant. The script expects scopes such as:
 
 - `bootstrap:create`
 - `rules:create`
-- `clients:create`
-- `clients:view`
-- `clients:connect_to_channel`
+- `gateways:create`
+- `gateways:view`
+- `gateways:connect_to_channel`
 - `channels:create`
 - `channels:view`
 - `channels:connect_client`
@@ -73,12 +73,12 @@ Or with a custom API URL:
 export MG_API=https://my-instance/api
 export MG_AGENT_BOOTSTRAP_EXTERNAL_ID="<device-external-id>"
 export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="<device-external-key>"
-export MG_DOMAIN_ID="<domain-id>"
+export MG_TENANT_ID="<tenant-id>"
 export MG_PAT="<pat>"
 make run_provision
 ```
 
-For Magistrala Cloud specifically, use:
+For Atom Cloud specifically, use:
 
 ```bash
 export MG_API=https://cloud.magistrala.absmach.eu/api
@@ -86,7 +86,7 @@ export MG_AGENT_MQTT_URL=ssl://messaging.magistrala.absmach.eu:8883
 export MG_AGENT_MQTT_SKIP_TLS=false
 export MG_AGENT_BOOTSTRAP_EXTERNAL_ID="<device-external-id>"
 export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="<device-external-key>"
-export MG_DOMAIN_ID="<domain-id>"
+export MG_TENANT_ID="<tenant-id>"
 export MG_PAT="<pat>"
 make run_provision
 ```
@@ -99,19 +99,19 @@ Or run the script directly:
 export MG_AGENT_BOOTSTRAP_EXTERNAL_ID="<device-external-id>"
 export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="<device-external-key>"
 export MG_PAT="<personal-access-token>"
-export MG_DOMAIN_ID="<domain-id>"
+export MG_TENANT_ID="<tenant-id>"
 bash scripts/provision.sh
 ```
 
 This will:
 
-1. Create a Client (device) with credentials
+1. Register a Gateway with credentials
 2. Create telemetry and commands Channels
 3. Create a Bootstrap Profile and Enrollment with `external_id` and `external_key`
-4. Bind the profile slots to the provisioned client and channels
+4. Bind the profile slots to the provisioned gateway and channels
 5. Configure a Rule Engine rule with `save_senml` output for telemetry messages
 
-**Alternatively**, if you prefer to set up resources manually via the Magistrala UI or API, create the Client, telemetry Channel, commands Channel, Bootstrap Profile, Enrollment, bindings, and Rule Engine rule, then edit `docker/.env` with the bootstrap values:
+**Alternatively**, if you prefer to set up resources manually via the Atom UI or API, create the entity, telemetry channel, commands channel, bootstrap profile, enrollment, bindings, and rules, then edit `docker/.env` with the bootstrap values:
 
 ```env
 MG_AGENT_BOOTSTRAP_URL=http://bootstrap:9013/clients/bootstrap
@@ -173,7 +173,7 @@ curl -s -X POST http://localhost:9999/nodered \
 
 ### Via MQTT (from Magistrala cloud)
 
-Send a SenML array to `m/<domain-id>/c/<commands-channel-id>/req`:
+Send a SenML array to `m/<tenant-id>/c/<commands-channel-id>/req`:
 
 Supported commands:
 
@@ -199,7 +199,7 @@ Supported commands:
 
 ### Default flow (`docker/nodered/flows.json`)
 
-Seeded into Node-RED on first start. It periodically publishes SenML temperature and humidity readings to the Magistrala data channel.
+Seeded into Node-RED on first start. It periodically publishes SenML temperature and humidity readings to the Atom data channel.
 
 ### Speed sensor flow (`examples/nodered/speed-flow.json`)
 
@@ -229,8 +229,8 @@ mosquitto_pub \
   -h <mqtt-host> -p 8883 \
   --capath /etc/ssl/certs \
   -I "agent-mock-device" \
-  -u <client-id> -P <client-secret> \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -u <gateway-id> -P <gateway-secret> \
+  -t "m/<tenant-id>/c/<commands-channel-id>/req" \
   -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-deploy,$FLOWS\"}]"
 ```
 
@@ -238,7 +238,7 @@ The agent will:
 
 1. Receive the SenML message over MQTT
 2. Base64-decode the flow JSON
-3. Patch the MQTT `clientid` in the flow to `<client-id>-nr` (prevents session conflict with the agent itself)
+3. Patch the MQTT `gatewayid` in the flow to `<gateway-id>-nr` (prevents session conflict with the agent itself)
 4. `POST` the flows to Node-RED's REST API
 5. Publish the result back to the control channel
 
@@ -249,8 +249,8 @@ mosquitto_pub \
   -h <mqtt-host> -p 8883 \
   --capath /etc/ssl/certs \
   -I "agent-mock-device" \
-  -u <client-id> -P <client-secret> \
-  -t "m/<domain-id>/c/<commands-channel-id>/req" \
+  -u <gateway-id> -P <gateway-secret> \
+  -t "m/<tenant-id>/c/<commands-channel-id>/req" \
   -m '[{"bn":"req-2:", "n":"nodered", "vs":"nodered-flows"}]'
 ```
 
@@ -265,7 +265,7 @@ The agent logs will show:
 }
 ```
 
-Node-RED will start publishing speed data to the telemetry topic within 3 seconds of deployment. The agent normalises all `m/.../c/.../data` and `m/.../c/.../gateway/telemetry` topics in the flow to the rendered telemetry channel: `m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry`.
+Node-RED will start publishing speed data to the telemetry topic within 3 seconds of deployment. The agent normalises all `m/.../c/.../data` and `m/.../c/.../gateway/telemetry` topics in the flow to the rendered telemetry channel: `m/<tenant-id>/c/<telemetry-channel-id>/gateway/telemetry`.
 
 ## Configuration
 
@@ -273,29 +273,29 @@ The Node-RED URL is configured via environment variable:
 
 - **Environment variable**: `MG_AGENT_NODERED_URL` (default: `http://localhost:1880/`)
 
-Device identity, MQTT credentials, domain ID, and telemetry/commands channel IDs come from the rendered bootstrap profile.
+Device identity, MQTT credentials, tenant ID, and telemetry/commands channel IDs come from the rendered bootstrap profile.
 
 ## Topic Map
 
 | Direction        | Topic                                                | QoS | Description                                            |
 | ---------------- | ---------------------------------------------------- | --- | ------------------------------------------------------ |
-| Cloud → Agent    | `m/<domain-id>/c/<ctrl-chan>/req`                    | 1   | Node-RED commands via `nodered` or `control` subsystem |
-| Agent → Cloud    | `m/<domain-id>/c/<ctrl-chan>/res`                    | 1   | Command response                                       |
-| Node-RED → Cloud | `m/<domain-id>/c/<telemetry-chan>/gateway/telemetry` | 0   | SenML telemetry published by deployed flows            |
+| Cloud → Agent    | `m/<tenant-id>/c/<ctrl-chan>/req`                    | 1   | Node-RED commands via `nodered` or `control` subsystem |
+| Agent → Cloud    | `m/<tenant-id>/c/<ctrl-chan>/res`                    | 1   | Command response                                       |
+| Node-RED → Cloud | `m/<tenant-id>/c/<telemetry-chan>/gateway/telemetry` | 0   | SenML telemetry published by deployed flows            |
 
 ## MQTT Test Recipes
 
-All recipes use the **commands channel request topic**: `m/<domain-id>/c/<commands-channel-id>/req`.
+All recipes use the **commands channel request topic**: `m/<tenant-id>/c/<commands-channel-id>/req`.
 
-Responses are published to: `m/<domain-id>/c/<commands-channel-id>/res`.
+Responses are published to: `m/<tenant-id>/c/<commands-channel-id>/res`.
 
 ### Subscribe to responses
 
 ```bash
 mosquitto_sub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> \
-    -t "m/<domain-id>/c/<commands-channel-id>/res" \
+    -u <gateway-id> -P <gateway-secret> \
+    -t "m/<tenant-id>/c/<commands-channel-id>/res" \
     -v
 ```
 
@@ -304,8 +304,8 @@ mosquitto_sub \
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "nr-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "nr-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"nodered", "vs":"nodered-ping"}]'
 ```
 
@@ -327,8 +327,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "nr-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "nr-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"nodered", "vs":"nodered-state"}]'
 ```
 
@@ -350,8 +350,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "nr-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "nr-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"nodered", "vs":"nodered-flows"}]'
 ```
 
@@ -363,12 +363,12 @@ mosquitto_pub \
     "bn": "req-1",
     "bt": 1781865982.932532,
     "n": "nodered",
-    "vs": "[{\"id\":\"flow-speed-sensor\",\"type\":\"tab\",\"label\":\"Speed Sensor Flow\",\"disabled\":false,\"info\":\"Publishes SenML speed data to Magistrala cloud every 15s via MQTT over TLS.\"},{\"id\":\"mqtt-broker-config\",\"type\":\"mqtt-broker\",\"name\":\"Magistrala Cloud MQTT\",\"broker\":\"host.docker.internal\",\"port\":\"8883\",\"clientid\":\"<client-id>-nr\",\"usetls\":true,\"tls\":\"magistrala-agent-tls\",\"credentials\":{\"user\":\"<client-id>\",\"password\":\"<client-secret>\"},\"z\":\"\"},{\"id\":\"inject-speed\",\"type\":\"inject\",\"z\":\"flow-speed-sensor\",\"name\":\"Every 15s\",\"repeat\":\"15\",\"once\":true,\"onceDelay\":3,\"wires\":[[\"build-speed-senml\"]]},{\"id\":\"build-speed-senml\",\"type\":\"function\",\"z\":\"flow-speed-sensor\",\"func\":\"var now = Date.now() * 1e6;\\nmsg.payload = JSON.stringify([\\n    {\\\"bn\\\": \\\"speed-sensor:\\\", \\\"bt\\\": now, \\\"n\\\": \\\"speed\\\", \\\"u\\\": \\\"km/h\\\", \\\"v\\\": 60 + Math.random() * 40}\\n]);\\nmsg.topic = \\\"m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry\\\";\\nreturn msg;\",\"wires\":[[\"mqtt-pub-speed\",\"debug-speed\"]]}]"
+    "vs": "[{\"id\":\"flow-speed-sensor\",\"type\":\"tab\",\"label\":\"Speed Sensor Flow\",\"disabled\":false,\"info\":\"Publishes SenML speed data to Magistrala cloud every 15s via MQTT over TLS.\"},{\"id\":\"mqtt-broker-config\",\"type\":\"mqtt-broker\",\"name\":\"Magistrala Cloud MQTT\",\"broker\":\"host.docker.internal\",\"port\":\"8883\",\"clientid\":\"<client-id>-nr\",\"usetls\":true,\"tls\":\"magistrala-agent-tls\",\"credentials\":{\"user\":\"<client-id>\",\"password\":\"<client-secret>\"},\"z\":\"\"},{\"id\":\"inject-speed\",\"type\":\"inject\",\"z\":\"flow-speed-sensor\",\"name\":\"Every 15s\",\"repeat\":\"15\",\"once\":true,\"onceDelay\":3,\"wires\":[[\"build-speed-senml\"]]},{\"id\":\"build-speed-senml\",\"type\":\"function\",\"z\":\"flow-speed-sensor\",\"func\":\"var now = Date.now() * 1e6;\\nmsg.payload = JSON.stringify([\\n    {\\\"bn\\\": \\\"speed-sensor:\\\", \\\"bt\\\": now, \\\"n\\\": \\\"speed\\\", \\\"u\\\": \\\"km/h\\\", \\\"v\\\": 60 + Math.random() * 40}\\n]);\\nmsg.topic = \\\"m/<tenant-id>/c/<telemetry-channel-id>/gateway/telemetry\\\";\\nreturn msg;\",\"wires\":[[\"mqtt-pub-speed\",\"debug-speed\"]]}]"
   }
 ]
 ```
 
-Note the normalisations the agent applied: `clientid` suffixed with `-nr`, `usetls` set to `true`, `tls` set to `magistrala-agent-tls`, and the topic rewritten to `m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry`.
+Note the normalisations the agent applied: `gatewayid` suffixed with `-nr`, `usetls` set to `true`, `tls` set to `magistrala-agent-tls`, and the topic rewritten to `m/<tenant-id>/c/<telemetry-channel-id>/gateway/telemetry`.
 
 ### Deploy flows (replace all)
 
@@ -377,8 +377,8 @@ FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
 
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "deploy-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "deploy-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-deploy,$FLOWS\"}]"
 ```
 
@@ -404,8 +404,8 @@ FLOWS=$(cat examples/nodered/modbus-flow.json | base64 -w 0)
 
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "addflow-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "addflow-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m "[{\"bn\":\"req-1:\",\"n\":\"nodered\",\"vs\":\"nodered-add-flow,$FLOWS\"}]"
 ```
 
@@ -431,21 +431,21 @@ After deploying a flow, subscribe to the telemetry topic to confirm Node-RED is 
 ```bash
 mosquitto_sub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "tel-$(date +%s)" \
-    -t "m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry" \
+    -u <gateway-id> -P <gateway-secret> --id "tel-$(date +%s)" \
+    -t "m/<tenant-id>/c/<telemetry-channel-id>/gateway/telemetry" \
     -v
 ```
 
 **Expected output (speed-flow.json, every 15s):**
 
 ```
-m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry [{"bn":"speed-sensor:","bt":1781866061271000000,"n":"speed","u":"km/h","v":82.4},{"n":"rpm","u":"rpm","v":1923},{"n":"gear","u":"1","v":3}]
+m/<tenant-id>/c/<telemetry-channel-id>/gateway/telemetry [{"bn":"speed-sensor:","bt":1781866061271000000,"n":"speed","u":"km/h","v":82.4},{"n":"rpm","u":"rpm","v":1923},{"n":"gear","u":"1","v":3}]
 ```
 
 **Expected output (modbus-flow.json, every 10s):**
 
 ```
-m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry [{"bn":"modbus-device:","bt":1781866061271000000,"n":"hr0","u":"V","v":236},{"n":"hr1","u":"A","v":11.2},{"n":"hr2","u":"W","v":2643},{"n":"hr3","u":"Cel","v":48}]
+m/<tenant-id>/c/<telemetry-channel-id>/gateway/telemetry [{"bn":"modbus-device:","bt":1781866061271000000,"n":"hr0","u":"V","v":236},{"n":"hr1","u":"A","v":11.2},{"n":"hr2","u":"W","v":2643},{"n":"hr3","u":"Cel","v":48}]
 ```
 
 ### Error handling
@@ -475,8 +475,8 @@ FLOWS=$(cat examples/nodered/speed-flow.json | base64 -w 0)
 
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "ctrl-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "ctrl-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m "[{\"bn\":\"req-1:\",\"n\":\"control\",\"vs\":\"nodered-deploy,$FLOWS\"}]"
 ```
 

@@ -59,11 +59,11 @@ func (f *Factory) createMQTTTransport() (*TransportSetup, error) {
 		return nil, fmt.Errorf("failed to connect to MQTT broker: %w", err)
 	}
 
-	publisher := NewMQTTPublisher(mqttClient, f.config.DomainID, f.config.Channels.CtrlChan(), f.config.Channels.DataChan(), TopicControl)
-	connector := NewMQTTConnector(mqttClient, f.config.DomainID, f.config.Channels.CtrlChan(), f.config.Channels.DataChan(), TopicControl)
+	publisher := NewMQTTPublisher(mqttClient, f.config.TenantID, f.config.Channels.CtrlChan(), f.config.Channels.DataChan(), TopicControl)
+	connector := NewMQTTConnector(mqttClient, f.config.TenantID, f.config.Channels.CtrlChan(), f.config.Channels.DataChan(), TopicControl)
 
-	broker := conn.NewBroker(f.service, mqttClient, f.config.Channels.CtrlChan(), f.config.DomainID, f.logger)
-	mqttBroker := NewMQTTBroker(broker, mqttClient, f.config.DomainID, f.config.Channels.CtrlChan(), f.config.Channels.DataChan(), TopicControl)
+	broker := conn.NewBroker(f.service, mqttClient, f.config.Channels.CtrlChan(), f.config.TenantID, f.logger)
+	mqttBroker := NewMQTTBroker(broker, mqttClient, f.config.TenantID, f.config.Channels.CtrlChan(), f.config.Channels.DataChan(), TopicControl)
 
 	onConnect = mqttBroker.Resubscribe
 
@@ -96,11 +96,11 @@ func (f *Factory) createCoAPTransport() (*TransportSetup, error) {
 		return nil, fmt.Errorf("failed to create CoAP client: %w", err)
 	}
 
-	publisher := NewCoAPPublisher(coapClient, f.config.DomainID, f.config.Channels.CtrlChan(), f.config.Channels.DataChan(), TopicControl, f.config.CoAP.ContentFormat)
+	publisher := NewCoAPPublisher(coapClient, f.config.TenantID, f.config.Channels.CtrlChan(), f.config.Channels.DataChan(), TopicControl, f.config.CoAP.ContentFormat)
 	connector := NewCoAPConnector(coapClient)
 
-	broker := coap.NewBroker(f.service, coapClient, f.config.Channels.CtrlChan(), f.config.DomainID, f.logger)
-	coapBroker := NewCoAPBroker(broker, coapClient, f.config.DomainID, f.config.Channels.CtrlChan(), f.config.Channels.DataChan(), TopicControl, f.config.CoAP.ContentFormat)
+	broker := coap.NewBroker(f.service, coapClient, f.config.Channels.CtrlChan(), f.config.TenantID, f.logger)
+	coapBroker := NewCoAPBroker(broker, coapClient, f.config.TenantID, f.config.Channels.CtrlChan(), f.config.Channels.DataChan(), TopicControl, f.config.CoAP.ContentFormat)
 
 	return &TransportSetup{
 		Broker:    coapBroker,

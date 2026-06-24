@@ -82,8 +82,8 @@ Output from the PTY is published as SenML on the control response topic under `t
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"set,terminal_session_timeout,120s"}]'
 ```
 
@@ -91,8 +91,8 @@ mosquitto_pub \
 
 | Direction     | Topic                                         | QoS | Description                          |
 | ------------- | --------------------------------------------- | --- | ------------------------------------ |
-| Cloud → Agent | `m/<domain-id>/c/<ctrl-chan>/req`             | 1   | Terminal commands (`term` subsystem) |
-| Agent → Cloud | `m/<domain-id>/c/<ctrl-chan>/res/term/<uuid>` | 1   | PTY output for a specific session    |
+| Cloud → Agent | `m/<tenant-id>/c/<ctrl-chan>/req`             | 1   | Terminal commands (`term` subsystem) |
+| Agent → Cloud | `m/<tenant-id>/c/<ctrl-chan>/res/term/<uuid>` | 1   | PTY output for a specific session    |
 
 ## MQTT Test Recipes
 
@@ -103,15 +103,15 @@ Open a separate terminal to watch session output:
 ```bash
 mosquitto_sub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> \
-    -t "m/<domain-id>/c/<commands-channel-id>/res/term/#" \
+    -u <gateway-id> -P <gateway-secret> \
+    -t "m/<tenant-id>/c/<commands-channel-id>/res/term/#" \
     -v
 ```
 
 **Expected output:**
 
 ```
-m/e9692c28-b730-4797-8a15-2e25c08f9641/c/bc9a0af7-6d0f-4806-aa5a-61d68c0a7cf7/res/term/term-1781257973 [{"bn":"term-1781257973","n":"term","t":1781257978.7125685,"vs":"/ # \u001b[6n"}]
+m/<tenant-id>/c/<commands-channel-id>/res/term/term-1781257973 [{"bn":"term-1781257973","n":"term","t":1781257978.7125685,"vs":"/ # \u001b[6n"}]
 ```
 
 ### Open a terminal session
@@ -122,8 +122,8 @@ UUID="term-$(date +%s)"
 # "open" → base64 = b3Blbg==
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "$UUID" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "$UUID" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m "[{\"bn\":\"$UUID:\", \"n\":\"term\", \"vs\":\"b3Blbg==\"}]"
 ```
 
@@ -135,8 +135,8 @@ UUID="term-1781257973"
 # "char,ls\n" → base64 = Y2hhcixscwo=
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "$UUID" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "$UUID" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m "[{\"bn\":\"$UUID:\", \"n\":\"term\", \"vs\":\"Y2hhcixscwo=\"}]"
 ```
 
@@ -153,8 +153,8 @@ echo -n "char,uname -a" | base64
 
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "$UUID" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "$UUID" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m "[{\"bn\":\"$UUID:\", \"n\":\"term\", \"vs\":\"Y2hhcix1bmFtZSAtYQo=\"}]"
 ```
 
@@ -166,8 +166,8 @@ UUID="term-1749552000"
 # "close" → base64 = Y2xvc2U=
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "$UUID" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "$UUID" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m "[{\"bn\":\"$UUID:\", \"n\":\"term\", \"vs\":\"Y2xvc2U=\"}]"
 ```
 

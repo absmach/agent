@@ -50,19 +50,19 @@ type Broker struct {
 	client   *Client
 	logger   *slog.Logger
 	channel  string
-	domainID string
+	tenantID string
 	ctx      context.Context
 	handlers map[string]CommandHandler
 	mu       sync.RWMutex
 }
 
-func NewBroker(svc agent.Service, client *Client, channel, domainID string, logger *slog.Logger) *Broker {
+func NewBroker(svc agent.Service, client *Client, channel, tenantID string, logger *slog.Logger) *Broker {
 	b := &Broker{
 		svc:      svc,
 		client:   client,
 		logger:   logger,
 		channel:  channel,
-		domainID: domainID,
+		tenantID: tenantID,
 		handlers: make(map[string]CommandHandler),
 	}
 	b.registerBuiltins()
@@ -295,7 +295,7 @@ func (b *Broker) publish(ctx context.Context, topic, payload string) error {
 }
 
 func (b *Broker) buildPath(topic string) string {
-	return fmt.Sprintf("/m/%s/c/%s/%s", b.domainID, b.channel, topic)
+	return fmt.Sprintf("/m/%s/c/%s/%s", b.tenantID, b.channel, topic)
 }
 
 func authorizeCommand(records []senml.Record, secret string) bool {

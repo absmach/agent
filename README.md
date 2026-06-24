@@ -35,12 +35,12 @@ The binary is written to `build/magistrala-agent`.
 ```bash
 export MG_AGENT_BOOTSTRAP_EXTERNAL_ID='<external-id>'
 export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY='<external-key>'
-export MG_DOMAIN_ID='<domain-id>'
+export MG_TENANT_ID='<tenant-id>'
 export MG_PAT='<personal-access-token>'
 make run_provision
 ```
 
-The PAT must have scopes for `bootstrap:create`, `rules:create`, `clients:create`, `channels:create`, and connect permissions in the target domain. See [docs/bootstrap.md](docs/bootstrap.md) for details and cloud provisioning.
+The PAT must have scopes for `bootstrap:create`, `rules:create`, `gateways:create`, `channels:create`, and connect permissions in the target tenant. See [docs/bootstrap.md](docs/bootstrap.md) for details and cloud provisioning.
 
 ### 2. Build and start
 

@@ -3,14 +3,14 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Provision script for mock device environment.
-# This script creates the necessary Magistrala resources (Client, Channels,
+# This script creates the necessary Magistrala resources (Gateway, Channels,
 # Bootstrap Profile, Bootstrap Enrollment) so that the agent can call the
 # bootstrap endpoint at startup to receive its full configuration.
 #
 # Bootstrap flow (profile-based API):
 #   Step 4a - Create a Bootstrap Profile with a Go template and binding slots
 #   Step 4b - Create a Bootstrap Enrollment linked to the profile
-#   Step 4c - Bind the device client and channels to the enrollment slots
+#   Step 4c - Bind the device gateway and channels to the enrollment slots
 #
 # Prerequisites:
 #   - A running Magistrala instance (self-hosted or cloud)
@@ -19,24 +19,23 @@
 # Environment variables:
 #   MG_API           - Base API URL for all services (e.g., https://cloud.magistrala.absmach.eu/api)
 #                      If set, overrides individual service API settings
-#   MG_CLIENTS_API   - Clients service API base URL (default: http://localhost:9006)
-#   MG_CHANNELS_API  - Channels service API base URL (default: http://localhost:9005)
+#   MG_ATOM_API   - ATOM service API base URL (default: http://localhost:9006)
 #   MG_RULES_API     - Rules service API base URL (default: http://localhost:9008)
 #   MG_BOOTSTRAP_API - Bootstrap service API base URL (default: http://localhost:9013)
 #   MG_PROVISION_API - Provision service API base URL (default: http://localhost:9016)
 #                      Embedded in the bootstrap profile so the agent can register
 #                      downstream devices without any extra env vars on the device.
-#   MG_DOMAIN_ID     - Domain ID (required)
+#   MG_TENANT_ID     - Tenant ID (required)
 #   MG_PAT           - Personal Access Token (required)
 #   MG_AGENT_BOOTSTRAP_EXTERNAL_ID  - External bootstrap ID for the device (required)
 #   MG_AGENT_BOOTSTRAP_EXTERNAL_KEY - External bootstrap key for the device (required)
-#   MG_AGENT_BOOTSTRAP_CLIENT_CERT  - Optional PEM client certificate to store in bootstrap
-#   MG_AGENT_BOOTSTRAP_CLIENT_KEY   - Optional PEM client key to store in bootstrap
+#   MG_AGENT_BOOTSTRAP_GATEWAY_CERT  - Optional PEM gateway certificate to store in bootstrap
+#   MG_AGENT_BOOTSTRAP_GATEWAY_KEY   - Optional PEM gateway key to store in bootstrap
 #   MG_AGENT_BOOTSTRAP_CA_CERT      - Optional PEM CA certificate to store in bootstrap
 #
 # Usage (localhost):
 #   export MG_PAT=pat_xxx
-#   export MG_DOMAIN_ID=<domain-id>
+#   export MG_TENANT_ID=<tenant-id>
 #   export MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<device-id>
 #   export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<device-key>
 #   ./provision.sh
@@ -44,7 +43,7 @@
 # Usage (cloud):
 #   export MG_API=https://cloud.magistrala.absmach.eu/api
 #   export MG_PAT=pat_xxx
-#   export MG_DOMAIN_ID=<domain-id>
+#   export MG_TENANT_ID=<tenant-id>
 #   export MG_AGENT_BOOTSTRAP_EXTERNAL_ID=<device-id>
 #   export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY=<device-key>
 #   ./provision.sh
@@ -53,57 +52,53 @@ set -euo pipefail
 
 # Check if a unified API base URL is provided
 if [ -n "${MG_API:-}" ]; then
-  # Cloud / remote deployment: script API calls and agent-facing URLs are the same.
-  MG_CLIENTS_API="${MG_CLIENTS_API:-${MG_API}}"
-  MG_CHANNELS_API="${MG_CHANNELS_API:-${MG_API}}"
-  MG_RULES_API="${MG_RULES_API:-${MG_API}}"
-  MG_BOOTSTRAP_API="${MG_BOOTSTRAP_API:-${MG_API}}"
-  MG_PROVISION_API="${MG_PROVISION_API:-${MG_API}}"
-  # Agent-facing URLs default to the same remote base when MG_API is set.
-  MG_AGENT_CLIENTS_URL="${MG_AGENT_CLIENTS_URL:-${MG_CLIENTS_API}}"
-  MG_AGENT_CHANNELS_URL="${MG_AGENT_CHANNELS_URL:-${MG_CHANNELS_API}}"
-  MG_AGENT_RULES_URL="${MG_AGENT_RULES_URL:-${MG_RULES_API}}"
-  DEFAULT_MQTT_URL="ssl://messaging.magistrala.absmach.eu:8883"
+    # Cloud / remote deployment: script API calls and agent-facing URLs are the same.
+    MG_ATOM_API="${MG_ATOM_API:-${MG_API}}"
+    MG_RULES_API="${MG_RULES_API:-${MG_API}}"
+    MG_BOOTSTRAP_API="${MG_BOOTSTRAP_API:-${MG_API}}"
+    MG_PROVISION_API="${MG_PROVISION_API:-${MG_API}}"
+    # Agent-facing URLs default to the same remote base when MG_API is set.
+    MG_AGENT_ATOM_URL="${MG_AGENT_ATOM_URL:-${MG_ATOM_API}}"
+    MG_AGENT_RULES_URL="${MG_AGENT_RULES_URL:-${MG_RULES_API}}"
+    DEFAULT_MQTT_URL="ssl://messaging.magistrala.absmach.eu:8883"
 else
-  # Local deployment: script runs on the host (localhost works), but the agent
-  # runs inside Docker and uses the service-name aliases defined in extra_hosts.
-  MG_CLIENTS_API="${MG_CLIENTS_API:-http://localhost:9006}"
-  MG_CHANNELS_API="${MG_CHANNELS_API:-http://localhost:9005}"
-  MG_RULES_API="${MG_RULES_API:-http://localhost:9008}"
-  MG_BOOTSTRAP_API="${MG_BOOTSTRAP_API:-http://localhost:9013}"
-  MG_PROVISION_API="${MG_PROVISION_API:-http://localhost:9016}"
-  # Agent-facing URLs use Docker extra_hosts aliases so they resolve inside the container.
-  MG_AGENT_CLIENTS_URL="${MG_AGENT_CLIENTS_URL:-http://clients:9006}"
-  MG_AGENT_CHANNELS_URL="${MG_AGENT_CHANNELS_URL:-http://channels:9005}"
-  MG_AGENT_RULES_URL="${MG_AGENT_RULES_URL:-http://rules:9008}"
-  DEFAULT_MQTT_URL="ssl://host.docker.internal:8883"
+    # Local deployment: script runs on the host (localhost works), but the agent
+    # runs inside Docker and uses the service-name aliases defined in extra_hosts.
+    MG_ATOM_API="${MG_ATOM_API:-http://localhost:8080}"
+    MG_RULES_API="${MG_RULES_API:-http://localhost:9008}"
+    MG_BOOTSTRAP_API="${MG_BOOTSTRAP_API:-http://localhost:9013}"
+    MG_PROVISION_API="${MG_PROVISION_API:-http://localhost:9016}"
+    # Agent-facing URLs use Docker extra_hosts aliases so they resolve inside the container.
+    MG_AGENT_ATOM_URL="${MG_AGENT_ATOM_URL:-http://atom:8080}"
+    MG_AGENT_RULES_URL="${MG_AGENT_RULES_URL:-http://rules:9008}"
+    DEFAULT_MQTT_URL="ssl://host.docker.internal:8883"
 fi
 
 MG_AGENT_MQTT_URL="${MG_AGENT_MQTT_URL:-${DEFAULT_MQTT_URL}}"
-MG_AGENT_BOOTSTRAP_CLIENT_CERT="${MG_AGENT_BOOTSTRAP_CLIENT_CERT:-}"
-MG_AGENT_BOOTSTRAP_CLIENT_KEY="${MG_AGENT_BOOTSTRAP_CLIENT_KEY:-}"
+MG_AGENT_BOOTSTRAP_GATEWAY_CERT="${MG_AGENT_BOOTSTRAP_GATEWAY_CERT:-}"
+MG_AGENT_BOOTSTRAP_GATEWAY_KEY="${MG_AGENT_BOOTSTRAP_GATEWAY_KEY:-}"
 MG_AGENT_BOOTSTRAP_CA_CERT="${MG_AGENT_BOOTSTRAP_CA_CERT:-}"
 MG_RULES_RETRIES="${MG_RULES_RETRIES:-5}"
 MG_RULES_RETRY_DELAY_SECONDS="${MG_RULES_RETRY_DELAY_SECONDS:-2}"
 
 if [ -z "${MG_AGENT_BOOTSTRAP_EXTERNAL_ID:-}" ]; then
-  echo "ERROR: MG_AGENT_BOOTSTRAP_EXTERNAL_ID is required (device MAC address or unique ID)."
-  exit 1
+    echo "ERROR: MG_AGENT_BOOTSTRAP_EXTERNAL_ID is required (device MAC address or unique ID)."
+    exit 1
 fi
 if [ -z "${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY:-}" ]; then
-  echo "ERROR: MG_AGENT_BOOTSTRAP_EXTERNAL_KEY is required (device bootstrap password)."
-  exit 1
+    echo "ERROR: MG_AGENT_BOOTSTRAP_EXTERNAL_KEY is required (device bootstrap password)."
+    exit 1
 fi
 
-DOMAIN_ID="${MG_DOMAIN_ID:-}"
-if [ -z "$DOMAIN_ID" ]; then
-  echo "ERROR: MG_DOMAIN_ID is required."
-  exit 1
+TENANT_ID="${MG_TENANT_ID:-}"
+if [ -z "$TENANT_ID" ]; then
+    echo "ERROR: MG_TENANT_ID is required."
+    exit 1
 fi
 
 if [ -z "${MG_PAT:-}" ]; then
-  echo "ERROR: MG_PAT is required."
-  exit 1
+    echo "ERROR: MG_PAT is required."
+    exit 1
 fi
 
 echo "=== Magistrala Mock Device Provisioning ==="
@@ -114,7 +109,7 @@ echo "Bootstrap API:         ${MG_BOOTSTRAP_API}"
 echo "Agent clients URL:     ${MG_AGENT_CLIENTS_URL}"
 echo "Agent channels URL:    ${MG_AGENT_CHANNELS_URL}"
 echo "Agent rules URL:       ${MG_AGENT_RULES_URL}"
-echo "Domain ID:             ${DOMAIN_ID}"
+echo "Tenant ID:             ${TENANT_ID}"
 echo ""
 
 TOKEN="${MG_PAT}"
@@ -126,100 +121,100 @@ echo "Step 1: Using PAT token (${#TOKEN} characters)."
 
 # POST request; outputs body + newline + HTTP status code.
 post_json() {
-  local url="$1"
-  local payload="$2"
+    local url="$1"
+    local payload="$2"
 
-  curl -sSL -X POST "${url}" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${TOKEN}" \
-    -w "\n%{http_code}" \
-    -d "${payload}"
+    curl -sSL -X POST "${url}" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer ${TOKEN}" \
+        -w "\n%{http_code}" \
+        -d "${payload}"
 }
 
 # PUT request; outputs body + newline + HTTP status code.
 put_json() {
-  local url="$1"
-  local payload="$2"
+    local url="$1"
+    local payload="$2"
 
-  curl -sSL -X PUT "${url}" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${TOKEN}" \
-    -w "\n%{http_code}" \
-    -d "${payload}"
+    curl -sSL -X PUT "${url}" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer ${TOKEN}" \
+        -w "\n%{http_code}" \
+        -d "${payload}"
 }
 
 response_code() {
-  printf '%s\n' "$1" | tail -n1
+    printf '%s\n' "$1" | tail -n1
 }
 
 response_body() {
-  printf '%s\n' "$1" | sed '$d'
+    printf '%s\n' "$1" | sed '$d'
 }
 
 require_created() {
-  local step="$1"
-  local url="$2"
-  local response="$3"
-  local code body
+    local step="$1"
+    local url="$2"
+    local response="$3"
+    local code body
 
-  code=$(response_code "${response}")
-  body=$(response_body "${response}")
+    code=$(response_code "${response}")
+    body=$(response_body "${response}")
 
-  if [ "${code}" != "200" ] && [ "${code}" != "201" ]; then
-    echo "ERROR: ${step} returned HTTP ${code}."
-    echo "Endpoint: ${url}"
-    echo "Response: ${body}"
-    exit 1
-  fi
+    if [ "${code}" != "200" ] && [ "${code}" != "201" ]; then
+        echo "ERROR: ${step} returned HTTP ${code}."
+        echo "Endpoint: ${url}"
+        echo "Response: ${body}"
+        exit 1
+    fi
 }
 
 # Validate a 204 No Content response (used for bindings PUT).
 require_no_content() {
-  local step="$1"
-  local url="$2"
-  local response="$3"
-  local code body
+    local step="$1"
+    local url="$2"
+    local response="$3"
+    local code body
 
-  code=$(response_code "${response}")
+    code=$(response_code "${response}")
 
-  if [ "${code}" != "204" ]; then
-    body=$(response_body "${response}")
+    if [ "${code}" != "204" ]; then
+        body=$(response_body "${response}")
+        echo "ERROR: ${step} returned HTTP ${code}."
+        echo "Endpoint: ${url}"
+        echo "Response: ${body}"
+        exit 1
+    fi
+}
+
+require_created_with_retry() {
+    local step="$1"
+    local url="$2"
+    local payload="$3"
+    local retries="$4"
+    local delay="$5"
+    local response code body attempt=1
+
+    while [ "${attempt}" -le "${retries}" ]; do
+        response=$(post_json "${url}" "${payload}")
+        code=$(response_code "${response}")
+        body=$(response_body "${response}")
+
+        if [ "${code}" = "200" ] || [ "${code}" = "201" ]; then
+            printf '%s\n' "${response}"
+            return 0
+        fi
+
+        if [ "${attempt}" -lt "${retries}" ]; then
+            echo "  Attempt ${attempt}/${retries} failed with HTTP ${code}; retrying in ${delay}s..."
+            sleep "${delay}"
+        fi
+        attempt=$((attempt + 1))
+    done
+
     echo "ERROR: ${step} returned HTTP ${code}."
     echo "Endpoint: ${url}"
     echo "Response: ${body}"
     exit 1
-  fi
-}
-
-require_created_with_retry() {
-  local step="$1"
-  local url="$2"
-  local payload="$3"
-  local retries="$4"
-  local delay="$5"
-  local response code body attempt=1
-
-  while [ "${attempt}" -le "${retries}" ]; do
-    response=$(post_json "${url}" "${payload}")
-    code=$(response_code "${response}")
-    body=$(response_body "${response}")
-
-    if [ "${code}" = "200" ] || [ "${code}" = "201" ]; then
-      printf '%s\n' "${response}"
-      return 0
-    fi
-
-    if [ "${attempt}" -lt "${retries}" ]; then
-      echo "  Attempt ${attempt}/${retries} failed with HTTP ${code}; retrying in ${delay}s..."
-      sleep "${delay}"
-    fi
-    attempt=$((attempt + 1))
-  done
-
-  echo "ERROR: ${step} returned HTTP ${code}."
-  echo "Endpoint: ${url}"
-  echo "Response: ${body}"
-  exit 1
 }
 
 # ---------------------------------------------------------------------------
@@ -234,13 +229,13 @@ require_created_with_retry() {
 #   telemetry    - the telemetry/data Channel (DataChan)
 #   commands     - the commands/control Channel (CtrlChan)
 build_profile_payload() {
-  python3 - <<'PY'
+    python3 - <<'PY'
 import json
 
 template = """{
   "device_id": "{{ .Device.ID }}",
   "external_id": "{{ .Device.ExternalID }}",
-  "domain_id": "{{ .Device.DomainID }}",
+  "tenant_id": "{{ .Device.TenantID }}",
   "mqtt": {
     "url": "{{ index .Vars "mqtt_url" }}",
     "client_id": "{{ (index .Bindings "mqtt_client").ID }}",
@@ -293,18 +288,18 @@ PY
 # referenced in the profile template. Only mqtt_url is needed; all other
 # agent settings are provided via environment variables at startup.
 build_enrollment_payload() {
-  PROFILE_ID="${PROFILE_ID}" \
-  MG_AGENT_BOOTSTRAP_EXTERNAL_ID="${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}" \
-  MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY}" \
-  MG_AGENT_MQTT_URL="${MG_AGENT_MQTT_URL}" \
-  MG_AGENT_CLIENTS_URL="${MG_AGENT_CLIENTS_URL}" \
-  MG_AGENT_CHANNELS_URL="${MG_AGENT_CHANNELS_URL}" \
-  MG_PAT="${MG_PAT}" \
-  MG_AGENT_RULES_URL="${MG_AGENT_RULES_URL}" \
-  MG_AGENT_BOOTSTRAP_CLIENT_CERT="${MG_AGENT_BOOTSTRAP_CLIENT_CERT}" \
-  MG_AGENT_BOOTSTRAP_CLIENT_KEY="${MG_AGENT_BOOTSTRAP_CLIENT_KEY}" \
-  MG_AGENT_BOOTSTRAP_CA_CERT="${MG_AGENT_BOOTSTRAP_CA_CERT}" \
-  python3 - <<'PY'
+    PROFILE_ID="${PROFILE_ID}" \
+        MG_AGENT_BOOTSTRAP_EXTERNAL_ID="${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}" \
+        MG_AGENT_BOOTSTRAP_EXTERNAL_KEY="${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY}" \
+        MG_AGENT_MQTT_URL="${MG_AGENT_MQTT_URL}" \
+        MG_AGENT_CLIENTS_URL="${MG_AGENT_CLIENTS_URL}" \
+        MG_AGENT_CHANNELS_URL="${MG_AGENT_CHANNELS_URL}" \
+        MG_PAT="${MG_PAT}" \
+        MG_AGENT_RULES_URL="${MG_AGENT_RULES_URL}" \
+        MG_AGENT_BOOTSTRAP_CLIENT_CERT="${MG_AGENT_BOOTSTRAP_CLIENT_CERT}" \
+        MG_AGENT_BOOTSTRAP_CLIENT_KEY="${MG_AGENT_BOOTSTRAP_CLIENT_KEY}" \
+        MG_AGENT_BOOTSTRAP_CA_CERT="${MG_AGENT_BOOTSTRAP_CA_CERT}" \
+        python3 - <<'PY'
 import json
 import os
 
@@ -320,7 +315,7 @@ payload = {
     # exposes full operator authority over the Magistrala deployment. Before
     # using this in production, replace MG_PAT with a narrowly-scoped token
     # that only has permission to create clients/channels/rules within the
-    # target domain.
+    # target tenant.
     "render_context": {
         "mqtt_url":          os.environ["MG_AGENT_MQTT_URL"],
         "clients_url":       os.environ["MG_AGENT_CLIENTS_URL"],
@@ -328,8 +323,8 @@ payload = {
         "provision_token":   os.environ["MG_PAT"],
         "rules_engine_url":  os.environ["MG_AGENT_RULES_URL"],
     },
-    "client_cert": os.environ["MG_AGENT_BOOTSTRAP_CLIENT_CERT"],
-    "client_key":  os.environ["MG_AGENT_BOOTSTRAP_CLIENT_KEY"],
+    "client_cert": os.environ["MG_AGENT_BOOTSTRAP_GATEWAY_CERT"],
+    "client_key":  os.environ["MG_AGENT_BOOTSTRAP_GATEWAY_KEY"],
     "ca_cert":     os.environ["MG_AGENT_BOOTSTRAP_CA_CERT"],
 }
 print(json.dumps(payload, separators=(",", ":")))
@@ -338,10 +333,10 @@ PY
 
 # Build the bindings payload that links profile slots to real resources.
 build_bindings_payload() {
-  CLIENT_ID="${CLIENT_ID}" \
-  TELEMETRY_CHANNEL="${TELEMETRY_CHANNEL}" \
-  COMMANDS_CHANNEL="${COMMANDS_CHANNEL}" \
-  python3 - <<'PY'
+    CLIENT_ID="${CLIENT_ID}" \
+        TELEMETRY_CHANNEL="${TELEMETRY_CHANNEL}" \
+        COMMANDS_CHANNEL="${COMMANDS_CHANNEL}" \
+        python3 - <<'PY'
 import json
 import os
 
@@ -369,12 +364,12 @@ PY
 }
 
 build_connect_payload() {
-  local channel_id="$1"
-  shift
-  CHANNEL_ID="${channel_id}" \
-  CLIENT_ID="${CLIENT_ID}" \
-  CONN_TYPES="$*" \
-  python3 - <<'PY'
+    local channel_id="$1"
+    shift
+    CHANNEL_ID="${channel_id}" \
+        CLIENT_ID="${CLIENT_ID}" \
+        CONN_TYPES="$*" \
+        python3 - <<'PY'
 import json
 import os
 
@@ -392,7 +387,7 @@ PY
 # ---------------------------------------------------------------------------
 echo ""
 echo "Step 2: Creating agent Client (device)..."
-CLIENT_URL="${MG_CLIENTS_API}/${DOMAIN_ID}/clients"
+CLIENT_URL="${MG_CLIENTS_API}/${TENANT_ID}/clients"
 echo "  API: ${CLIENT_URL}"
 
 CLIENT_PAYLOAD='{
@@ -411,10 +406,10 @@ CLIENT_ID=$(echo "$CLIENT_BODY" | python3 -c "import sys,json; print(json.load(s
 CLIENT_SECRET=$(echo "$CLIENT_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('credentials',{}).get('secret',''))" 2>/dev/null || echo "")
 
 if [ -z "$CLIENT_ID" ]; then
-  echo "ERROR: Failed to create Client."
-  echo "Endpoint: ${CLIENT_URL}"
-  echo "Response: ${CLIENT_BODY}"
-  exit 1
+    echo "ERROR: Failed to create Client."
+    echo "Endpoint: ${CLIENT_URL}"
+    echo "Response: ${CLIENT_BODY}"
+    exit 1
 fi
 echo "  Client ID:     ${CLIENT_ID}"
 echo "  Client Secret: ${CLIENT_SECRET}"
@@ -424,7 +419,7 @@ echo "  Client Secret: ${CLIENT_SECRET}"
 # ---------------------------------------------------------------------------
 echo ""
 echo "Step 3: Creating Channels (telemetry + commands)..."
-CHANNEL_URL="${MG_CHANNELS_API}/${DOMAIN_ID}/channels"
+CHANNEL_URL="${MG_CHANNELS_API}/${TENANT_ID}/channels"
 echo "  API: ${CHANNEL_URL}"
 
 TELEMETRY_PAYLOAD='{
@@ -442,9 +437,9 @@ TEL_BODY=$(response_body "${TEL_RESPONSE}")
 
 TELEMETRY_CHANNEL=$(echo "$TEL_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 if [ -z "$TELEMETRY_CHANNEL" ]; then
-  echo "ERROR: Failed to create telemetry Channel."
-  echo "Response: ${TEL_BODY}"
-  exit 1
+    echo "ERROR: Failed to create telemetry Channel."
+    echo "Response: ${TEL_BODY}"
+    exit 1
 fi
 echo "  Telemetry Channel ID: ${TELEMETRY_CHANNEL}"
 
@@ -463,9 +458,9 @@ CMD_BODY=$(response_body "${CMD_RESPONSE}")
 
 COMMANDS_CHANNEL=$(echo "$CMD_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 if [ -z "$COMMANDS_CHANNEL" ]; then
-  echo "ERROR: Failed to create commands Channel."
-  echo "Response: ${CMD_BODY}"
-  exit 1
+    echo "ERROR: Failed to create commands Channel."
+    echo "Response: ${CMD_BODY}"
+    exit 1
 fi
 echo "  Commands Channel ID:  ${COMMANDS_CHANNEL}"
 
@@ -474,7 +469,7 @@ echo "  Commands Channel ID:  ${COMMANDS_CHANNEL}"
 # ---------------------------------------------------------------------------
 echo ""
 echo "Step 3b: Connecting Client to Channels..."
-CONNECT_URL="${MG_CHANNELS_API}/${DOMAIN_ID}/channels/connect"
+CONNECT_URL="${MG_CHANNELS_API}/${TENANT_ID}/channels/connect"
 echo "  API: ${CONNECT_URL}"
 
 TELEMETRY_CONNECT_PAYLOAD=$(build_connect_payload "${TELEMETRY_CHANNEL}" Publish)
@@ -492,7 +487,7 @@ echo "  ${CLIENT_ID} → ${COMMANDS_CHANNEL} (Publish, Subscribe)"
 # ---------------------------------------------------------------------------
 echo ""
 echo "Step 4a: Creating Bootstrap Profile..."
-PROFILE_URL="${MG_BOOTSTRAP_API}/${DOMAIN_ID}/clients/bootstrap/profiles"
+PROFILE_URL="${MG_BOOTSTRAP_API}/${TENANT_ID}/clients/bootstrap/profiles"
 echo "  API: ${PROFILE_URL}"
 
 PROFILE_PAYLOAD=$(build_profile_payload)
@@ -501,7 +496,7 @@ PROFILE_NAME=$(echo "${PROFILE_PAYLOAD}" | python3 -c "import sys,json; print(js
 PROFILE_ID=""
 
 PROFILE_LOOKUP=$(curl -sSL "${PROFILE_URL}?limit=100" \
-  -H "Authorization: Bearer ${TOKEN}" 2>/dev/null || echo "")
+    -H "Authorization: Bearer ${TOKEN}" 2>/dev/null || echo "")
 PROFILE_ID=$(echo "${PROFILE_LOOKUP}" | PROFILE_NAME="${PROFILE_NAME}" python3 -c "
 import sys, json, os
 try:
@@ -516,27 +511,27 @@ except Exception:
 " 2>/dev/null || echo "")
 
 if [ -n "${PROFILE_ID}" ]; then
-  echo "  Reusing existing profile: ${PROFILE_ID}"
+    echo "  Reusing existing profile: ${PROFILE_ID}"
 else
-  PROFILE_RESPONSE=$(post_json "${PROFILE_URL}" "${PROFILE_PAYLOAD}")
-  PROFILE_HTTP_CODE=$(response_code "${PROFILE_RESPONSE}")
-  PROFILE_BODY=$(response_body "${PROFILE_RESPONSE}")
+    PROFILE_RESPONSE=$(post_json "${PROFILE_URL}" "${PROFILE_PAYLOAD}")
+    PROFILE_HTTP_CODE=$(response_code "${PROFILE_RESPONSE}")
+    PROFILE_BODY=$(response_body "${PROFILE_RESPONSE}")
 
-  if [ "${PROFILE_HTTP_CODE}" = "200" ] || [ "${PROFILE_HTTP_CODE}" = "201" ]; then
-    PROFILE_ID=$(echo "${PROFILE_BODY}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
-    if [ -z "${PROFILE_ID}" ]; then
-      echo "ERROR: Failed to extract Profile ID from response."
-      echo "Response: ${PROFILE_BODY}"
-      exit 1
+    if [ "${PROFILE_HTTP_CODE}" = "200" ] || [ "${PROFILE_HTTP_CODE}" = "201" ]; then
+        PROFILE_ID=$(echo "${PROFILE_BODY}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
+        if [ -z "${PROFILE_ID}" ]; then
+            echo "ERROR: Failed to extract Profile ID from response."
+            echo "Response: ${PROFILE_BODY}"
+            exit 1
+        fi
+        echo "  Profile ID: ${PROFILE_ID}"
+    else
+        echo "ERROR: Bootstrap Profile creation returned HTTP ${PROFILE_HTTP_CODE}."
+        echo "Endpoint: ${PROFILE_URL}"
+        echo "Response: ${PROFILE_BODY}"
+        echo "Hint: A profile named '${PROFILE_NAME}' may already exist. Delete it or use a token with admin access."
+        exit 1
     fi
-    echo "  Profile ID: ${PROFILE_ID}"
-  else
-    echo "ERROR: Bootstrap Profile creation returned HTTP ${PROFILE_HTTP_CODE}."
-    echo "Endpoint: ${PROFILE_URL}"
-    echo "Response: ${PROFILE_BODY}"
-    echo "Hint: A profile named '${PROFILE_NAME}' may already exist. Delete it or use a token with admin access."
-    exit 1
-  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -545,11 +540,11 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "Step 4b: Creating Bootstrap Enrollment..."
-ENROLL_URL="${MG_BOOTSTRAP_API}/${DOMAIN_ID}/clients/configs"
+ENROLL_URL="${MG_BOOTSTRAP_API}/${TENANT_ID}/clients/configs"
 echo "  API: ${ENROLL_URL}"
 
 ENROLL_LOOKUP=$(curl -sSL "${ENROLL_URL}?offset=0&limit=100" \
-  -H "Authorization: Bearer ${TOKEN}" 2>/dev/null || echo "")
+    -H "Authorization: Bearer ${TOKEN}" 2>/dev/null || echo "")
 ENROLLMENT_ID=$(echo "${ENROLL_LOOKUP}" | MG_AGENT_BOOTSTRAP_EXTERNAL_ID="${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}" python3 -c "
 import sys, json, os
 try:
@@ -564,35 +559,35 @@ except Exception:
 " 2>/dev/null || echo "")
 
 if [ -n "${ENROLLMENT_ID}" ]; then
-  echo "  Reusing existing enrollment: ${ENROLLMENT_ID}"
+    echo "  Reusing existing enrollment: ${ENROLLMENT_ID}"
 else
-  ENROLL_PAYLOAD=$(build_enrollment_payload)
-  ENROLL_HEADERS=$(mktemp)
-  ENROLL_RESPONSE=$(curl -sSL -X POST "${ENROLL_URL}" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${TOKEN}" \
-    -D "${ENROLL_HEADERS}" \
-    -w "\n%{http_code}" \
-    -d "${ENROLL_PAYLOAD}")
-  ENROLL_HTTP_CODE=$(response_code "${ENROLL_RESPONSE}")
-  ENROLL_BODY=$(response_body "${ENROLL_RESPONSE}")
+    ENROLL_PAYLOAD=$(build_enrollment_payload)
+    ENROLL_HEADERS=$(mktemp)
+    ENROLL_RESPONSE=$(curl -sSL -X POST "${ENROLL_URL}" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer ${TOKEN}" \
+        -D "${ENROLL_HEADERS}" \
+        -w "\n%{http_code}" \
+        -d "${ENROLL_PAYLOAD}")
+    ENROLL_HTTP_CODE=$(response_code "${ENROLL_RESPONSE}")
+    ENROLL_BODY=$(response_body "${ENROLL_RESPONSE}")
 
-  if [ "${ENROLL_HTTP_CODE}" = "200" ] || [ "${ENROLL_HTTP_CODE}" = "201" ]; then
-    ENROLL_LOCATION=$(grep -i "^location:" "${ENROLL_HEADERS}" | tr -d '\r' | awk '{print $2}')
-    ENROLLMENT_ID=$(basename "${ENROLL_LOCATION}")
-    rm -f "${ENROLL_HEADERS}"
+    if [ "${ENROLL_HTTP_CODE}" = "200" ] || [ "${ENROLL_HTTP_CODE}" = "201" ]; then
+        ENROLL_LOCATION=$(grep -i "^location:" "${ENROLL_HEADERS}" | tr -d '\r' | awk '{print $2}')
+        ENROLLMENT_ID=$(basename "${ENROLL_LOCATION}")
+        rm -f "${ENROLL_HEADERS}"
 
-    if [ -z "${ENROLLMENT_ID}" ]; then
-      echo "ERROR: Failed to extract Enrollment ID from Location header."
-      exit 1
-    fi
-    echo "  Enrollment ID: ${ENROLLMENT_ID}"
-  else
-    echo "  Enrollment creation returned HTTP ${ENROLL_HTTP_CODE}, checking for existing enrollment..."
-    rm -f "${ENROLL_HEADERS}"
-    ENROLL_LOOKUP=$(curl -sSL "${ENROLL_URL}?offset=0&limit=100" \
-      -H "Authorization: Bearer ${TOKEN}" 2>/dev/null || echo "")
-    ENROLLMENT_ID=$(echo "${ENROLL_LOOKUP}" | MG_AGENT_BOOTSTRAP_EXTERNAL_ID="${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}" python3 -c "
+        if [ -z "${ENROLLMENT_ID}" ]; then
+            echo "ERROR: Failed to extract Enrollment ID from Location header."
+            exit 1
+        fi
+        echo "  Enrollment ID: ${ENROLLMENT_ID}"
+    else
+        echo "  Enrollment creation returned HTTP ${ENROLL_HTTP_CODE}, checking for existing enrollment..."
+        rm -f "${ENROLL_HEADERS}"
+        ENROLL_LOOKUP=$(curl -sSL "${ENROLL_URL}?offset=0&limit=100" \
+            -H "Authorization: Bearer ${TOKEN}" 2>/dev/null || echo "")
+        ENROLLMENT_ID=$(echo "${ENROLL_LOOKUP}" | MG_AGENT_BOOTSTRAP_EXTERNAL_ID="${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}" python3 -c "
 import sys, json, os
 try:
     data = json.load(sys.stdin)
@@ -604,15 +599,15 @@ try:
 except Exception:
     pass
 " 2>/dev/null || echo "")
-    if [ -n "${ENROLLMENT_ID}" ]; then
-      echo "  Reusing existing enrollment: ${ENROLLMENT_ID}"
-    else
-      echo "ERROR: Bootstrap Enrollment creation returned HTTP ${ENROLL_HTTP_CODE}."
-      echo "Endpoint: ${ENROLL_URL}"
-      echo "Response: ${ENROLL_BODY}"
-      exit 1
+        if [ -n "${ENROLLMENT_ID}" ]; then
+            echo "  Reusing existing enrollment: ${ENROLLMENT_ID}"
+        else
+            echo "ERROR: Bootstrap Enrollment creation returned HTTP ${ENROLL_HTTP_CODE}."
+            echo "Endpoint: ${ENROLL_URL}"
+            echo "Response: ${ENROLL_BODY}"
+            exit 1
+        fi
     fi
-  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -623,7 +618,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "Step 4c: Binding resources to enrollment..."
-BINDINGS_URL="${MG_BOOTSTRAP_API}/${DOMAIN_ID}/clients/bootstrap/enrollments/${ENROLLMENT_ID}/bindings"
+BINDINGS_URL="${MG_BOOTSTRAP_API}/${TENANT_ID}/clients/bootstrap/enrollments/${ENROLLMENT_ID}/bindings"
 echo "  API: ${BINDINGS_URL}"
 
 BINDINGS_PAYLOAD=$(build_bindings_payload)
@@ -638,12 +633,12 @@ echo "  commands    → ${COMMANDS_CHANNEL}"
 # ---------------------------------------------------------------------------
 echo ""
 echo "Step 5: Configuring Rule Engine (save_senml) for telemetry channel..."
-RULE_CONFIG_URL="${MG_RULES_API}/${DOMAIN_ID}/rules"
+RULE_CONFIG_URL="${MG_RULES_API}/${TENANT_ID}/rules"
 echo "  API: ${RULE_CONFIG_URL}"
 
 RULE_PAYLOAD="{
   \"name\": \"agent-mock-device-storage-data\",
-  \"domain\": \"${DOMAIN_ID}\",
+  \"tenant\": \"${TENANT_ID}\",
   \"input_channel\": \"${TELEMETRY_CHANNEL}\",
   \"input_topic\": \"msg\",
   \"logic\": {
@@ -656,11 +651,11 @@ RULE_PAYLOAD="{
   \"status\": \"enabled\"
 }"
 require_created_with_retry \
-  "Rule Engine configuration for telemetry channel" \
-  "${RULE_CONFIG_URL}" \
-  "${RULE_PAYLOAD}" \
-  "${MG_RULES_RETRIES}" \
-  "${MG_RULES_RETRY_DELAY_SECONDS}"
+    "Rule Engine configuration for telemetry channel" \
+    "${RULE_CONFIG_URL}" \
+    "${RULE_PAYLOAD}" \
+    "${MG_RULES_RETRIES}" \
+    "${MG_RULES_RETRY_DELAY_SECONDS}"
 echo "  Rule Engine configured for telemetry channel (save_senml)."
 
 # ---------------------------------------------------------------------------
@@ -674,7 +669,7 @@ echo "  Client ID:          ${CLIENT_ID}"
 echo "  Client Secret:      ${CLIENT_SECRET}"
 echo "  Telemetry Channel:  ${TELEMETRY_CHANNEL}"
 echo "  Commands Channel:   ${COMMANDS_CHANNEL}"
-echo "  Domain ID:          ${DOMAIN_ID}"
+echo "  Tenant ID:          ${TENANT_ID}"
 echo "  Profile ID:         ${PROFILE_ID}"
 echo "  Enrollment ID:      ${ENROLLMENT_ID}"
 echo "  Bootstrap ID:       ${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}"
@@ -700,7 +695,7 @@ echo "  Username: ${CLIENT_ID}"
 echo "  Password: ${CLIENT_SECRET}"
 echo "  Telemetry Channel: ${TELEMETRY_CHANNEL}"
 echo "  Commands Channel:  ${COMMANDS_CHANNEL}"
-echo "  Domain:   ${DOMAIN_ID}"
+echo "  Tenant:   ${TENANT_ID}"
 echo ""
 echo "=== Test MQTT Publishing ==="
 echo ""
@@ -708,7 +703,7 @@ echo "Local (localhost:8883):"
 echo "  mosquitto_pub -I \"agent-mock-device\" \\"
 echo "    -u ${CLIENT_ID} \\"
 echo "    -P ${CLIENT_SECRET} \\"
-echo "    -t m/${DOMAIN_ID}/c/${TELEMETRY_CHANNEL}/msg \\"
+echo "    -t m/${TENANT_ID}/c/${TELEMETRY_CHANNEL}/msg \\"
 echo "    -h localhost -p 8883 \\"
 echo "    -m '[{\"n\":\"Temperature\",\"bu\":\"°C\",\"u\":\"°C\",\"v\":30}]' \\"
 echo "    --cafile docker/ssl/certs/ca.crt"
@@ -719,7 +714,7 @@ echo "    -h messaging.magistrala.absmach.eu -p 8883 \\"
 echo "    --capath /etc/ssl/certs \\"
 echo "    -u ${CLIENT_ID} \\"
 echo "    -P ${CLIENT_SECRET} \\"
-echo "    -t m/${DOMAIN_ID}/c/${TELEMETRY_CHANNEL}/msg \\"
+echo "    -t m/${TENANT_ID}/c/${TELEMETRY_CHANNEL}/msg \\"
 echo "    -m '[{\"n\":\"Temperature\",\"bu\":\"°C\",\"u\":\"°C\",\"v\":30}]'"
 echo ""
 echo "=== Deploy Node-RED Flow ==="

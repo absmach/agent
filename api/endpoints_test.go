@@ -74,7 +74,7 @@ func validAgentConfig() agent.Config {
 		MQTT:      agent.MQTTConfig{URL: "ssl://broker:8883", Username: "user", Password: "pass"},
 		Heartbeat: agent.HeartbeatConfig{Interval: time.Second},
 		Terminal:  agent.TerminalConfig{SessionTimeout: time.Minute},
-		DomainID:  "domain-id",
+		TenantID:  "tenant-id",
 	}
 }
 
@@ -298,7 +298,7 @@ func TestViewConfig(t *testing.T) {
 	assert.Equal(t, cfg.MQTT.URL, body["mqtt"].(map[string]any)["url"])
 	assert.Equal(t, cfg.MQTT.Username, body["mqtt"].(map[string]any)["username"])
 	assert.Equal(t, cfg.MQTT.Password, body["mqtt"].(map[string]any)["password"])
-	assert.Equal(t, cfg.DomainID, body["domain_id"])
+	assert.Equal(t, cfg.TenantID, body["tenant_id"])
 }
 
 func TestViewServices(t *testing.T) {

@@ -30,17 +30,17 @@ const (
 type Scheduler struct {
 	devices  *devicemgr.Manager
 	mqttCfg  MQTTConfig
-	domainID string
+	tenantID string
 	logger   *slog.Logger
 	mu       sync.Mutex
 	cancels  map[string]context.CancelFunc
 }
 
-func newScheduler(devices *devicemgr.Manager, mqttCfg MQTTConfig, domainID string, logger *slog.Logger) *Scheduler {
+func newScheduler(devices *devicemgr.Manager, mqttCfg MQTTConfig, tenantID string, logger *slog.Logger) *Scheduler {
 	return &Scheduler{
 		devices:  devices,
 		mqttCfg:  mqttCfg,
-		domainID: domainID,
+		tenantID: tenantID,
 		logger:   logger,
 		cancels:  make(map[string]context.CancelFunc),
 	}
@@ -111,7 +111,7 @@ func (s *Scheduler) startDevice(ctx context.Context, d devicemgr.Device) {
 // cycle with exponential backoff after any failure.
 func (s *Scheduler) runDevice(ctx context.Context, d devicemgr.Device) {
 	log := s.logger.With(slog.String("device_id", d.ID), slog.String("device", d.Name))
-	topic := fmt.Sprintf("m/%s/c/%s/msg", s.domainID, d.ChannelID)
+	topic := fmt.Sprintf("m/%s/c/%s/msg", s.tenantID, d.ChannelID)
 	delay := schedulerReconnectMin
 
 	for {

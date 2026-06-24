@@ -60,8 +60,8 @@ type MQTTConfig struct {
 	PrivKeyPath string          `json:"priv_key_path"`
 	CA          []byte          `json:"-"`
 	Cert        tls.Certificate `json:"-"`
-	ClientCert  string          `json:"client_cert"`
-	ClientKey   string          `json:"client_key"`
+	GatewayCert string          `json:"gateway_cert"`
+	GatewayKey  string          `json:"gateway_key"`
 	CaCert      string          `json:"ca_cert"`
 }
 
@@ -103,12 +103,11 @@ type CoAPConfig struct {
 }
 
 type ProvisionConfig struct {
-	ClientsURL     string `json:"clients_url"`
-	ChannelsURL    string `json:"channels_url"`
+	AtomURL        string `json:"atom_url"`
 	RulesEngineURL string `json:"rules_engine_url"`
 	Token          string `json:"token"`
 	DBPath         string `json:"db_path"`
-	DomainID       string `json:"domain_id"`
+	TenantID       string `json:"tenant_id"`
 }
 
 type Config struct {
@@ -124,7 +123,7 @@ type Config struct {
 	Transport     string          `json:"transport"`
 	OTA           OTAConfig       `json:"ota"`
 	Provision     ProvisionConfig `json:"provision"`
-	DomainID      string          `json:"domain_id"`
+	TenantID      string          `json:"tenant_id"`
 	CommandSecret string          `json:"-"`
 }
 

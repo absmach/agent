@@ -1,6 +1,6 @@
 # Control — Command Dispatch, Config, and Token Auth
 
-The control subsystem handles inbound MQTT commands from Magistrala, dispatches them to the correct handler, and returns responses on the control response channel. It also provides runtime configuration management (`get`/`set`/`reset`) and optional token-based command authentication.
+The control subsystem handles inbound MQTT commands from Atom, dispatches them to the correct handler, and returns responses on the control response channel. It also provides runtime configuration management (`get`/`set`/`reset`) and optional token-based command authentication.
 
 ## Overview
 
@@ -31,7 +31,7 @@ Authorization is enforced **per command**: when a command secret is configured, 
 
 ### Request (cloud → agent)
 
-**Topic:** `m/<domain-id>/c/<commands-channel-id>/req`
+**Topic:** `m/<tenant-id>/c/<commands-channel-id>/req`
 
 ```json
 [{ "bn": "<uuid>:", "n": "<subsystem>", "vs": "<command>[,<args>]" }]
@@ -45,7 +45,7 @@ Authorization is enforced **per command**: when a command secret is configured, 
 
 ### Response (agent → cloud)
 
-**Topic:** `m/<domain-id>/c/<commands-channel-id>/res`
+**Topic:** `m/<tenant-id>/c/<commands-channel-id>/res`
 
 ```json
 [
@@ -90,8 +90,8 @@ and silently drops the message (no response is published).
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"set,command_secret,my-secret-token"}]'
 ```
 
@@ -123,14 +123,14 @@ The `config` command provides runtime management of agent parameters without res
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"view"}]'
 ```
 
 Response will be something like this:
 
-Channel `m/<domain-id>/c/<commands-channel-id>/res`
+Channel `m/<tenant-id>/c/<commands-channel-id>/res`
 
 ```json
 [
@@ -148,8 +148,8 @@ Channel `m/<domain-id>/c/<commands-channel-id>/res`
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"get,log_level"}]'
 ```
 
@@ -164,8 +164,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"set,log_level,debug"}]'
 ```
 
@@ -180,8 +180,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"reset,log_level"}]'
 ```
 
@@ -190,8 +190,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"set,bs_valid,0"}]'
 ```
 
@@ -215,15 +215,15 @@ ss  systemctl  true  uname  uptime  who
 # No arguments
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cmd-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"exec", "vs":"pwd"}]'
 
 # With arguments (comma-separated)
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cmd-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cmd-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"exec", "vs":"ls,-la"}]'
 ```
 
@@ -258,8 +258,8 @@ CONTENT=$(base64 -w 0 export.json)
 
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m "[{\"bn\":\"req-1:\", \"n\":\"config\", \"vs\":\"save,export,/path/to/config.toml,$CONTENT\"}]"
 ```
 
@@ -324,8 +324,8 @@ If no mode is specified, `graceful` is used by default.
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "reset-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "reset-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"reset","vs":"graceful"}]'
 ```
 
@@ -334,8 +334,8 @@ With token auth (when `command_secret` is set):
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "reset-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "reset-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"reset","vs":"immediate"},{"n":"token","vs":"my-secret-token"}]'
 ```
 
@@ -374,7 +374,7 @@ The reset reason (`graceful`, `immediate`, `watchdog`) is persisted in the confi
 
 | Direction     | Topic                             | QoS | Description      |
 | ------------- | --------------------------------- | --- | ---------------- |
-| Cloud → Agent | `m/<domain-id>/c/<ctrl-chan>/req` | 1   | Command request  |
-| Agent → Cloud | `m/<domain-id>/c/<ctrl-chan>/res` | 1   | Command response |
+| Cloud → Agent | `m/<tenant-id>/c/<ctrl-chan>/req` | 1   | Command request  |
+| Agent → Cloud | `m/<tenant-id>/c/<ctrl-chan>/res` | 1   | Command response |
 
 [senml]: https://tools.ietf.org/html/rfc8428
