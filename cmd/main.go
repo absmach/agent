@@ -494,12 +494,12 @@ func loadEnvConfig(cfg config) (agent.Config, error) {
 func connectToMQTTBroker(conf agent.MQTTConfig, logger *slog.Logger, onConnect func()) (mqtt.Client, error) {
 	name := conf.Username
 	conn := func(client mqtt.Client) {
-		logger.Info("Gagteway connected", slog.String("gateway_name", name))
+		logger.Info("Gateway connected", slog.String("gateway_name", name))
 		onConnect()
 	}
 
 	lost := func(client mqtt.Client, err error) {
-		logger.Info("Gagteway disconnected", slog.String("gateway_name", name))
+		logger.Info("Gateway disconnected", slog.String("gateway_name", name))
 	}
 
 	opts := mqtt.NewClientOptions().
