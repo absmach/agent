@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/absmach/agent/pkg/devicemgr"
@@ -30,6 +31,9 @@ import (
 //	createDirectPolicy     → direct policy linking entity → permission block
 //	deleteEntity           → rollback device
 //	deleteResource         → rollback resource
+//	revokeCredential       → rollback API key
+//	deletePermissionBlock  → rollback permission block
+//	deleteDirectPolicy     → rollback direct policy
 //
 // Pass overrides keyed by operation name (e.g. "createEntity") to intercept
 // specific mutations; nil falls back to the default responses.
@@ -68,6 +72,12 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 			op = "deleteEntity"
 		case strings.Contains(req.Query, "deleteResource"):
 			op = "deleteResource"
+		case strings.Contains(req.Query, "revokeCredential"):
+			op = "revokeCredential"
+		case strings.Contains(req.Query, "deletePermissionBlock"):
+			op = "deletePermissionBlock"
+		case strings.Contains(req.Query, "deleteDirectPolicy"):
+			op = "deleteDirectPolicy"
 		}
 
 		if fn, ok := overrides[op]; ok {
@@ -104,7 +114,8 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"data": map[string]any{
 					"createApiKey": map[string]any{
-						"key": "device-secret",
+						"credentialId": "cred-uuid",
+						"key":          "device-secret",
 					},
 				},
 			})
@@ -148,6 +159,27 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"data": map[string]any{
 					"deleteResource": true,
+				},
+			})
+
+		case "revokeCredential":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"revokeCredential": true,
+				},
+			})
+
+		case "deletePermissionBlock":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"deletePermissionBlock": true,
+				},
+			})
+
+		case "deleteDirectPolicy":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"deleteDirectPolicy": true,
 				},
 			})
 
@@ -403,6 +435,56 @@ func TestManager_Add_WithRules(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestManager_Add_RollbackOnFailure(t *testing.T) {
+	var mu sync.Mutex
+	calls := map[string]int{}
+	record := func(op string) {
+		mu.Lock()
+		calls[op]++
+		mu.Unlock()
+	}
+
+	ok := func(field string) http.HandlerFunc {
+		return func(w http.ResponseWriter, _ *http.Request) {
+			record(field)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{field: true},
+			})
+		}
+	}
+
+	srv := magistralaServer(t, map[string]http.HandlerFunc{
+		// Force the connect step to fail at the direct-policy mutation, after
+		// the entity, API key, resource, and permission block already exist.
+		"createDirectPolicy": func(w http.ResponseWriter, _ *http.Request) {
+			record("createDirectPolicy")
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"errors": []map[string]any{{"message": "boom"}},
+			})
+		},
+		"deletePermissionBlock": ok("deletePermissionBlock"),
+		"revokeCredential":      ok("revokeCredential"),
+		"deleteResource":        ok("deleteResource"),
+		"deleteEntity":          ok("deleteEntity"),
+	})
+
+	m := newTestManager(t, srv.URL)
+	_, err := m.Add(context.Background(), "dev", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
+	require.Error(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	// Connect cleans up the permission block it created before the policy failed.
+	assert.Equal(t, 1, calls["deletePermissionBlock"], "permission block should be cleaned up")
+	// Provision rolls back the remaining records; soft-deleting the entity does
+	// not cascade, so each must be removed explicitly.
+	assert.Equal(t, 1, calls["revokeCredential"], "api key should be revoked")
+	assert.Equal(t, 1, calls["deleteResource"], "resource should be deleted")
+	assert.Equal(t, 1, calls["deleteEntity"], "entity should be deleted")
 }
 
 func TestManager_Remove(t *testing.T) {
