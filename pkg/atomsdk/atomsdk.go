@@ -11,7 +11,13 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"time"
 )
+
+// requestTimeout bounds a single Atom GraphQL request so a stalled server
+// cannot block provisioning indefinitely when the caller's context has no
+// deadline of its own.
+const requestTimeout = 30 * time.Second
 
 const (
 	createEntityMutation = `mutation($tid:ID!,$name:String!){
@@ -95,6 +101,7 @@ func New(cfg Config) SDK {
 		cfg: cfg,
 		client: &http.Client{
 			Transport: &http.Transport{},
+			Timeout:   requestTimeout,
 		},
 		actionIDs: make(map[string]string),
 	}
