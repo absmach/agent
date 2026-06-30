@@ -77,7 +77,7 @@ type config struct {
 	BootstrapRetryDelay  string   `env:"MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS" envDefault:"10"`
 	BootstrapSkipTLS     string   `env:"MG_AGENT_BOOTSTRAP_SKIP_TLS"            envDefault:"false"`
 	BootstrapCachePath   string   `env:"MG_AGENT_BOOTSTRAP_CACHE_PATH"          envDefault:"/var/lib/agent/bootstrap.json"`
-	AtomURL              string   `env:"ATOM_URL"                               envDefault:""`
+	AtomURL              string   `env:"MG_AGENT_ATOM_URL"                      envDefault:""`
 	RulesEngineURL       string   `env:"MG_AGENT_RULES_ENGINE_URL"              envDefault:""`
 	ProvisionToken       string   `env:"MG_PAT"                                 envDefault:""`
 	DeviceDBPath         string   `env:"MG_AGENT_DEVICE_DB_PATH"                envDefault:"/var/lib/agent/devices.db"`

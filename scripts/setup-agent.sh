@@ -18,7 +18,7 @@
 
 set -euo pipefail
 
-ATOM_URL="${ATOM_URL:-http://localhost:8080/graphql}"
+ATOM_URL="${MG_AGENT_ATOM_URL:-${ATOM_URL:-http://localhost:8080/graphql}}"
 ATOM_AUTH_URL="${ATOM_AUTH_URL:-http://localhost:8080/auth/login}"
 
 # ── 0. Authenticate ──────────────────────────────────────────────────────────
