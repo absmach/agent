@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 )
 
 const (
@@ -82,8 +83,10 @@ type graphQLResponse struct {
 }
 
 type atomSDK struct {
-	cfg       Config
-	client    *http.Client
+	cfg    Config
+	client *http.Client
+
+	mu        sync.RWMutex
 	actionIDs map[string]string
 }
 
@@ -137,44 +140,56 @@ func (s *atomSDK) do(ctx context.Context, query string, vars map[string]any) (ma
 }
 
 func (s *atomSDK) findActionIDs(ctx context.Context, names ...string) (map[string]string, error) {
+	s.mu.RLock()
 	missing := make([]string, 0, len(names))
 	for _, n := range names {
 		if _, ok := s.actionIDs[n]; !ok {
 			missing = append(missing, n)
 		}
 	}
-	if len(missing) == 0 {
-		return s.actionIDs, nil
-	}
-	data, err := s.do(ctx, actionsQuery, nil)
-	if err != nil {
-		return nil, fmt.Errorf("query actions: %w", err)
-	}
-	actionsData, ok := data["actions"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("actions: unexpected response shape")
-	}
-	items, ok := actionsData["items"].([]any)
-	if !ok {
-		return nil, fmt.Errorf("actions.items: unexpected shape")
-	}
-	for _, item := range items {
-		entry, ok := item.(map[string]any)
+	s.mu.RUnlock()
+
+	if len(missing) > 0 {
+		data, err := s.do(ctx, actionsQuery, nil)
+		if err != nil {
+			return nil, fmt.Errorf("query actions: %w", err)
+		}
+		actionsData, ok := data["actions"].(map[string]any)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("actions: unexpected response shape")
 		}
-		id, _ := entry["id"].(string)
-		name, _ := entry["name"].(string)
-		if id != "" && name != "" {
-			s.actionIDs[name] = id
+		items, ok := actionsData["items"].([]any)
+		if !ok {
+			return nil, fmt.Errorf("actions.items: unexpected shape")
 		}
+		s.mu.Lock()
+		for _, item := range items {
+			entry, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			id, _ := entry["id"].(string)
+			name, _ := entry["name"].(string)
+			if id != "" && name != "" {
+				s.actionIDs[name] = id
+			}
+		}
+		s.mu.Unlock()
 	}
+
+	// Return a copy of the requested IDs so callers never read the shared
+	// cache concurrently with a writer.
+	result := make(map[string]string, len(names))
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, n := range names {
-		if _, ok := s.actionIDs[n]; !ok {
+		id, ok := s.actionIDs[n]
+		if !ok {
 			return nil, fmt.Errorf("action %q not found on server", n)
 		}
+		result[n] = id
 	}
-	return s.actionIDs, nil
+	return result, nil
 }
 
 func (s *atomSDK) CreateEntity(ctx context.Context, name, tenantID string) (Entity, error) {
