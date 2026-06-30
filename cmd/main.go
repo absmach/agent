@@ -79,7 +79,7 @@ type config struct {
 	BootstrapCachePath   string   `env:"MG_AGENT_BOOTSTRAP_CACHE_PATH"          envDefault:"/var/lib/agent/bootstrap.json"`
 	AtomURL              string   `env:"MG_AGENT_ATOM_URL"                      envDefault:""`
 	RulesEngineURL       string   `env:"MG_AGENT_RULES_ENGINE_URL"              envDefault:""`
-	ProvisionToken       string   `env:"MG_PAT"                                 envDefault:""`
+	ProvisionToken       string   `env:"MG_AGENT_PROVISION_TOKEN"               envDefault:""`
 	DeviceDBPath         string   `env:"MG_AGENT_DEVICE_DB_PATH"                envDefault:"/var/lib/agent/devices.db"`
 	DeviceWebhookURL     string   `env:"MG_AGENT_DEVICE_WEBHOOK_URL"            envDefault:""`
 	DeviceWebhookSecret  string   `env:"MG_AGENT_DEVICE_WEBHOOK_SECRET"         envDefault:""`
