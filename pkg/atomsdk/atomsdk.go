@@ -25,7 +25,7 @@ const (
 	}`
 
 	createAPIKeyMutation = `mutation($eid:ID!,$desc:String!){
-		createApiKey(entityId:$eid,input:{description:$desc}){key}
+		createApiKey(entityId:$eid,input:{description:$desc}){credentialId key}
 	}`
 
 	createResourceMutation = `mutation($tid:ID!,$name:String!,$oid:ID!){
@@ -56,6 +56,18 @@ const (
 		deleteResource(id:$id)
 	}`
 
+	revokeCredentialMutation = `mutation($eid:ID!,$cid:ID!){
+		revokeCredential(entityId:$eid,credentialId:$cid)
+	}`
+
+	deletePermissionBlockMutation = `mutation($id:ID!){
+		deletePermissionBlock(id:$id)
+	}`
+
+	deleteDirectPolicyMutation = `mutation($id:ID!){
+		deleteDirectPolicy(id:$id)
+	}`
+
 	actionsQuery = `query{
 		actions(limit:100,offset:0){items{id name}}
 	}`
@@ -68,11 +80,14 @@ type Config struct {
 
 type SDK interface {
 	CreateEntity(ctx context.Context, name, tenantID string) (Entity, error)
-	CreateAPIKey(ctx context.Context, entityID, description string) (string, error)
+	CreateAPIKey(ctx context.Context, entityID, description string) (APIKey, error)
 	CreateResource(ctx context.Context, name, tenantID, ownerID string) (Resource, error)
-	Connect(ctx context.Context, entityID, resourceID, tenantID string) error
+	Connect(ctx context.Context, entityID, resourceID, tenantID string) (Grant, error)
+	RevokeCredential(ctx context.Context, entityID, credentialID string) error
 	DeleteEntity(ctx context.Context, id string) error
 	DeleteResource(ctx context.Context, id string) error
+	DeletePermissionBlock(ctx context.Context, id string) error
+	DeleteDirectPolicy(ctx context.Context, id string) error
 }
 
 type Entity struct {
@@ -81,6 +96,21 @@ type Entity struct {
 
 type Resource struct {
 	ID string
+}
+
+// APIKey is the result of CreateAPIKey. CredentialID identifies the stored
+// credential so it can be revoked (e.g. during provisioning rollback); Key is
+// the secret used as the MQTT password.
+type APIKey struct {
+	Key          string
+	CredentialID string
+}
+
+// Grant identifies the authorization records Connect creates, so a caller can
+// roll them back if a later provisioning step fails.
+type Grant struct {
+	PermissionBlockID string
+	DirectPolicyID    string
 }
 
 type graphQLResponse struct {
@@ -218,23 +248,24 @@ func (s *atomSDK) CreateEntity(ctx context.Context, name, tenantID string) (Enti
 	return Entity{ID: id}, nil
 }
 
-func (s *atomSDK) CreateAPIKey(ctx context.Context, entityID, description string) (string, error) {
+func (s *atomSDK) CreateAPIKey(ctx context.Context, entityID, description string) (APIKey, error) {
 	data, err := s.do(ctx, createAPIKeyMutation, map[string]any{
 		"eid":  entityID,
 		"desc": description,
 	})
 	if err != nil {
-		return "", err
+		return APIKey{}, err
 	}
 	keyData, ok := data["createApiKey"].(map[string]any)
 	if !ok {
-		return "", fmt.Errorf("createApiKey: unexpected response shape")
+		return APIKey{}, fmt.Errorf("createApiKey: unexpected response shape")
 	}
 	key, _ := keyData["key"].(string)
 	if key == "" {
-		return "", fmt.Errorf("createApiKey: empty key in response")
+		return APIKey{}, fmt.Errorf("createApiKey: empty key in response")
 	}
-	return key, nil
+	credentialID, _ := keyData["credentialId"].(string)
+	return APIKey{Key: key, CredentialID: credentialID}, nil
 }
 
 func (s *atomSDK) CreateResource(ctx context.Context, name, tenantID, ownerID string) (Resource, error) {
@@ -257,10 +288,10 @@ func (s *atomSDK) CreateResource(ctx context.Context, name, tenantID, ownerID st
 	return Resource{ID: id}, nil
 }
 
-func (s *atomSDK) Connect(ctx context.Context, entityID, resourceID, tenantID string) error {
+func (s *atomSDK) Connect(ctx context.Context, entityID, resourceID, tenantID string) (Grant, error) {
 	actionIDs, err := s.findActionIDs(ctx, "publish", "subscribe")
 	if err != nil {
-		return fmt.Errorf("lookup action ids: %w", err)
+		return Grant{}, fmt.Errorf("lookup action ids: %w", err)
 	}
 
 	pbData, err := s.do(ctx, createPermissionBlockMutation, map[string]any{
@@ -270,25 +301,55 @@ func (s *atomSDK) Connect(ctx context.Context, entityID, resourceID, tenantID st
 		"aid2": actionIDs["subscribe"],
 	})
 	if err != nil {
-		return fmt.Errorf("create permission block: %w", err)
+		return Grant{}, fmt.Errorf("create permission block: %w", err)
 	}
 	pb, ok := pbData["createPermissionBlock"].(map[string]any)
 	if !ok {
-		return fmt.Errorf("createPermissionBlock: unexpected response shape")
+		return Grant{}, fmt.Errorf("createPermissionBlock: unexpected response shape")
 	}
 	pbID, _ := pb["id"].(string)
 	if pbID == "" {
-		return fmt.Errorf("createPermissionBlock: empty id in response")
+		return Grant{}, fmt.Errorf("createPermissionBlock: empty id in response")
 	}
-	_, err = s.do(ctx, createDirectPolicyMutation, map[string]any{
+	dpData, err := s.do(ctx, createDirectPolicyMutation, map[string]any{
 		"tid":  tenantID,
 		"sid":  entityID,
 		"pbid": pbID,
 	})
 	if err != nil {
-		return fmt.Errorf("create direct policy: %w", err)
+		// The permission block was created but the policy that uses it was
+		// not, so clean it up rather than leaking an orphaned record.
+		_ = s.DeletePermissionBlock(context.WithoutCancel(ctx), pbID)
+		return Grant{}, fmt.Errorf("create direct policy: %w", err)
 	}
-	return nil
+	dp, ok := dpData["createDirectPolicy"].(map[string]any)
+	if !ok {
+		return Grant{}, fmt.Errorf("createDirectPolicy: unexpected response shape")
+	}
+	dpID, _ := dp["id"].(string)
+	return Grant{PermissionBlockID: pbID, DirectPolicyID: dpID}, nil
+}
+
+func (s *atomSDK) RevokeCredential(ctx context.Context, entityID, credentialID string) error {
+	_, err := s.do(ctx, revokeCredentialMutation, map[string]any{
+		"eid": entityID,
+		"cid": credentialID,
+	})
+	return err
+}
+
+func (s *atomSDK) DeletePermissionBlock(ctx context.Context, id string) error {
+	_, err := s.do(ctx, deletePermissionBlockMutation, map[string]any{
+		"id": id,
+	})
+	return err
+}
+
+func (s *atomSDK) DeleteDirectPolicy(ctx context.Context, id string) error {
+	_, err := s.do(ctx, deleteDirectPolicyMutation, map[string]any{
+		"id": id,
+	})
+	return err
 }
 
 func (s *atomSDK) DeleteEntity(ctx context.Context, id string) error {
