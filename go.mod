@@ -14,7 +14,7 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/pelletier/go-toml v1.9.5
 	github.com/pion/dtls/v3 v3.1.4
-	github.com/plgd-dev/go-coap/v3 v3.5.3
+	github.com/plgd-dev/go-coap/v3 v3.5.4
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
 	go.bug.st/serial v1.7.1
