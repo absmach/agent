@@ -92,18 +92,20 @@ func TestManager_BackupRestore(t *testing.T) {
 	// out unique IDs and lets the two devices coexist in the registry.
 	callCount := 0
 	srv := magistralaServer(t, map[string]http.HandlerFunc{
-		"/test-domain/clients": func(w http.ResponseWriter, r *http.Request) {
+		"createEntity": func(w http.ResponseWriter, r *http.Request) {
 			callCount++
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
+			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":          fmt.Sprintf("dev-%d", callCount),
-				"name":        fmt.Sprintf("device-%d", callCount),
-				"credentials": map[string]any{"secret": "k"},
+				"data": map[string]any{
+					"createEntity": map[string]any{
+						"id": fmt.Sprintf("dev-%d", callCount),
+					},
+				},
 			})
 		},
 	})
-	m := newTestManager(t, srv.URL, srv.URL)
+	m := newTestManager(t, srv.URL)
 
 	_, err := m.Add(context.Background(), "dev-a", "ext-a", "key-a", iface.InterfaceBLE, "AA:BB:CC:DD:EE:01")
 	require.NoError(t, err)
@@ -115,7 +117,7 @@ func TestManager_BackupRestore(t *testing.T) {
 	assert.Len(t, backup.Devices, 2)
 
 	// Restore the snapshot into a fresh manager and confirm the devices land.
-	dst := newTestManager(t, srv.URL, srv.URL)
+	dst := newTestManager(t, srv.URL)
 	n, err := dst.Restore(backup, true)
 	require.NoError(t, err)
 	assert.Equal(t, 2, n)

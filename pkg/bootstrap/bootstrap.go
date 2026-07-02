@@ -38,13 +38,13 @@ type Config struct {
 type renderedContent struct {
 	DeviceID   string `json:"device_id"`
 	ExternalID string `json:"external_id"`
-	DomainID   string `json:"domain_id"`
+	TenantID   string `json:"tenant_id"`
 	MQTT       struct {
-		URL      string `json:"url"`
-		ClientID string `json:"client_id"`
-		Secret   string `json:"secret"`
-		Username string `json:"username"`
-		Password string `json:"password"`
+		URL       string `json:"url"`
+		GatewayID string `json:"gateway_id"`
+		Secret    string `json:"secret"`
+		Username  string `json:"username"`
+		Password  string `json:"password"`
 	} `json:"mqtt"`
 	Telemetry struct {
 		ChannelID string `json:"channel_id"`
@@ -58,8 +58,7 @@ type renderedContent struct {
 		DataID string `json:"data_id"`
 	} `json:"channels"`
 	Provision struct {
-		ClientsURL     string `json:"clients_url"`
-		ChannelsURL    string `json:"channels_url"`
+		AtomURL        string `json:"atom_url"`
 		RulesEngineURL string `json:"rules_engine_url"`
 		Token          string `json:"token"`
 	} `json:"provision"`
@@ -67,10 +66,10 @@ type renderedContent struct {
 
 // bootstrapResponse holds the fields returned by the bootstrap endpoint.
 type bootstrapResponse struct {
-	Content    string `json:"content"`
-	ClientKey  string `json:"client_key"`
-	ClientCert string `json:"client_cert"`
-	CaCert     string `json:"ca_cert"`
+	Content     string `json:"content"`
+	GatewayKey  string `json:"gateway_key"`
+	GatewayCert string `json:"gateway_cert"`
+	CaCert      string `json:"ca_cert"`
 }
 
 // FetchAgentConfig retrieves device configuration from the bootstrap service and
@@ -157,10 +156,10 @@ func applyBootstrapResponse(agentCfg agent.Config, br bootstrapResponse) (agent.
 
 	// Overlay device identity from bootstrap onto the env-based config.
 	// Infrastructure settings (broker URL, TLS, timeouts) are preserved from env.
-	if rc.DomainID != "" {
-		agentCfg.DomainID = rc.DomainID
+	if rc.TenantID != "" {
+		agentCfg.TenantID = rc.TenantID
 	}
-	username := rc.MQTT.ClientID
+	username := rc.MQTT.GatewayID
 	if username == "" {
 		username = rc.MQTT.Username
 	}
@@ -179,15 +178,13 @@ func applyBootstrapResponse(agentCfg agent.Config, br bootstrapResponse) (agent.
 	}
 	agentCfg.Channels.CtrlID = commandChannel
 	agentCfg.Channels.DataID = telemetryChannel
-	agentCfg.MQTT.ClientCert = br.ClientCert
-	agentCfg.MQTT.ClientKey = br.ClientKey
+	agentCfg.MQTT.GatewayCert = br.GatewayCert
+	agentCfg.MQTT.GatewayKey = br.GatewayKey
 	agentCfg.MQTT.CaCert = br.CaCert
-	if rc.Provision.ClientsURL != "" {
-		agentCfg.Provision.ClientsURL = rc.Provision.ClientsURL
+	if rc.Provision.AtomURL != "" {
+		agentCfg.Provision.AtomURL = rc.Provision.AtomURL
 	}
-	if rc.Provision.ChannelsURL != "" {
-		agentCfg.Provision.ChannelsURL = rc.Provision.ChannelsURL
-	}
+
 	if rc.Provision.RulesEngineURL != "" {
 		agentCfg.Provision.RulesEngineURL = rc.Provision.RulesEngineURL
 	}
@@ -265,7 +262,7 @@ func loadFromCache(path string) (bootstrapResponse, error) {
 	if br.Content == "" {
 		return bootstrapResponse{}, errors.New("cached bootstrap response has empty content")
 	}
-	if br.ClientKey == "" || br.ClientCert == "" {
+	if br.GatewayKey == "" || br.GatewayCert == "" {
 		return bootstrapResponse{}, errors.New("cached bootstrap response has empty credentials")
 	}
 	return br, nil

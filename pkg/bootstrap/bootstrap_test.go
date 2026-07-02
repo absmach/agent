@@ -32,20 +32,20 @@ func TestApplyBootstrapResponse(t *testing.T) {
 	)
 
 	cases := []struct {
-		desc       string
-		config     agent.Config
-		response   bootstrapResponse
-		domainID   string
-		mqttURL    string
-		username   string
-		password   string
-		ctrlID     string
-		dataID     string
-		clientCert string
-		clientKey  string
-		caCert     string
-		nodeRedURL string
-		err        bool
+		desc        string
+		config      agent.Config
+		response    bootstrapResponse
+		tenantID    string
+		mqttURL     string
+		username    string
+		password    string
+		ctrlID      string
+		dataID      string
+		gatewayCert string
+		gatewayKey  string
+		caCert      string
+		nodeRedURL  string
+		err         bool
 	}{
 		{
 			desc:   "apply rendered bootstrap content successfully",
@@ -54,11 +54,11 @@ func TestApplyBootstrapResponse(t *testing.T) {
 				Content: `{
 					"device_id": "device-id",
 					"external_id": "external-id",
-					"domain_id": "domain-id",
+					"tenant_id": "tenant-id",
 					"mqtt": {
 						"url": "ssl://mqtt.example.com:8883",
-						"client_id": "client-id",
-						"secret": "client-secret"
+						"gateway_id": "gateway-id",
+						"secret": "gateway-secret"
 					},
 					"telemetry": {
 						"channel_id": "data-channel",
@@ -68,30 +68,30 @@ func TestApplyBootstrapResponse(t *testing.T) {
 						"channel_id": "ctrl-channel"
 					}
 				}`,
-				ClientKey:  "client-key-pem",
-				ClientCert: "client-cert-pem",
-				CaCert:     "ca-cert-pem",
+				GatewayKey:  "gateway-key-pem",
+				GatewayCert: "gateway-cert-pem",
+				CaCert:      "ca-cert-pem",
 			},
-			domainID:   "domain-id",
-			mqttURL:    "ssl://mqtt.example.com:8883",
-			username:   "client-id",
-			password:   "client-secret",
-			ctrlID:     "ctrl-channel",
-			dataID:     "data-channel",
-			clientCert: "client-cert-pem",
-			clientKey:  "client-key-pem",
-			caCert:     "ca-cert-pem",
-			nodeRedURL: defaults.NodeRed.URL,
+			tenantID:    "tenant-id",
+			mqttURL:     "ssl://mqtt.example.com:8883",
+			username:    "gateway-id",
+			password:    "gateway-secret",
+			ctrlID:      "ctrl-channel",
+			dataID:      "data-channel",
+			gatewayCert: "gateway-cert-pem",
+			gatewayKey:  "gateway-key-pem",
+			caCert:      "ca-cert-pem",
+			nodeRedURL:  defaults.NodeRed.URL,
 		},
 		{
 			desc: "apply runtime field names successfully",
 			response: bootstrapResponse{
 				Content: `{
-					"domain_id": "domain-id",
+					"tenant_id": "tenant-id",
 					"mqtt": {
 						"url": "ssl://mqtt.example.com:8883",
-						"username": "client-id",
-						"password": "client-secret"
+						"username": "gateway-id",
+						"password": "gateway-secret"
 					},
 					"channels": {
 						"ctrl_id": "ctrl-channel",
@@ -99,10 +99,10 @@ func TestApplyBootstrapResponse(t *testing.T) {
 					}
 				}`,
 			},
-			domainID: "domain-id",
+			tenantID: "tenant-id",
 			mqttURL:  "ssl://mqtt.example.com:8883",
-			username: "client-id",
-			password: "client-secret",
+			username: "gateway-id",
+			password: "gateway-secret",
 			ctrlID:   "ctrl-channel",
 			dataID:   "data-channel",
 		},
@@ -110,10 +110,10 @@ func TestApplyBootstrapResponse(t *testing.T) {
 			desc: "reject missing channels",
 			response: bootstrapResponse{
 				Content: `{
-					"domain_id": "domain-id",
+					"tenant_id": "tenant-id",
 					"mqtt": {
-						"client_id": "client-id",
-						"secret": "client-secret"
+						"gateway_id": "gateway-id",
+						"secret": "gateway-secret"
 					}
 				}`,
 			},
@@ -129,14 +129,14 @@ func TestApplyBootstrapResponse(t *testing.T) {
 				return
 			}
 			assert.Nil(t, err, fmt.Sprintf("%s: unexpected error %v", tc.desc, err))
-			assert.Equal(t, tc.domainID, got.DomainID, fmt.Sprintf("%s: unexpected domain id", tc.desc))
+			assert.Equal(t, tc.tenantID, got.TenantID, fmt.Sprintf("%s: unexpected tenant ID", tc.desc))
 			assert.Equal(t, tc.mqttURL, got.MQTT.URL, fmt.Sprintf("%s: unexpected mqtt url", tc.desc))
 			assert.Equal(t, tc.username, got.MQTT.Username, fmt.Sprintf("%s: unexpected mqtt username", tc.desc))
 			assert.Equal(t, tc.password, got.MQTT.Password, fmt.Sprintf("%s: unexpected mqtt password", tc.desc))
 			assert.Equal(t, tc.ctrlID, got.Channels.CtrlChan(), fmt.Sprintf("%s: unexpected control channel", tc.desc))
 			assert.Equal(t, tc.dataID, got.Channels.DataChan(), fmt.Sprintf("%s: unexpected data channel", tc.desc))
-			assert.Equal(t, tc.clientCert, got.MQTT.ClientCert, fmt.Sprintf("%s: unexpected client cert", tc.desc))
-			assert.Equal(t, tc.clientKey, got.MQTT.ClientKey, fmt.Sprintf("%s: unexpected client key", tc.desc))
+			assert.Equal(t, tc.gatewayCert, got.MQTT.GatewayCert, fmt.Sprintf("%s: unexpected gateway cert", tc.desc))
+			assert.Equal(t, tc.gatewayKey, got.MQTT.GatewayKey, fmt.Sprintf("%s: unexpected gateway key", tc.desc))
 			assert.Equal(t, tc.caCert, got.MQTT.CaCert, fmt.Sprintf("%s: unexpected ca cert", tc.desc))
 			assert.Equal(t, tc.nodeRedURL, got.NodeRed.URL, fmt.Sprintf("%s: unexpected node-red url", tc.desc))
 		})
@@ -159,8 +159,8 @@ func TestBootstrapConfigURL(t *testing.T) {
 		{
 			desc:    "trim all leading slashes from id",
 			baseURL: "http://bootstrap:9013/clients/bootstrap//",
-			id:      "//client-id",
-			url:     "http://bootstrap:9013/clients/bootstrap/client-id",
+			id:      "//gateway-id",
+			url:     "http://bootstrap:9013/clients/bootstrap/gateway-id",
 		},
 	}
 
@@ -183,10 +183,10 @@ func TestLoadFromCache(t *testing.T) {
 			desc: "load valid cache",
 			setup: func(t *testing.T, path string) {
 				br := bootstrapResponse{
-					Content:    `{"device_id":"dev1"}`,
-					ClientKey:  "key",
-					ClientCert: "cert",
-					CaCert:     "ca",
+					Content:     `{"device_id":"dev1"}`,
+					GatewayKey:  "key",
+					GatewayCert: "cert",
+					CaCert:      "ca",
 				}
 				data, err := json.Marshal(br)
 				require.NoError(t, err)
@@ -236,10 +236,10 @@ func TestLoadFromCache(t *testing.T) {
 
 func TestStoreToCache(t *testing.T) {
 	br := bootstrapResponse{
-		Content:    `{"device_id":"dev1"}`,
-		ClientKey:  "key",
-		ClientCert: "cert",
-		CaCert:     "ca",
+		Content:     `{"device_id":"dev1"}`,
+		GatewayKey:  "key",
+		GatewayCert: "cert",
+		CaCert:      "ca",
 	}
 
 	t.Run("store and reload", func(t *testing.T) {
@@ -249,8 +249,8 @@ func TestStoreToCache(t *testing.T) {
 		got, err := loadFromCache(path)
 		assert.NoError(t, err)
 		assert.Equal(t, br.Content, got.Content)
-		assert.Equal(t, br.ClientKey, got.ClientKey)
-		assert.Equal(t, br.ClientCert, got.ClientCert)
+		assert.Equal(t, br.GatewayKey, got.GatewayKey)
+		assert.Equal(t, br.GatewayCert, got.GatewayCert)
 		assert.Equal(t, br.CaCert, got.CaCert)
 	})
 

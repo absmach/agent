@@ -15,17 +15,17 @@ import (
 
 type CoAPPublisher struct {
 	client   *coap.Client
-	domainID string
+	tenantID string
 	ctrlChan string
 	dataChan string
 	topic    string
 	cf       int
 }
 
-func NewCoAPPublisher(client *coap.Client, domainID, ctrlChan, dataChan, topic string, cf int) *CoAPPublisher {
+func NewCoAPPublisher(client *coap.Client, tenantID, ctrlChan, dataChan, topic string, cf int) *CoAPPublisher {
 	return &CoAPPublisher{
 		client:   client,
-		domainID: domainID,
+		tenantID: tenantID,
 		ctrlChan: ctrlChan,
 		dataChan: dataChan,
 		topic:    topic,
@@ -50,11 +50,11 @@ func (c *CoAPPublisher) buildPath(topic string) string {
 	}
 	switch topic {
 	case TopicControl:
-		return fmt.Sprintf("/m/%s/c/%s/res", c.domainID, c.ctrlChan)
+		return fmt.Sprintf("/m/%s/c/%s/res", c.tenantID, c.ctrlChan)
 	case TopicData:
-		return fmt.Sprintf("/m/%s/c/%s/gateway/telemetry", c.domainID, c.dataChan)
+		return fmt.Sprintf("/m/%s/c/%s/gateway/telemetry", c.tenantID, c.dataChan)
 	default:
-		return fmt.Sprintf("/m/%s/c/%s/res/%s", c.domainID, c.ctrlChan, topic)
+		return fmt.Sprintf("/m/%s/c/%s/res/%s", c.tenantID, c.ctrlChan, topic)
 	}
 }
 
@@ -78,10 +78,10 @@ type CoAPBroker struct {
 	publisher *CoAPPublisher
 }
 
-func NewCoAPBroker(broker *coap.Broker, client *coap.Client, domainID, ctrlChan, dataChan, topic string, cf int) *CoAPBroker {
+func NewCoAPBroker(broker *coap.Broker, client *coap.Client, tenantID, ctrlChan, dataChan, topic string, cf int) *CoAPBroker {
 	return &CoAPBroker{
 		broker:    broker,
-		publisher: NewCoAPPublisher(client, domainID, ctrlChan, dataChan, topic, cf),
+		publisher: NewCoAPPublisher(client, tenantID, ctrlChan, dataChan, topic, cf),
 	}
 }
 

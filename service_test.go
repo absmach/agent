@@ -31,10 +31,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var domainID = "1e7295a6-8de9-4c3c-8e36-387217f131f6"
+var tenantID = "1e7295a6-8de9-4c3c-8e36-387217f131f6"
 
 func mqttTopic(channel, suffix string) string {
-	return fmt.Sprintf("m/%s/c/%s/%s", domainID, channel, suffix)
+	return fmt.Sprintf("m/%s/c/%s/%s", tenantID, channel, suffix)
 }
 
 func testConfig() agent.Config {
@@ -45,8 +45,8 @@ func testConfig() agent.Config {
 		agent.LogConfig{Level: "debug"},
 		agent.MQTTConfig{
 			URL:        "ssl://mqtt.example.com:8883",
-			Username:   "client-id",
-			Password:   "client-secret",
+			Username:   "gateway-id",
+			Password:   "gateway-secret",
 			SkipTLSVer: true,
 			Retain:     true,
 			QoS:        0,
@@ -63,7 +63,7 @@ func testConfig() agent.Config {
 
 func newService(t *testing.T, cfg agent.Config, store cfgstore.Store, devices ...*devicemgr.Manager) (agent.Service, *agentmocks.MQTTClient, *nrmocks.Client, error) {
 	t.Helper()
-	cfg.DomainID = domainID
+	cfg.TenantID = tenantID
 	mqttClient := agentmocks.NewMQTTClient(t)
 	nodeRed := nrmocks.NewClient(t)
 
@@ -98,7 +98,7 @@ func expectMQTTPublish(t *testing.T, mqttClient *agentmocks.MQTTClient, topic st
 
 func TestSelfHeartbeatPublishesRichPayload(t *testing.T) {
 	cfg := testConfig()
-	cfg.DomainID = domainID
+	cfg.TenantID = tenantID
 	mqttClient := agentmocks.NewMQTTClient(t)
 	nodeRed := nrmocks.NewClient(t)
 
@@ -732,7 +732,7 @@ func TestBsValidCacheInvalidation(t *testing.T) {
 	require.NoError(t, storeErr)
 
 	cfg := testConfig()
-	cfg.DomainID = domainID
+	cfg.TenantID = tenantID
 	mqttClient := agentmocks.NewMQTTClient(t)
 	nodeRed := nrmocks.NewClient(t)
 
@@ -863,7 +863,7 @@ func TestApplyConfigEntry(t *testing.T) {
 			key:  "totally_unknown",
 			val:  "val",
 			check: func(t *testing.T, cfg agent.Config) {
-				assert.Equal(t, "client-secret", cfg.MQTT.Password)
+				assert.Equal(t, "gateway-secret", cfg.MQTT.Password)
 			},
 		},
 		{
@@ -875,11 +875,11 @@ func TestApplyConfigEntry(t *testing.T) {
 			},
 		},
 		{
-			desc: "set domain id",
-			key:  "domain_id",
-			val:  "my-domain",
+			desc: "set tenant ID",
+			key:  "tenant_id",
+			val:  "my-tenant",
 			check: func(t *testing.T, cfg agent.Config) {
-				assert.Equal(t, "my-domain", cfg.DomainID)
+				assert.Equal(t, "my-tenant", cfg.TenantID)
 			},
 		},
 		{
@@ -985,7 +985,7 @@ func TestNodeRed(t *testing.T) {
 	errBoom := fmt.Errorf("boom")
 	normalizedFlow := mock.MatchedBy(func(f string) bool {
 		return strings.Contains(f, "mqtt.example.com") &&
-			strings.Contains(f, "client-id-nr") &&
+			strings.Contains(f, "gateway-id-nr") &&
 			strings.Contains(f, "magistrala-agent-tls")
 	})
 
@@ -1100,9 +1100,9 @@ func TestAddConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := testConfig()
-	cfg.DomainID = domainID
+	cfg.TenantID = tenantID
 	require.NoError(t, svc.AddConfig(cfg))
-	assert.Equal(t, cfg.DomainID, svc.Config().DomainID)
+	assert.Equal(t, cfg.TenantID, svc.Config().TenantID)
 }
 
 func TestServices(t *testing.T) {
@@ -1223,7 +1223,7 @@ func TestPing(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			cfg := testConfig()
-			cfg.DomainID = domainID
+			cfg.TenantID = tenantID
 			mqttClient := agentmocks.NewMQTTClient(t)
 			nodeRed := nrmocks.NewClient(t)
 			mqttClient.On("IsConnected").Maybe().Return(true)
@@ -1270,14 +1270,14 @@ func TestPing(t *testing.T) {
 
 func TestNormalizeNodeRedFlow(t *testing.T) {
 	cfg := agent.Config{
-		DomainID: domainID,
+		TenantID: tenantID,
 		Channels: agent.ChanConfig{
 			DataID: "data-channel",
 		},
 		MQTT: agent.MQTTConfig{
 			URL:        "ssl://mqtt.example.com:8883",
-			Username:   "client-id",
-			Password:   "client-secret",
+			Username:   "gateway-id",
+			Password:   "gateway-secret",
 			SkipTLSVer: true,
 		},
 	}
@@ -1297,8 +1297,8 @@ func TestNormalizeNodeRedFlow(t *testing.T) {
 			flow: `[
 				{"id":"tab","type":"tab","label":"flow"},
 				{"id":"broker-a","type":"mqtt-broker","broker":"old","port":"1883","tls":"old"},
-				{"id":"fn","type":"function","func":"msg.topic = \"m/old-domain/c/old-channel/data\";"},
-				{"id":"out","type":"mqtt out","broker":"missing","topic":"m/old-domain/c/old-channel/data"}
+				{"id":"fn","type":"function","func":"msg.topic = \"m/old-tenant/c/old-channel/data\";"},
+				{"id":"out","type":"mqtt out","broker":"missing","topic":"m/old-tenant/c/old-channel/data"}
 			]`,
 		},
 	}
@@ -1324,10 +1324,10 @@ func TestNormalizeNodeRedFlow(t *testing.T) {
 			broker := byID["broker-a"]
 			assert.Equal(t, "mqtt.example.com", broker["broker"], fmt.Sprintf("%s: unexpected mqtt host", tc.desc))
 			assert.Equal(t, "8883", broker["port"], fmt.Sprintf("%s: unexpected mqtt port", tc.desc))
-			assert.Equal(t, "client-id-nr", broker["clientid"], fmt.Sprintf("%s: unexpected node-red client id", tc.desc))
+			assert.Equal(t, "gateway-id-nr", broker["gatewayid"], fmt.Sprintf("%s: unexpected node-red gateway id", tc.desc))
 			assert.Equal(t, true, broker["usetls"], fmt.Sprintf("%s: unexpected tls flag", tc.desc))
 			assert.Equal(t, agent.NodeRedTLSConfigIDForTest, broker["tls"], fmt.Sprintf("%s: unexpected tls config id", tc.desc))
-			assert.Equal(t, map[string]any{"user": "client-id", "password": "client-secret"}, broker["credentials"], fmt.Sprintf("%s: unexpected credentials", tc.desc))
+			assert.Equal(t, map[string]any{"user": "gateway-id", "password": "gateway-secret"}, broker["credentials"], fmt.Sprintf("%s: unexpected credentials", tc.desc))
 			assert.Equal(t, fmt.Sprintf(`msg.topic = "%s";`, mqttTopic("data-channel", "gateway/telemetry")), byID["fn"]["func"], fmt.Sprintf("%s: unexpected function topic", tc.desc))
 			assert.Equal(t, "broker-a", byID["out"]["broker"], fmt.Sprintf("%s: unexpected mqtt out broker", tc.desc))
 			assert.Equal(t, mqttTopic("data-channel", "gateway/telemetry"), byID["out"]["topic"], fmt.Sprintf("%s: unexpected mqtt out topic", tc.desc))
@@ -1390,34 +1390,34 @@ func TestPatchNodeRedTopic(t *testing.T) {
 	cases := []struct {
 		desc     string
 		input    string
-		domainID string
+		tenantID string
 		channel  string
 		want     string
 	}{
 		{
 			desc:     "legacy data topic",
-			input:    `msg.topic = "m/old-domain/c/old-channel/data";`,
-			domainID: domainID,
+			input:    `msg.topic = "m/old-tenant/c/old-channel/data";`,
+			tenantID: tenantID,
 			channel:  "channel-id",
-			want:     fmt.Sprintf(`msg.topic = "m/%s/c/channel-id/gateway/telemetry";`, domainID),
+			want:     fmt.Sprintf(`msg.topic = "m/%s/c/channel-id/gateway/telemetry";`, tenantID),
 		},
 		{
 			desc:  "leave topic unchanged without ids",
-			input: `msg.topic = "m/old-domain/c/old-channel/data";`,
-			want:  `msg.topic = "m/old-domain/c/old-channel/data";`,
+			input: `msg.topic = "m/old-tenant/c/old-channel/data";`,
+			want:  `msg.topic = "m/old-tenant/c/old-channel/data";`,
 		},
 		{
 			desc:     "gateway telemetry topic",
-			input:    `msg.topic = "m/old-domain/c/old-channel/gateway/telemetry";`,
-			domainID: domainID,
+			input:    `msg.topic = "m/old-tenant/c/old-channel/gateway/telemetry";`,
+			tenantID: tenantID,
 			channel:  "channel-id",
-			want:     fmt.Sprintf(`msg.topic = "m/%s/c/channel-id/gateway/telemetry";`, domainID),
+			want:     fmt.Sprintf(`msg.topic = "m/%s/c/channel-id/gateway/telemetry";`, tenantID),
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			got := agent.PatchNodeRedTopicForTest(tc.input, tc.domainID, tc.channel)
+			got := agent.PatchNodeRedTopicForTest(tc.input, tc.tenantID, tc.channel)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -1482,7 +1482,7 @@ func TestTerminalCloseExistingSession(t *testing.T) {
 
 func TestGetTopic(t *testing.T) {
 	cfg := agent.Config{
-		DomainID: domainID,
+		TenantID: tenantID,
 		Channels: agent.ChanConfig{
 			CtrlID: "ctrl-channel",
 			DataID: "data-channel",
@@ -1519,47 +1519,110 @@ func TestGetTopic(t *testing.T) {
 	}
 }
 
-// sdkProvisionServer returns an httptest.Server that handles the three SDK
-// endpoints used during device provisioning: create client, create channel,
-// and connect. It returns the given fixed IDs so tests can assert on them.
+// sdkProvisionServer returns an httptest.Server that handles the GraphQL
+// mutations used during device provisioning: createEntity, createApiKey,
+// createResource, createPermissionBlock, createDirectPolicy, and rollbacks
+// (deleteEntity, deleteResource).
+// It returns the given fixed IDs so tests can assert on them.
 func sdkProvisionServer(t *testing.T, deviceID, deviceKey, channelID string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+
+		var req struct {
+			Query     string         `json:"query"`
+			Variables map[string]any `json:"variables"`
+		}
+		if r.Body != nil {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &req)
+		}
+
+		op := ""
 		switch {
-		case strings.HasSuffix(r.URL.Path, "/clients") && r.Method == http.MethodPost:
-			w.WriteHeader(http.StatusCreated)
-			resp := map[string]any{
-				"id":   deviceID,
-				"name": "test-device",
-				"credentials": map[string]any{
-					"secret": deviceKey,
+		case strings.Contains(req.Query, "actions"):
+			op = "actions"
+		case strings.Contains(req.Query, "createEntity"):
+			op = "createEntity"
+		case strings.Contains(req.Query, "createApiKey"):
+			op = "createApiKey"
+		case strings.Contains(req.Query, "createResource"):
+			op = "createResource"
+		case strings.Contains(req.Query, "createPermissionBlock"):
+			op = "createPermissionBlock"
+		case strings.Contains(req.Query, "createDirectPolicy"):
+			op = "createDirectPolicy"
+		case strings.Contains(req.Query, "deleteEntity"):
+			op = "deleteEntity"
+		case strings.Contains(req.Query, "deleteResource"):
+			op = "deleteResource"
+		}
+
+		w.WriteHeader(http.StatusOK)
+
+		switch op {
+		case "actions":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"actions": map[string]any{
+						"items": []map[string]any{
+							{"id": "pub-uuid", "name": "publish"},
+							{"id": "sub-uuid", "name": "subscribe"},
+						},
+					},
 				},
-			}
-			b, err := json.Marshal(resp)
-			assert.NoError(t, err)
-			_, err = w.Write(b)
-			assert.NoError(t, err)
+			})
 
-		case strings.HasSuffix(r.URL.Path, "/channels") && r.Method == http.MethodPost:
-			w.WriteHeader(http.StatusCreated)
-			resp := map[string]any{"id": channelID, "name": "test-channel"}
-			b, err := json.Marshal(resp)
-			assert.NoError(t, err)
-			_, err = w.Write(b)
-			assert.NoError(t, err)
+		case "createEntity":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"createEntity": map[string]any{"id": deviceID},
+				},
+			})
 
-		case strings.HasSuffix(r.URL.Path, "/connect") && r.Method == http.MethodPost:
-			w.WriteHeader(http.StatusCreated)
+		case "createApiKey":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"createApiKey": map[string]any{"key": deviceKey},
+				},
+			})
 
-		case strings.Contains(r.URL.Path, "/clients/") && r.Method == http.MethodDelete:
-			w.WriteHeader(http.StatusNoContent)
+		case "createResource":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"createResource": map[string]any{"id": channelID},
+				},
+			})
 
-		case strings.Contains(r.URL.Path, "/channels/") && r.Method == http.MethodDelete:
-			w.WriteHeader(http.StatusNoContent)
+		case "createPermissionBlock":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"createPermissionBlock": map[string]any{"id": "pb-uuid"},
+				},
+			})
+
+		case "createDirectPolicy":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"createDirectPolicy": map[string]any{"id": "policy-uuid"},
+				},
+			})
+
+		case "deleteEntity":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{"deleteEntity": true},
+			})
+
+		case "deleteResource":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{"deleteResource": true},
+			})
 
 		default:
-			http.Error(w, "unexpected: "+r.Method+" "+r.URL.Path, http.StatusNotFound)
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"errors": []map[string]any{{"message": "unknown operation: " + op}},
+			})
 		}
 	}))
 	t.Cleanup(srv.Close)
@@ -1754,10 +1817,9 @@ func TestDeviceManager(t *testing.T) {
 		mgr, err := devicemgr.New(
 			filepath.Join(t.TempDir(), "devices.db"),
 			devicemgr.ProvisionConfig{
-				ClientsURL:  provSrv.URL,
-				ChannelsURL: provSrv.URL,
-				Token:       "test-pat",
-				DomainID:    domainID,
+				AtomURL:  provSrv.URL,
+				Token:    "test-pat",
+				TenantID: tenantID,
 			},
 			iface.Config{},
 		)

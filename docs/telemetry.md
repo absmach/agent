@@ -23,7 +23,7 @@ Uptime, memory, and disk usage are always included. CPU temperature, network RSS
 
 ## Payload Format
 
-**Topic:** `m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry`
+**Topic:** `m/<tenant-id>/c/<telemetry-channel-id>/gateway/telemetry`
 
 **Payload (all readers enabled):**
 
@@ -76,7 +76,7 @@ Allowed range: `1s` – `1h`.
 
 | Direction     | Topic                                           | QoS          | Description        |
 | ------------- | ----------------------------------------------- | ------------ | ------------------ |
-| Agent → Cloud | `m/<domain-id>/c/<data-chan>/gateway/telemetry` | Configurable | Periodic telemetry |
+| Agent → Cloud | `m/<tenant-id>/c/<data-chan>/gateway/telemetry` | Configurable | Periodic telemetry |
 
 ## MQTT Test Recipes
 
@@ -85,15 +85,15 @@ Allowed range: `1s` – `1h`.
 ```bash
 mosquitto_sub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> \
-    -t "m/<domain-id>/c/<telemetry-channel-id>/gateway/telemetry" \
+    -u <gateway-id> -P <gateway-secret> \
+    -t "m/<tenant-id>/c/<telemetry-channel-id>/gateway/telemetry" \
     -v
 ```
 
 **Expected output (repeats every interval):**
 
 ```
-m/e9692c28-b730-4797-8a15-2e25c08f9641/c/b465a688-c1ca-417d-a36f-71f6f1be2409/gateway/telemetry [{"bn":"gw:","bt":1781188728.6078596,"n":"uptime","u":"s","v":40.125499445},{"n":"heap_free","u":"By","v":4659642368},{"n":"heap_used","u":"By","v":19801149440},{"n":"temperature","u":"Cel","v":99},{"n":"load_avg_1m","v":3.87},{"n":"load_avg_5m","v":3.79},{"n":"load_avg_15m","v":4.24},{"n":"disk_usage_percent","u":"%","v":96.84929070396741},{"n":"devices_active","v":0}]
+m/<tenant-id>/c/<telemetry-channel-id>/gateway/telemetry [{"bn":"gw:","bt":1781188728.6078596,"n":"uptime","u":"s","v":40.125499445},{"n":"heap_free","u":"By","v":4659642368},{"n":"heap_used","u":"By","v":19801149440},{"n":"temperature","u":"Cel","v":99},{"n":"load_avg_1m","v":3.87},{"n":"load_avg_5m","v":3.79},{"n":"load_avg_15m","v":4.24},{"n":"disk_usage_percent","u":"%","v":96.84929070396741},{"n":"devices_active","v":0}]
 ```
 
 > **Note:** Records for temperature, RSSI, and load average are only present when the corresponding reader is enabled **and** the underlying system file is available. On non-Linux hosts or devices without wireless interfaces, those records are silently omitted.
@@ -103,8 +103,8 @@ m/e9692c28-b730-4797-8a15-2e25c08f9641/c/b465a688-c1ca-417d-a36f-71f6f1be2409/ga
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"set,telemetry_interval,30s"}]'
 ```
 
@@ -113,8 +113,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"set,telemetry_interval,1m"}]'
 ```
 
@@ -125,8 +125,8 @@ Setting the interval to `0s` stops the periodic publishing:
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"set,telemetry_interval,0s"}]'
 ```
 
@@ -137,20 +137,20 @@ Subscribe to command response:
 ```bash
 mosquitto_sub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> \
-    -t "m/<domain-id>/c/<telemetry-channel-id>/res" \
+    -u <gateway-id> -P <gateway-secret> \
+    -t "m/<tenant-id>/c/<telemetry-channel-id>/res" \
     -v
 ```
 
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"get,telemetry_interval"}]'
 ```
 
-**Response on `m/<domain-id>/c/<ctrl-chan>/res`:**
+**Response on `m/<tenant-id>/c/<ctrl-chan>/res`:**
 
 ```json
 [{ "bn": "req-1", "n": "get", "t": 1781190613.1251912, "vs": "10s" }]
@@ -161,7 +161,7 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"reset,telemetry_interval"}]'
 ```

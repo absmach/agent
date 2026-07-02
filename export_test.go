@@ -26,8 +26,8 @@ func NodeRedMQTTEndpointForTest(rawURL string) (string, string, bool) {
 	return nodeRedMQTTEndpoint(rawURL)
 }
 
-func PatchNodeRedTopicForTest(value, domainID, channelID string) string {
-	return patchNodeRedTopic(value, domainID, channelID)
+func PatchNodeRedTopicForTest(value, tenantID, channelID string) string {
+	return patchNodeRedTopic(value, tenantID, channelID)
 }
 
 func EnsureNodeRedTLSConfigForTest(payload any) any {

@@ -6,7 +6,7 @@ The Magistrala IoT Agent now supports CoAP (Constrained Application Protocol) as
 
 ## Features
 
-### CoAP Client
+### CoAP
 
 - **Dual Transport Support**: MQTT and CoAP can be used interchangeably via configuration
 - **DTLS Security**:
@@ -49,8 +49,8 @@ All existing MQTT commands are supported via CoAP:
 | `MG_AGENT_TRANSPORT`            | Transport type: `mqtt` or `coap` | `mqtt`           |
 | `MG_AGENT_COAP_URL`             | CoAP server URL (host:port)      | `localhost:5683` |
 | `MG_AGENT_COAP_PSK`             | DTLS pre-shared key              | `""`             |
-| `MG_AGENT_COAP_CERT_FILE`       | Client certificate file path     | `""`             |
-| `MG_AGENT_COAP_KEY_FILE`        | Client private key file path     | `""`             |
+| `MG_AGENT_COAP_CERT_FILE`       | Gateway certificate file path    | `""`             |
+| `MG_AGENT_COAP_KEY_FILE`        | Gateway private key file path    | `""`             |
 | `MG_AGENT_COAP_CA_FILE`         | CA certificate file path         | `""`             |
 | `MG_AGENT_COAP_SKIP_TLS`        | Skip TLS verification            | `true`           |
 | `MG_AGENT_COAP_MAX_OBSERVE`     | Max observe registrations        | `8`              |
@@ -67,8 +67,8 @@ transport = "coap"  # or "mqtt"
 [coap]
 url = "coap://coap.magistrala.io:5683"
 psk = "shared-secret"
-cert_path = "/etc/agent/client.crt"
-priv_key_path = "/etc/agent/client.key"
+cert_path = "/etc/agent/gateway.crt"
+priv_key_path = "/etc/agent/gateway.key"
 ca_path = "/etc/agent/ca.crt"
 skip_tls_ver = false
 max_observe = 8
@@ -83,13 +83,13 @@ MQTT topics are mapped to CoAP paths as follows:
 
 | MQTT Topic                                      | CoAP Path                                        | Method  |
 | ----------------------------------------------- | ------------------------------------------------ | ------- |
-| `m/{domain}/c/{ctrl_channel}/req`               | `/m/{domain}/c/{ctrl_channel}/req`               | OBSERVE |
-| `m/{domain}/c/{ctrl_channel}/res`               | `/m/{domain}/c/{ctrl_channel}/res`               | POST    |
-| `m/{domain}/c/{data_channel}/gateway/telemetry` | `/m/{domain}/c/{data_channel}/gateway/telemetry` | POST    |
-| `m/{domain}/c/{data_channel}/gateway/heartbeat` | `/m/{domain}/c/{data_channel}/gateway/heartbeat` | POST    |
-| `m/{domain}/c/{ctrl_channel}/ota/cfg`           | `/m/{domain}/c/{ctrl_channel}/ota/cfg`           | OBSERVE |
-| `m/{domain}/c/{ctrl_channel}/ota`               | `/m/{domain}/c/{ctrl_channel}/ota`               | OBSERVE |
-| `m/{domain}/c/{ctrl_channel}/ota/status`        | `/m/{domain}/c/{ctrl_channel}/ota/status`        | POST    |
+| `m/{tenant}/c/{ctrl_channel}/req`               | `/m/{tenant}/c/{ctrl_channel}/req`               | OBSERVE |
+| `m/{tenant}/c/{ctrl_channel}/res`               | `/m/{tenant}/c/{ctrl_channel}/res`               | POST    |
+| `m/{tenant}/c/{data_channel}/gateway/telemetry` | `/m/{tenant}/c/{data_channel}/gateway/telemetry` | POST    |
+| `m/{tenant}/c/{data_channel}/gateway/heartbeat` | `/m/{tenant}/c/{data_channel}/gateway/heartbeat` | POST    |
+| `m/{tenant}/c/{ctrl_channel}/ota/cfg`           | `/m/{tenant}/c/{ctrl_channel}/ota/cfg`           | OBSERVE |
+| `m/{tenant}/c/{ctrl_channel}/ota`               | `/m/{tenant}/c/{ctrl_channel}/ota`               | OBSERVE |
+| `m/{tenant}/c/{ctrl_channel}/ota/status`        | `/m/{tenant}/c/{ctrl_channel}/ota/status`        | POST    |
 
 ## Usage Examples
 
@@ -99,7 +99,7 @@ MQTT topics are mapped to CoAP paths as follows:
 export MG_AGENT_TRANSPORT=coap
 export MG_AGENT_COAP_URL=coap.example.com:5683
 export MG_AGENT_COAP_PSK=shared-secret
-export MG_AGENT_DOMAIN_ID=<domain-id>
+export MG_AGENT_TENANT_ID=<tenant-id>
 export MG_AGENT_CHANNELS_CTRL_ID=<ctrl-channel-id>
 export MG_AGENT_CHANNELS_DATA_ID=<data-channel-id>
 
@@ -111,11 +111,11 @@ export MG_AGENT_CHANNELS_DATA_ID=<data-channel-id>
 ```bash
 export MG_AGENT_TRANSPORT=coap
 export MG_AGENT_COAP_URL=coaps://coap.example.com:5684
-export MG_AGENT_COAP_CERT_FILE=/etc/agent/client.crt
-export MG_AGENT_COAP_KEY_FILE=/etc/agent/client.key
+export MG_AGENT_COAP_CERT_FILE=/etc/agent/gateway.crt
+export MG_AGENT_COAP_KEY_FILE=/etc/agent/gateway.key
 export MG_AGENT_COAP_CA_FILE=/etc/agent/ca.crt
 export MG_AGENT_COAP_SKIP_TLS=false
-export MG_AGENT_DOMAIN_ID=<domain-id>
+export MG_AGENT_TENANT_ID=<tenant-id>
 export MG_AGENT_CHANNELS_CTRL_ID=<ctrl-channel-id>
 export MG_AGENT_CHANNELS_DATA_ID=<data-channel-id>
 
@@ -128,17 +128,17 @@ Using the coap-cli tool:
 
 ```bash
 # Execute command
-coap-cli post /m/<domain>/c/<ctrl-channel>/req \
+coap-cli post /m/<tenant>/c/<ctrl-channel>/req \
   --auth <auth-token> \
   -d '[{"bn":"req-1:", "n":"exec", "vs":"ls,-la"}]'
 
 # Ping
-coap-cli post /m/<domain>/c/<ctrl-channel>/req \
+coap-cli post /m/<tenant>/c/<ctrl-channel>/req \
   --auth <auth-token> \
   -d '[{"bn":"ping:", "n":"ping", "vs":""}]'
 
 # View config
-coap-cli post /m/<domain>/c/<ctrl-channel>/req \
+coap-cli post /m/<tenant>/c/<ctrl-channel>/req \
   --auth <auth-token> \
   -d '[{"bn":"cfg:", "n":"config", "vs":"view"}]'
 ```
@@ -147,12 +147,12 @@ coap-cli post /m/<domain>/c/<ctrl-channel>/req \
 
 ```bash
 # Observe heartbeat
-coap-cli get /m/<domain>/c/<data-channel>/gateway/heartbeat \
+coap-cli get /m/<tenant>/c/<data-channel>/gateway/heartbeat \
   --auth <auth-token> \
   --observe
 
 # Observe telemetry
-coap-cli get /m/<domain>/c/<data-channel>/gateway/telemetry \
+coap-cli get /m/<tenant>/c/<data-channel>/gateway/telemetry \
   --auth <auth-token> \
   --observe
 ```
@@ -177,8 +177,8 @@ More secure DTLS using X.509 certificates:
 ```toml
 [coap]
 url = "coaps://coap.example.com:5684"
-cert_path = "/etc/agent/client.crt"
-priv_key_path = "/etc/agent/client.key"
+cert_path = "/etc/agent/gateway.crt"
+priv_key_path = "/etc/agent/gateway.key"
 ca_path = "/etc/agent/ca.crt"
 skip_tls_ver = false
 ```
@@ -192,8 +192,8 @@ CoAP credentials can be provisioned via the bootstrap service, similar to MQTT:
   "coap": {
     "url": "coaps://coap.magistrala.io:5684",
     "psk": "bootstrap-provisioned-psk",
-    "cert_path": "/etc/agent/client.crt",
-    "priv_key_path": "/etc/agent/client.key",
+    "cert_path": "/etc/agent/gateway.crt",
+    "priv_key_path": "/etc/agent/gateway.key",
     "ca_path": "/etc/agent/ca.crt"
   }
 }
@@ -207,7 +207,7 @@ OTA updates are supported over CoAP using the observe pattern:
 
 ```bash
 # Observe OTA config resource
-coap-cli observe /m/<domain>/c/<ctrl-channel>/ota/cfg \
+coap-cli observe /m/<tenant>/c/<ctrl-channel>/ota/cfg \
   --auth <auth-token> &
 # Server will publish OTA config (URL, hash, size)
 ```
@@ -216,7 +216,7 @@ coap-cli observe /m/<domain>/c/<ctrl-channel>/ota/cfg \
 
 ```bash
 # Observe OTA data resource for firmware streaming
-coap-cli observe /m/<domain>/c/<ctrl-channel>/ota \
+coap-cli observe /m/<tenant>/c/<ctrl-channel>/ota \
   --auth <auth-token> &
 # Firmware binary will be streamed in blocks
 ```
@@ -225,7 +225,7 @@ coap-cli observe /m/<domain>/c/<ctrl-channel>/ota \
 
 ```bash
 # Observe OTA status for progress updates
-coap-cli observe /m/<domain>/c/<ctrl_channel>/ota/status \
+coap-cli observe /m/<tenant>/c/<ctrl_channel>/ota/status \
   --auth <auth-token> &
 # Status updates will be published periodically
 ```

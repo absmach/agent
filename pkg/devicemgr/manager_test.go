@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/absmach/agent/pkg/devicemgr"
@@ -19,60 +21,172 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// magistralaServer returns a combined httptest.Server that handles the three
-// SDK endpoints used during provisioning:
+// magistralaServer returns an httptest.Server that handles the GraphQL
+// mutations used during provisioning:
 //
-//	POST /{domainID}/clients          → create client
-//	POST /{domainID}/channels         → create channel
-//	POST /{domainID}/channels/connect → connect
-//	DELETE /{domainID}/clients/{id}   → rollback client
-//	DELETE /{domainID}/channels/{id}  → rollback channel
+//	createEntity           → create device entity
+//	createApiKey           → create API key for MQTT auth
+//	createResource         → create telemetry resource
+//	createPermissionBlock  → permission block for the resource
+//	createDirectPolicy     → direct policy linking entity → permission block
+//	deleteEntity           → rollback device
+//	deleteResource         → rollback resource
+//	revokeCredential       → rollback API key
+//	deletePermissionBlock  → rollback permission block
+//	deleteDirectPolicy     → rollback direct policy
 //
-// Pass overrides to intercept specific paths; nil falls back to the default
-// 201 responses.
+// Pass overrides keyed by operation name (e.g. "createEntity") to intercept
+// specific mutations; nil falls back to the default responses.
 func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *httptest.Server {
 	t.Helper()
 
 	callCount := 0
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if fn, ok := overrides[r.URL.Path]; ok {
+		// All provisioning calls go through a single GraphQL endpoint.
+		var req struct {
+			Query     string         `json:"query"`
+			Variables map[string]any `json:"variables"`
+		}
+		if r.Body != nil {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &req)
+		}
+
+		// Determine operation name from the query string.
+		op := ""
+		switch {
+		case strings.Contains(req.Query, "actions"):
+			op = "actions"
+		case strings.Contains(req.Query, "createEntity"):
+			op = "createEntity"
+		case strings.Contains(req.Query, "createApiKey"):
+			op = "createApiKey"
+		case strings.Contains(req.Query, "createResource"):
+			op = "createResource"
+		case strings.Contains(req.Query, "createPermissionBlock"):
+			op = "createPermissionBlock"
+		case strings.Contains(req.Query, "createDirectPolicy"):
+			op = "createDirectPolicy"
+		case strings.Contains(req.Query, "deleteEntity"):
+			op = "deleteEntity"
+		case strings.Contains(req.Query, "deleteResource"):
+			op = "deleteResource"
+		case strings.Contains(req.Query, "revokeCredential"):
+			op = "revokeCredential"
+		case strings.Contains(req.Query, "deletePermissionBlock"):
+			op = "deletePermissionBlock"
+		case strings.Contains(req.Query, "deleteDirectPolicy"):
+			op = "deleteDirectPolicy"
+		}
+
+		if fn, ok := overrides[op]; ok {
 			fn(w, r)
 			return
 		}
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/clients") && r.Method == http.MethodPost:
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		switch op {
+		case "actions":
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":   "device-uuid",
-				"name": "my-device",
-				"credentials": map[string]any{
-					"identity": "ext-id",
-					"secret":   "device-secret",
+				"data": map[string]any{
+					"actions": map[string]any{
+						"items": []map[string]any{
+							{"id": "pub-uuid", "name": "publish"},
+							{"id": "sub-uuid", "name": "subscribe"},
+						},
+					},
 				},
 			})
 
-		case strings.HasSuffix(r.URL.Path, "/channels") && r.Method == http.MethodPost:
-			callCount++
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
+		case "createEntity":
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":   fmt.Sprintf("channel-uuid-%d", callCount),
-				"name": fmt.Sprintf("channel-%d", callCount),
+				"data": map[string]any{
+					"createEntity": map[string]any{
+						"id": "device-uuid",
+					},
+				},
 			})
 
-		case strings.HasSuffix(r.URL.Path, "/connect") && r.Method == http.MethodPost:
-			w.WriteHeader(http.StatusCreated)
+		case "createApiKey":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"createApiKey": map[string]any{
+						"credentialId": "cred-uuid",
+						"key":          "device-secret",
+					},
+				},
+			})
 
-		case strings.Contains(r.URL.Path, "/clients/") && r.Method == http.MethodDelete:
-			w.WriteHeader(http.StatusNoContent)
+		case "createResource":
+			callCount++
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"createResource": map[string]any{
+						"id": fmt.Sprintf("channel-uuid-%d", callCount),
+					},
+				},
+			})
 
-		case strings.Contains(r.URL.Path, "/channels/") && r.Method == http.MethodDelete:
-			w.WriteHeader(http.StatusNoContent)
+		case "createPermissionBlock":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"createPermissionBlock": map[string]any{
+						"id": "pb-uuid",
+					},
+				},
+			})
+
+		case "createDirectPolicy":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"createDirectPolicy": map[string]any{
+						"id": "policy-uuid",
+					},
+				},
+			})
+
+		case "deleteEntity":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"deleteEntity": true,
+				},
+			})
+
+		case "deleteResource":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"deleteResource": true,
+				},
+			})
+
+		case "revokeCredential":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"revokeCredential": true,
+				},
+			})
+
+		case "deletePermissionBlock":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"deletePermissionBlock": true,
+				},
+			})
+
+		case "deleteDirectPolicy":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"deleteDirectPolicy": true,
+				},
+			})
 
 		default:
-			http.Error(w, "unexpected request: "+r.Method+" "+r.URL.Path, http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"errors": []map[string]any{{"message": "unknown operation: " + op}},
+			})
 		}
 	}))
 
@@ -80,15 +194,14 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 	return srv
 }
 
-func newTestManager(t *testing.T, clientsURL, channelsURL string) *devicemgr.Manager {
+func newTestManager(t *testing.T, atomURL string) *devicemgr.Manager {
 	t.Helper()
 	m, err := devicemgr.New(
 		filepath.Join(t.TempDir(), "devices.db"),
 		devicemgr.ProvisionConfig{
-			ClientsURL:  clientsURL,
-			ChannelsURL: channelsURL,
-			Token:       "test-token",
-			DomainID:    "test-domain",
+			AtomURL:  atomURL,
+			Token:    "test-token",
+			TenantID: "test-tenant",
 		},
 		iface.Config{},
 	)
@@ -140,7 +253,7 @@ func TestManager_Add(t *testing.T) {
 
 	cases := []struct {
 		desc        string
-		clientsURL  string
+		atomURL     string
 		channelsURL string
 		ifaceType   iface.InterfaceType
 		ifaceAddr   string
@@ -149,37 +262,33 @@ func TestManager_Add(t *testing.T) {
 		wantErr     bool
 	}{
 		{
-			desc:        "provision and save device successfully",
-			clientsURL:  srv.URL,
-			channelsURL: srv.URL,
-			ifaceType:   iface.InterfaceBLE,
-			ifaceAddr:   "AA:BB:CC:DD:EE:FF",
-			wantID:      "device-uuid",
-			wantKey:     "device-secret",
+			desc:      "provision and save device successfully",
+			atomURL:   srv.URL,
+			ifaceType: iface.InterfaceBLE,
+			ifaceAddr: "AA:BB:CC:DD:EE:FF",
+			wantID:    "device-uuid",
+			wantKey:   "device-secret",
 		},
 		{
-			desc:        "fail when provision clients URL is empty",
-			clientsURL:  "",
-			channelsURL: srv.URL,
-			wantErr:     true,
+			desc:    "fail when atom URL is empty",
+			atomURL: "",
+			wantErr: true,
 		},
 		{
-			desc:        "fail when clients API returns error",
-			clientsURL:  errorSrv.URL,
-			channelsURL: srv.URL,
-			wantErr:     true,
+			desc:    "fail when atom API returns error",
+			atomURL: errorSrv.URL,
+			wantErr: true,
 		},
 		{
-			desc:        "fail when provision server is unreachable",
-			clientsURL:  closedSrv.URL,
-			channelsURL: closedSrv.URL,
-			wantErr:     true,
+			desc:    "fail when provision server is unreachable",
+			atomURL: closedSrv.URL,
+			wantErr: true,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			m := newTestManager(t, tc.clientsURL, tc.channelsURL)
+			m := newTestManager(t, tc.atomURL)
 			d, err := m.Add(context.Background(), "my-device", "ext-id", "ext-key", tc.ifaceType, tc.ifaceAddr)
 			if tc.wantErr {
 				assert.Error(t, err)
@@ -199,14 +308,16 @@ func TestManager_Add(t *testing.T) {
 func TestManager_Add_AuthHeader(t *testing.T) {
 	var gotAuth string
 	srv := magistralaServer(t, map[string]http.HandlerFunc{
-		"/test-domain/clients": func(w http.ResponseWriter, r *http.Request) {
+		"createEntity": func(w http.ResponseWriter, r *http.Request) {
 			gotAuth = r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
+			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":          "d1",
-				"name":        "n",
-				"credentials": map[string]any{"secret": "k1"},
+				"data": map[string]any{
+					"createEntity": map[string]any{
+						"id": "d1",
+					},
+				},
 			})
 		},
 	})
@@ -228,10 +339,9 @@ func TestManager_Add_AuthHeader(t *testing.T) {
 			m, err := devicemgr.New(
 				filepath.Join(t.TempDir(), "devices.db"),
 				devicemgr.ProvisionConfig{
-					ClientsURL:  srv.URL,
-					ChannelsURL: srv.URL,
-					Token:       tc.token,
-					DomainID:    "test-domain",
+					AtomURL:  srv.URL,
+					Token:    tc.token,
+					TenantID: "test-tenant",
 				},
 				iface.Config{},
 			)
@@ -296,11 +406,10 @@ func TestManager_Add_WithRules(t *testing.T) {
 			m, err := devicemgr.New(
 				filepath.Join(t.TempDir(), "devices.db"),
 				devicemgr.ProvisionConfig{
-					ClientsURL:     srv.URL,
-					ChannelsURL:    srv.URL,
+					AtomURL:        srv.URL,
 					RulesEngineURL: tc.rulesEngineURL,
 					Token:          "pat-token",
-					DomainID:       "dom",
+					TenantID:       "ten",
 				},
 				iface.Config{},
 			)
@@ -328,9 +437,59 @@ func TestManager_Add_WithRules(t *testing.T) {
 	}
 }
 
+func TestManager_Add_RollbackOnFailure(t *testing.T) {
+	var mu sync.Mutex
+	calls := map[string]int{}
+	record := func(op string) {
+		mu.Lock()
+		calls[op]++
+		mu.Unlock()
+	}
+
+	ok := func(field string) http.HandlerFunc {
+		return func(w http.ResponseWriter, _ *http.Request) {
+			record(field)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{field: true},
+			})
+		}
+	}
+
+	srv := magistralaServer(t, map[string]http.HandlerFunc{
+		// Force the connect step to fail at the direct-policy mutation, after
+		// the entity, API key, resource, and permission block already exist.
+		"createDirectPolicy": func(w http.ResponseWriter, _ *http.Request) {
+			record("createDirectPolicy")
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"errors": []map[string]any{{"message": "boom"}},
+			})
+		},
+		"deletePermissionBlock": ok("deletePermissionBlock"),
+		"revokeCredential":      ok("revokeCredential"),
+		"deleteResource":        ok("deleteResource"),
+		"deleteEntity":          ok("deleteEntity"),
+	})
+
+	m := newTestManager(t, srv.URL)
+	_, err := m.Add(context.Background(), "dev", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
+	require.Error(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	// Connect cleans up the permission block it created before the policy failed.
+	assert.Equal(t, 1, calls["deletePermissionBlock"], "permission block should be cleaned up")
+	// Provision rolls back the remaining records; soft-deleting the entity does
+	// not cascade, so each must be removed explicitly.
+	assert.Equal(t, 1, calls["revokeCredential"], "api key should be revoked")
+	assert.Equal(t, 1, calls["deleteResource"], "resource should be deleted")
+	assert.Equal(t, 1, calls["deleteEntity"], "entity should be deleted")
+}
+
 func TestManager_Remove(t *testing.T) {
 	srv := magistralaServer(t, nil)
-	m := newTestManager(t, srv.URL, srv.URL)
+	m := newTestManager(t, srv.URL)
 	d, err := m.Add(context.Background(), "my-device", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
 	require.NoError(t, err)
 
@@ -354,7 +513,7 @@ func TestManager_Remove(t *testing.T) {
 
 func TestManager_Get(t *testing.T) {
 	srv := magistralaServer(t, nil)
-	m := newTestManager(t, srv.URL, srv.URL)
+	m := newTestManager(t, srv.URL)
 	d, err := m.Add(context.Background(), "my-device", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
 	require.NoError(t, err)
 
@@ -383,45 +542,41 @@ func TestManager_Get(t *testing.T) {
 func TestManager_List(t *testing.T) {
 	callCount := 0
 	multiSrv := magistralaServer(t, map[string]http.HandlerFunc{
-		"/test-domain/clients": func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
+		"createEntity": func(w http.ResponseWriter, r *http.Request) {
 			callCount++
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
+			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":          fmt.Sprintf("dev-%d", callCount),
-				"name":        fmt.Sprintf("device-%d", callCount),
-				"credentials": map[string]any{"secret": "k"},
+				"data": map[string]any{
+					"createEntity": map[string]any{
+						"id": fmt.Sprintf("dev-%d", callCount),
+					},
+				},
 			})
 		},
 	})
 
 	cases := []struct {
-		desc        string
-		clientsURL  string
-		channelsURL string
-		seedNames   []string
-		wantCount   int
+		desc      string
+		atomURL   string
+		seedNames []string
+		wantCount int
 	}{
 		{
 			desc:      "empty manager returns empty slice",
 			wantCount: 0,
 		},
 		{
-			desc:        "list returns all provisioned devices",
-			clientsURL:  multiSrv.URL,
-			channelsURL: multiSrv.URL,
-			seedNames:   []string{"d1", "d2"},
-			wantCount:   2,
+			desc:      "list returns all provisioned devices",
+			atomURL:   multiSrv.URL,
+			seedNames: []string{"d1", "d2"},
+			wantCount: 2,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			m := newTestManager(t, tc.clientsURL, tc.channelsURL)
+			m := newTestManager(t, tc.atomURL)
 			for i, name := range tc.seedNames {
 				_, err := m.Add(context.Background(), name, fmt.Sprintf("e%d", i), fmt.Sprintf("k%d", i), iface.InterfaceBLE, fmt.Sprintf("addr%d", i))
 				require.NoError(t, err)
@@ -435,7 +590,7 @@ func TestManager_List(t *testing.T) {
 
 func TestManager_MarkSeen(t *testing.T) {
 	srv := magistralaServer(t, nil)
-	m := newTestManager(t, srv.URL, srv.URL)
+	m := newTestManager(t, srv.URL)
 	d, err := m.Add(context.Background(), "my-device", "ext-id", "ext-key", iface.InterfaceBLE, "addr")
 	require.NoError(t, err)
 
@@ -462,7 +617,7 @@ func TestManager_MarkSeen(t *testing.T) {
 
 func TestManager_OpenIface(t *testing.T) {
 	srv := magistralaServer(t, nil)
-	m := newTestManager(t, srv.URL, srv.URL)
+	m := newTestManager(t, srv.URL)
 	d, err := m.Add(context.Background(), "dev", "eid", "ekey", iface.InterfaceBLE, "AA:BB:CC:DD:EE:FF")
 	require.NoError(t, err)
 
@@ -510,7 +665,7 @@ func TestManager_CloseIface(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			m := newTestManager(t, "", "")
+			m := newTestManager(t, "")
 			err := m.CloseIface(tc.id)
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), tc.errContains)
@@ -535,7 +690,7 @@ func TestManager_ReadIface(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			m := newTestManager(t, "", "")
+			m := newTestManager(t, "")
 			_, err := m.ReadIface(tc.id, tc.n)
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), tc.errContains)
@@ -565,7 +720,7 @@ func TestManager_WriteIface(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			m := newTestManager(t, "", "")
+			m := newTestManager(t, "")
 			_, err := m.WriteIface(tc.id, tc.hexData)
 			assert.Error(t, err)
 			if tc.errContains != "" {
