@@ -1520,7 +1520,7 @@ func TestGetTopic(t *testing.T) {
 }
 
 // sdkProvisionServer returns an httptest.Server that handles the GraphQL
-// mutations used during device provisioning: createEntity, createApiKey,
+// mutations used during device provisioning: createEntity, createSharedKey,
 // createResource, createPermissionBlock, createDirectPolicy, and rollbacks
 // (deleteEntity, deleteResource).
 // It returns the given fixed IDs so tests can assert on them.
@@ -1544,8 +1544,8 @@ func sdkProvisionServer(t *testing.T, deviceID, deviceKey, channelID string) *ht
 			op = "actions"
 		case strings.Contains(req.Query, "createEntity"):
 			op = "createEntity"
-		case strings.Contains(req.Query, "createApiKey"):
-			op = "createApiKey"
+		case strings.Contains(req.Query, "createSharedKey"):
+			op = "createSharedKey"
 		case strings.Contains(req.Query, "createResource"):
 			op = "createResource"
 		case strings.Contains(req.Query, "createPermissionBlock"):
@@ -1580,10 +1580,10 @@ func sdkProvisionServer(t *testing.T, deviceID, deviceKey, channelID string) *ht
 				},
 			})
 
-		case "createApiKey":
+		case "createSharedKey":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"data": map[string]any{
-					"createApiKey": map[string]any{"key": deviceKey},
+					"createSharedKey": map[string]any{"key": deviceKey},
 				},
 			})
 

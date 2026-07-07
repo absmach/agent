@@ -25,7 +25,7 @@ import (
 // mutations used during provisioning:
 //
 //	createEntity           → create device entity
-//	createApiKey           → create API key for MQTT auth
+//	createSharedKey        → create API key for MQTT auth
 //	createResource         → create telemetry resource
 //	createPermissionBlock  → permission block for the resource
 //	createDirectPolicy     → direct policy linking entity → permission block
@@ -60,8 +60,8 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 			op = "actions"
 		case strings.Contains(req.Query, "createEntity"):
 			op = "createEntity"
-		case strings.Contains(req.Query, "createApiKey"):
-			op = "createApiKey"
+		case strings.Contains(req.Query, "createSharedKey"):
+			op = "createSharedKey"
 		case strings.Contains(req.Query, "createResource"):
 			op = "createResource"
 		case strings.Contains(req.Query, "createPermissionBlock"):
@@ -110,10 +110,10 @@ func magistralaServer(t *testing.T, overrides map[string]http.HandlerFunc) *http
 				},
 			})
 
-		case "createApiKey":
+		case "createSharedKey":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"data": map[string]any{
-					"createApiKey": map[string]any{
+					"createSharedKey": map[string]any{
 						"credentialId": "cred-uuid",
 						"key":          "device-secret",
 					},

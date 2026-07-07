@@ -78,10 +78,15 @@ fi
 echo "GATEWAY_ID=$GATEWAY_ID" >&2
 
 # ── 3. API key for MQTT ─────────────────────────────────────────────────────
-GATEWAY_KEY=$(jq -n --arg eid "$GATEWAY_ID" '{
-  query: "mutation($eid:ID!){createApiKey(entityId:$eid,input:{description:\"agent-mqtt\"}){key}}",
+GATEWAY_KEY_RESP=$(jq -n --arg eid "$GATEWAY_ID" '{
+  query: "mutation($eid:ID!){createSharedKey(entityId:$eid,input:{description:\"agent-mqtt\"}){key}}",
   variables: {eid: $eid}
-}' | gql | jq -r '.data.createApiKey.key // empty')
+}' | gql)
+GATEWAY_KEY=$(echo "$GATEWAY_KEY_RESP" | jq -r '.data.createSharedKey.key // empty')
+if [ -z "$GATEWAY_KEY" ]; then
+  echo "ERROR: failed to create gateway key: $GATEWAY_KEY_RESP" >&2
+  exit 1
+fi
 echo "GATEWAY_KEY=${GATEWAY_KEY:0:30}..." >&2
 
 # ── 4. Resources (channels) ─────────────────────────────────────────────────

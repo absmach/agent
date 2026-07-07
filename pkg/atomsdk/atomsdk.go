@@ -25,7 +25,7 @@ const (
 	}`
 
 	createAPIKeyMutation = `mutation($eid:ID!,$desc:String!){
-		createApiKey(entityId:$eid,input:{description:$desc}){credentialId key}
+		createSharedKey(entityId:$eid,input:{description:$desc}){credentialId key}
 	}`
 
 	createResourceMutation = `mutation($tid:ID!,$name:String!,$oid:ID!){
@@ -256,13 +256,13 @@ func (s *atomSDK) CreateAPIKey(ctx context.Context, entityID, description string
 	if err != nil {
 		return APIKey{}, err
 	}
-	keyData, ok := data["createApiKey"].(map[string]any)
+	keyData, ok := data["createSharedKey"].(map[string]any)
 	if !ok {
-		return APIKey{}, fmt.Errorf("createApiKey: unexpected response shape")
+		return APIKey{}, fmt.Errorf("createSharedKey: unexpected response shape")
 	}
 	key, _ := keyData["key"].(string)
 	if key == "" {
-		return APIKey{}, fmt.Errorf("createApiKey: empty key in response")
+		return APIKey{}, fmt.Errorf("createSharedKey: empty key in response")
 	}
 	credentialID, _ := keyData["credentialId"].(string)
 	return APIKey{Key: key, CredentialID: credentialID}, nil
