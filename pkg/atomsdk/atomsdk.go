@@ -1,6 +1,9 @@
 // Copyright (c) Abstract Machines
 // SPDX-License-Identifier: Apache-2.0
 
+// Package atomsdk provides a Go SDK for the Atom GraphQL API. It handles
+// entity/resource provisioning, API key creation, and permission management
+// for the Magistrala IoT platform.
 package atomsdk
 
 import (
@@ -73,27 +76,43 @@ const (
 	}`
 )
 
+// Config holds the connection parameters for the Atom GraphQL API.
 type Config struct {
+	// AtomURL is the GraphQL endpoint URL.
 	AtomURL string
-	Token   string
+	// Token is the Bearer token used for authorization.
+	Token string
 }
 
+// SDK provides access to the Atom GraphQL API for provisioning and managing
+// entities, resources, API keys, and permissions.
 type SDK interface {
+	// CreateEntity creates a new device entity in the given tenant.
 	CreateEntity(ctx context.Context, name, tenantID string) (Entity, error)
+	// CreateAPIKey creates a shared API key (credential) for the given entity.
 	CreateAPIKey(ctx context.Context, entityID, description string) (APIKey, error)
+	// CreateResource creates a new resource (e.g. a channel) in the given tenant.
 	CreateResource(ctx context.Context, name, tenantID, ownerID string) (Resource, error)
+	// Connect grants publish/subscribe permissions on a resource to an entity.
 	Connect(ctx context.Context, entityID, resourceID, tenantID string) (Grant, error)
+	// RevokeCredential revokes a previously created API key.
 	RevokeCredential(ctx context.Context, entityID, credentialID string) error
+	// DeleteEntity deletes an entity by ID.
 	DeleteEntity(ctx context.Context, id string) error
+	// DeleteResource deletes a resource by ID.
 	DeleteResource(ctx context.Context, id string) error
+	// DeletePermissionBlock deletes a permission block by ID.
 	DeletePermissionBlock(ctx context.Context, id string) error
+	// DeleteDirectPolicy deletes a direct policy by ID.
 	DeleteDirectPolicy(ctx context.Context, id string) error
 }
 
+// Entity represents a device entity created in Atom.
 type Entity struct {
 	ID string
 }
 
+// Resource represents a resource (e.g. a channel) created in Atom.
 type Resource struct {
 	ID string
 }
@@ -126,6 +145,9 @@ type atomSDK struct {
 	actionIDs map[string]string
 }
 
+// New creates a new SDK instance backed by the given Config. The returned
+// SDK communicates with the Atom GraphQL API to provision and manage
+// entities, resources, API keys, and permissions.
 func New(cfg Config) SDK {
 	return &atomSDK{
 		cfg: cfg,

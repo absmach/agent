@@ -32,7 +32,7 @@ The `content` field from the bootstrap response decodes to:
   "tenant_id": "<tenant-id>",
   "mqtt": {
     "url": "ssl://host.docker.internal:8883",
-    "client_id": "<gateway-id>",
+    "gateway_id": "<gateway-id>",
     "secret": "<gateway-secret>"
   },
   "telemetry": {
@@ -135,7 +135,7 @@ curl -s 'http://localhost:9013/clients/bootstrap/<external-id>' \
 ```json
 {
   "id": "<gateway-entity-id>",
-  "content": "{\n  \"commands\": {\n    \"channel_id\": \"<commands-channel-id>\"\n  },\n  \"device_id\": \"<gateway-entity-id>\",\n  \"tenant_id\": \"<tenant-id>\",\n  \"external_id\": \"<external-id>\",\n  \"mqtt\": {\n    \"client_id\": \"<gateway-entity-id>\",\n    \"secret\": \"<client-secret>\",\n    \"url\": \"ssl://host.docker.internal:8883\"\n  },\n  \"provision\": {\n    \"channels_url\": \"http://channels:9005\",\n    \"clients_url\": \"http://clients:9006\",\n    \"rules_engine_url\": \"http://rules:9008\",\n    \"token\": \"<personal-access-token>\"\n  },\n  \"telemetry\": {\n    \"channel_id\": \"<telemetry-channel-id>\",\n    \"topic\": \"m/<tenant-id>/c/<telemetry-channel-id>/msg\"\n  }\n}"
+  "content": "{\n  \"commands\": {\n    \"channel_id\": \"<commands-channel-id>\"\n  },\n  \"device_id\": \"<gateway-entity-id>\",\n  \"tenant_id\": \"<tenant-id>\",\n  \"external_id\": \"<external-id>\",\n  \"mqtt\": {\n    \"gateway_id\": \"<gateway-entity-id>\",\n    \"secret\": \"<client-secret>\",\n    \"url\": \"ssl://host.docker.internal:8883\"\n  },\n  \"provision\": {\n    \"atom_url\": \"http://atom:8080/graphql\",\n    \"rules_engine_url\": \"http://rules:9008\",\n    \"token\": \"<personal-access-token>\"\n  },\n  \"telemetry\": {\n    \"channel_id\": \"<telemetry-channel-id>\",\n    \"topic\": \"m/<tenant-id>/c/<telemetry-channel-id>/msg\"\n  }\n}"
 }
 ```
 

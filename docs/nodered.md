@@ -242,6 +242,8 @@ The agent will:
 4. `POST` the flows to Node-RED's REST API
 5. Publish the result back to the control channel
 
+> **Note on `gatewayid` vs `clientid`:** The agent sets a custom `gatewayid` property on `mqtt-broker` nodes. Node-RED's standard `mqtt-broker` node uses `clientid` for the MQTT client ID. The custom Node-RED entrypoint (`docker/nodered/entrypoint.js`) reads `gatewayid` at startup and maps it to the standard `clientid` field. This prevents MQTT session conflicts between the agent and its deployed Node-RED flows.
+
 **Verify the deployment:**
 
 ```bash
@@ -368,7 +370,7 @@ mosquitto_pub \
 ]
 ```
 
-Note the normalisations the agent applied: `gatewayid` suffixed with `-nr`, `usetls` set to `true`, `tls` set to `magistrala-agent-tls`, and the topic rewritten to `m/<tenant-id>/c/<telemetry-channel-id>/gateway/telemetry`.
+Note the normalisations the agent applied: the MQTT client ID (`gatewayid` — mapped to Node-RED's standard `clientid` by the custom `entrypoint.js`) suffixed with `-nr`, `usetls` set to `true`, `tls` set to `magistrala-agent-tls`, and the topic rewritten to `m/<tenant-id>/c/<telemetry-channel-id>/gateway/telemetry`.
 
 ### Deploy flows (replace all)
 
