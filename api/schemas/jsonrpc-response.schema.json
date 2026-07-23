@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://absmach.github.io/agent/schemas/jsonrpc-response.schema.json",
+  "title": "Agent JSON-RPC response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["jsonrpc", "id"],
+  "properties": {
+    "jsonrpc": { "const": "2.0" },
+    "id": { "type": "string", "format": "uuid" },
+    "result": {},
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "integer" },
+        "message": { "type": "string" },
+        "data": {}
+      }
+    }
+  },
+  "oneOf": [
+    { "required": ["result"], "not": { "required": ["error"] } },
+    { "required": ["error"], "not": { "required": ["result"] } }
+  ]
+}

@@ -8,6 +8,8 @@ DOCKERS_DEV = $(addprefix docker_dev_,$(SERVICES))
 CGO_ENABLED ?= 0
 GOARCH ?= amd64
 DOCKER_IMAGE_NAME_PREFIX ?= ghcr.io/absmach
+UI_IMAGE ?= $(DOCKER_IMAGE_NAME_PREFIX)/agent-ui
+GATEWAY_IMAGE ?= $(DOCKER_IMAGE_NAME_PREFIX)/agent-gateway
 VERSION ?= $(shell git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0')
 COMMIT ?= $(shell git rev-parse HEAD)
 TIME ?= $(shell date +%F_%T)
@@ -53,7 +55,7 @@ all: ui_prod $(SERVICES)
 arm: GOARCH=arm64
 arm: all
 
-.PHONY: all arm $(SERVICES) dockers dockers_dev ui ui_prod ui_run ui_clean latest release mocks
+.PHONY: all arm $(SERVICES) dockers dockers_dev docker_ui docker_gateway standalone_images ui ui_prod ui_run ui_clean latest release mocks
 
 clean:
 	rm -rf ${BUILD_DIR}
@@ -102,6 +104,21 @@ dockers: $(DOCKERS)
 
 dockers_dev: $(DOCKERS_DEV)
 
+# Build the standalone web UI as its own nginx image.
+docker_ui:
+	docker build \
+		--tag $(UI_IMAGE) \
+		-f ui/docker/Dockerfile ui
+
+# Build the HTTP/WebSocket-to-MQTT gateway used by the standalone UI.
+docker_gateway:
+	docker build \
+		--tag $(GATEWAY_IMAGE) \
+		-f docker/Dockerfile.gateway .
+
+# Build both images required by the standalone remote UI deployment.
+standalone_images: docker_gateway docker_ui
+
 
 define docker_push
 	for svc in $(SERVICES); do \
@@ -130,7 +147,7 @@ provision:
 	@bash scripts/provision.sh
 
 run:
-	docker compose -p magistrala_agent -f docker/docker-compose.yml --env-file docker/.env up -d
+	docker compose -p magistrala_agent -f docker/docker-compose.yml --env-file docker/.env up -d --build --remove-orphans
 
 stop:
 	docker compose -p magistrala_agent -f docker/docker-compose.yml --env-file docker/.env down

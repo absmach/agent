@@ -29,6 +29,7 @@ import (
 	"github.com/absmach/agent/pkg/iface"
 	"github.com/absmach/agent/pkg/logstream"
 	"github.com/absmach/agent/pkg/nodered"
+	"github.com/absmach/agent/pkg/remote"
 	mglog "github.com/absmach/magistrala/logger"
 	"github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/magistrala/pkg/prometheus"
@@ -88,6 +89,15 @@ type config struct {
 	CommandSecret        string   `env:"MG_AGENT_COMMAND_SECRET"                envDefault:""`
 	WatchdogInterval     string   `env:"MG_AGENT_WATCHDOG_INTERVAL"             envDefault:"0s"`
 	WatchdogTimeout      string   `env:"MG_AGENT_WATCHDOG_TIMEOUT"              envDefault:"60s"`
+	RemoteEnabled        bool     `env:"MG_AGENT_REMOTE_ENABLED"                envDefault:"true"`
+	RemoteStorePath      string   `env:"MG_AGENT_REMOTE_STORE_PATH"             envDefault:"/var/lib/agent/remote.db"`
+	RemoteSessionExpiry  string   `env:"MG_AGENT_REMOTE_SESSION_EXPIRY"          envDefault:"24h"`
+	RemoteStreamLifetime string   `env:"MG_AGENT_REMOTE_STREAM_LIFETIME"         envDefault:"10m"`
+	RemoteStreamIdle     string   `env:"MG_AGENT_REMOTE_STREAM_IDLE"             envDefault:"60s"`
+	RemoteMaxStreamBytes string   `env:"MG_AGENT_REMOTE_MAX_STREAM_BYTES"        envDefault:"8388608"`
+	RemoteMaxStreamRate  string   `env:"MG_AGENT_REMOTE_MAX_STREAM_RATE"         envDefault:"100"`
+	RemoteMaxRequestSize string   `env:"MG_AGENT_REMOTE_MAX_REQUEST_BYTES"       envDefault:"1048576"`
+	RemoteMaxRequests    string   `env:"MG_AGENT_REMOTE_MAX_REQUESTS"            envDefault:"16"`
 }
 
 var (
@@ -255,6 +265,42 @@ func main() {
 	svc = middleware.NewLogging(svc, logger)
 	counter, latency := prometheus.MakeMetrics("agent", "api")
 	svc = middleware.NewMetrics(svc, counter, latency)
+
+	var remoteServer *remote.MQTTServer
+	if c.RemoteEnabled {
+		remoteServer, err = remote.NewMQTTServer(ctx, remote.MQTTConfig{
+			URL:             cfg.MQTT.URL,
+			Username:        cfg.MQTT.Username,
+			Password:        cfg.MQTT.Password,
+			ClientID:        cfg.MQTT.Username + "-agent-rpc",
+			MTLS:            cfg.MQTT.MTLS,
+			SkipTLSVerify:   cfg.MQTT.SkipTLSVer,
+			CA:              cfg.MQTT.CA,
+			Certificate:     cfg.MQTT.Cert,
+			DomainID:        cfg.TenantID,
+			ControlChannel:  cfg.Channels.CtrlChan(),
+			DataChannel:     cfg.Channels.DataChan(),
+			StorePath:       c.RemoteStorePath,
+			SessionExpiry:   remote.ParseDurationEnv(c.RemoteSessionExpiry, 24*time.Hour),
+			StreamLifetime:  remote.ParseDurationEnv(c.RemoteStreamLifetime, 10*time.Minute),
+			StreamIdle:      remote.ParseDurationEnv(c.RemoteStreamIdle, time.Minute),
+			MaxStreamBytes:  remote.ParseBytesEnv(c.RemoteMaxStreamBytes, 8<<20),
+			MaxStreamRate:   int(remote.ParseBytesEnv(c.RemoteMaxStreamRate, 100)),
+			MaxRequestBytes: int(remote.ParseBytesEnv(c.RemoteMaxRequestSize, 1<<20)),
+			MaxRequests:     int(remote.ParseBytesEnv(c.RemoteMaxRequests, 16)),
+		}, svc, stream, logger)
+		if err != nil {
+			logger.Error("Failed to start remote MQTT 5 API", slog.Any("error", err))
+			exitCode = 1
+			return
+		}
+		defer func() {
+			if err := remoteServer.Close(); err != nil {
+				logger.Warn("Failed to close remote MQTT 5 API", slog.Any("error", err))
+			}
+		}()
+	}
+
 	b := conn.NewBroker(svc, mqttClient, cfg.Channels.CtrlChan(), cfg.TenantID, logger)
 	onReconnect = b.Resubscribe
 

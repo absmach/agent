@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { gatewayWS, remoteMode } from "@/lib/transport";
 
 const TIME_OPTIONS = [
   { value: "0", label: "All time" },
@@ -67,6 +68,19 @@ export function LogsPage() {
   pausedRef.current = paused;
 
   useEffect(() => {
+    if (remoteMode) {
+      const remote = gatewayWS("logs");
+      if (!remote) return;
+      const ws = new WebSocket(remote.url, remote.protocols);
+      ws.onopen = () => setConnected(true);
+      ws.onmessage = (event) => {
+        if (!pausedRef.current)
+          setLines((prev) => [...prev.slice(-999), String(event.data)]);
+      };
+      ws.onclose = () => setConnected(false);
+      ws.onerror = () => setConnected(false);
+      return () => ws.close();
+    }
     const es = new EventSource("/logs");
 
     es.onopen = () => setConnected(true);

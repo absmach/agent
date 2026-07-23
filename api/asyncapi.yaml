@@ -1,0 +1,513 @@
+asyncapi: 3.1.0
+info:
+  title: Magistrala Agent MQTT API
+  version: 1.0.0
+  description: |
+    MQTT 5 transport contract for one Agent using distinct Magistrala control
+    and data channels. JSON-RPC method definitions are in api/openrpc.json.
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+defaultContentType: application/json
+
+servers:
+  production:
+    host: "{broker}"
+    protocol: mqtts
+    protocolVersion: "5.0"
+    description: Magistrala MQTT 5 broker
+    variables:
+      broker:
+        default: localhost:8883
+    security:
+      - $ref: "#/components/securitySchemes/clientCertificate"
+      - $ref: "#/components/securitySchemes/userPassword"
+    bindings:
+      mqtt:
+        bindingVersion: 0.2.0
+        clientId: "{mqttClientId}"
+        cleanSession: false
+        keepAlive: 30
+
+channels:
+  rpcRequests:
+    address: "m/{domainId}/c/{controlChannel}/req"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      controlChannel:
+        $ref: "#/components/parameters/controlChannel"
+    messages:
+      request:
+        $ref: "#/components/messages/rpcRequest"
+
+  rpcResponses:
+    address: "m/{domainId}/c/{controlChannel}/res/{requesterId}"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      controlChannel:
+        $ref: "#/components/parameters/controlChannel"
+      requesterId:
+        $ref: "#/components/parameters/requesterId"
+    messages:
+      response:
+        $ref: "#/components/messages/rpcResponse"
+
+  serviceRequests:
+    address: "m/{domainId}/c/{controlChannel}/service/{serviceName}/req"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      controlChannel:
+        $ref: "#/components/parameters/controlChannel"
+      serviceName:
+        $ref: "#/components/parameters/serviceName"
+    messages:
+      request:
+        $ref: "#/components/messages/rpcRequest"
+
+  serviceResponses:
+    address: "m/{domainId}/c/{controlChannel}/service/{serviceName}/res/{agentId}/{bootId}"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      controlChannel:
+        $ref: "#/components/parameters/controlChannel"
+      serviceName:
+        $ref: "#/components/parameters/serviceName"
+      agentId:
+        $ref: "#/components/parameters/agentId"
+      bootId:
+        $ref: "#/components/parameters/bootId"
+    messages:
+      response:
+        $ref: "#/components/messages/rpcResponse"
+
+  desiredState:
+    address: "m/{domainId}/c/{controlChannel}/gateway/state/desired"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      controlChannel:
+        $ref: "#/components/parameters/controlChannel"
+    messages:
+      desired:
+        $ref: "#/components/messages/desiredState"
+
+  reportedState:
+    address: "m/{domainId}/c/{dataChannel}/gateway/state/reported"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      dataChannel:
+        $ref: "#/components/parameters/dataChannel"
+    messages:
+      reported:
+        $ref: "#/components/messages/reportedState"
+
+  presence:
+    address: "m/{domainId}/c/{dataChannel}/gateway/presence"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      dataChannel:
+        $ref: "#/components/parameters/dataChannel"
+    messages:
+      presence:
+        $ref: "#/components/messages/presence"
+
+  heartbeat:
+    address: "m/{domainId}/c/{dataChannel}/gateway/heartbeat"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      dataChannel:
+        $ref: "#/components/parameters/dataChannel"
+    messages:
+      heartbeat:
+        $ref: "#/components/messages/senmlPack"
+
+  telemetry:
+    address: "m/{domainId}/c/{dataChannel}/gateway/telemetry"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      dataChannel:
+        $ref: "#/components/parameters/dataChannel"
+    messages:
+      telemetry:
+        $ref: "#/components/messages/senmlPack"
+
+  events:
+    address: "m/{domainId}/c/{dataChannel}/gateway/events"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      dataChannel:
+        $ref: "#/components/parameters/dataChannel"
+    messages:
+      event:
+        $ref: "#/components/messages/event"
+
+  jobEvents:
+    address: "m/{domainId}/c/{dataChannel}/gateway/jobs/events"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      dataChannel:
+        $ref: "#/components/parameters/dataChannel"
+    messages:
+      jobEvent:
+        $ref: "#/components/messages/jobEvent"
+
+  streamControl:
+    address: "m/{domainId}/c/{controlChannel}/gateway/streams/{sessionId}/control"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      controlChannel:
+        $ref: "#/components/parameters/controlChannel"
+      sessionId:
+        $ref: "#/components/parameters/sessionId"
+    messages:
+      control:
+        $ref: "#/components/messages/streamControl"
+
+  streamInput:
+    address: "m/{domainId}/c/{controlChannel}/gateway/streams/{sessionId}/in"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      controlChannel:
+        $ref: "#/components/parameters/controlChannel"
+      sessionId:
+        $ref: "#/components/parameters/sessionId"
+    messages:
+      input:
+        $ref: "#/components/messages/streamInput"
+
+  streamOutput:
+    address: "m/{domainId}/c/{dataChannel}/gateway/streams/{sessionId}/out"
+    parameters:
+      domainId:
+        $ref: "#/components/parameters/domainId"
+      dataChannel:
+        $ref: "#/components/parameters/dataChannel"
+      sessionId:
+        $ref: "#/components/parameters/sessionId"
+    messages:
+      output:
+        $ref: "#/components/messages/streamOutput"
+
+operations:
+  receiveAgentRPC:
+    action: receive
+    summary: Agent receives a short JSON-RPC request.
+    channel:
+      $ref: "#/channels/rpcRequests"
+    messages:
+      - $ref: "#/channels/rpcRequests/messages/request"
+    x-qos: 1
+    x-retain: false
+    x-required-mqtt-properties:
+      - response-topic
+      - correlation-data
+      - message-expiry-interval
+      - content-type
+      - payload-format-indicator
+      - user-property:api-version
+      - user-property:request-deadline
+
+  sendAgentRPCResponse:
+    action: send
+    summary: Agent sends a correlated JSON-RPC response.
+    channel:
+      $ref: "#/channels/rpcResponses"
+    messages:
+      - $ref: "#/channels/rpcResponses/messages/response"
+    x-qos: 1
+    x-retain: false
+
+  sendServiceRPC:
+    action: send
+    summary: Agent calls a logical server-side service.
+    channel:
+      $ref: "#/channels/serviceRequests"
+    messages:
+      - $ref: "#/channels/serviceRequests/messages/request"
+    x-qos: 1
+    x-retain: false
+
+  receiveServiceRPCResponse:
+    action: receive
+    summary: Agent receives a logical server-service response.
+    channel:
+      $ref: "#/channels/serviceResponses"
+    messages:
+      - $ref: "#/channels/serviceResponses/messages/response"
+    x-qos: 1
+    x-retain: false
+
+  receiveDesiredState:
+    action: receive
+    channel:
+      $ref: "#/channels/desiredState"
+    messages:
+      - $ref: "#/channels/desiredState/messages/desired"
+    x-qos: 1
+    x-retain: true
+
+  sendReportedState:
+    action: send
+    channel:
+      $ref: "#/channels/reportedState"
+    messages:
+      - $ref: "#/channels/reportedState/messages/reported"
+    x-qos: 1
+    x-retain: true
+
+  sendPresence:
+    action: send
+    summary: Agent publishes retained online presence; its MQTT Last Will publishes offline presence.
+    channel:
+      $ref: "#/channels/presence"
+    messages:
+      - $ref: "#/channels/presence/messages/presence"
+    x-qos: 1
+    x-retain: true
+
+  sendHeartbeat:
+    action: send
+    channel:
+      $ref: "#/channels/heartbeat"
+    messages:
+      - $ref: "#/channels/heartbeat/messages/heartbeat"
+    x-qos: 0
+    x-retain: false
+
+  sendTelemetry:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry"
+    messages:
+      - $ref: "#/channels/telemetry/messages/telemetry"
+    x-qos: 0
+    x-retain: false
+
+  sendEvents:
+    action: send
+    channel:
+      $ref: "#/channels/events"
+    messages:
+      - $ref: "#/channels/events/messages/event"
+    x-qos: 1
+    x-retain: false
+
+  sendJobEvents:
+    action: send
+    channel:
+      $ref: "#/channels/jobEvents"
+    messages:
+      - $ref: "#/channels/jobEvents/messages/jobEvent"
+    x-qos: 1
+    x-retain: false
+
+  receiveStreamControl:
+    action: receive
+    channel:
+      $ref: "#/channels/streamControl"
+    messages:
+      - $ref: "#/channels/streamControl/messages/control"
+    x-qos: 1
+    x-retain: false
+
+  receiveStreamInput:
+    action: receive
+    channel:
+      $ref: "#/channels/streamInput"
+    messages:
+      - $ref: "#/channels/streamInput/messages/input"
+    x-qos: 0
+    x-retain: false
+
+  sendStreamOutput:
+    action: send
+    channel:
+      $ref: "#/channels/streamOutput"
+    messages:
+      - $ref: "#/channels/streamOutput/messages/output"
+    x-qos: 0
+    x-retain: false
+
+components:
+  securitySchemes:
+    clientCertificate:
+      type: X509
+      description: Per-service or per-Agent operational certificate.
+    userPassword:
+      type: userPassword
+      description: Development fallback when mTLS is not configured.
+
+  parameters:
+    domainId:
+      description: Magistrala domain or tenant identifier.
+    controlChannel:
+      description: Dedicated control channel identifier for one Agent.
+    dataChannel:
+      description: Dedicated data channel identifier for one Agent.
+    requesterId:
+      description: MQTT-safe unique control-plane requester identifier.
+    serviceName:
+      description: Logical server service name.
+    agentId:
+      description: Agent identity.
+    bootId:
+      description: Unique identifier for the current Agent boot.
+    sessionId:
+      description: UUID returned by a stream-open RPC method.
+
+  correlationIds:
+    mqttCorrelationData:
+      description: Raw 16-byte request UUID copied unchanged into the response.
+      location: "$message.header#/correlationData"
+
+  messages:
+    rpcRequest:
+      name: rpcRequest
+      title: JSON-RPC 2.0 request
+      correlationId:
+        $ref: "#/components/correlationIds/mqttCorrelationData"
+      headers:
+        $ref: "#/components/schemas/rpcHeaders"
+      payload:
+        $ref: "./schemas/jsonrpc-request.schema.json"
+      bindings:
+        mqtt:
+          bindingVersion: 0.2.0
+
+    rpcResponse:
+      name: rpcResponse
+      title: JSON-RPC 2.0 response
+      correlationId:
+        $ref: "#/components/correlationIds/mqttCorrelationData"
+      headers:
+        $ref: "#/components/schemas/responseHeaders"
+      payload:
+        $ref: "./schemas/jsonrpc-response.schema.json"
+      bindings:
+        mqtt:
+          bindingVersion: 0.2.0
+
+    desiredState:
+      name: desiredState
+      payload:
+        $ref: "./schemas/desired-state.schema.json"
+
+    reportedState:
+      name: reportedState
+      payload:
+        $ref: "./schemas/reported-state.schema.json"
+
+    presence:
+      name: presence
+      payload:
+        $ref: "./schemas/presence.schema.json"
+
+    event:
+      name: event
+      payload:
+        $ref: "./schemas/event.schema.json"
+
+    jobEvent:
+      name: jobEvent
+      payload:
+        $ref: "./schemas/job-event.schema.json"
+
+    streamControl:
+      name: streamControl
+      payload:
+        type: object
+        required: [action]
+        properties:
+          action:
+            enum: [close, resize]
+          columns:
+            type: integer
+            minimum: 1
+          rows:
+            type: integer
+            minimum: 1
+
+    streamInput:
+      name: streamInput
+      contentType: application/octet-stream
+      payload:
+        type: string
+        format: binary
+
+    streamOutput:
+      name: streamOutput
+      payload:
+        $ref: "./schemas/stream-frame.schema.json"
+
+    senmlPack:
+      name: senmlPack
+      contentType: application/senml+json
+      payload:
+        type: array
+        items:
+          type: object
+
+  schemas:
+    rpcHeaders:
+      type: object
+      required:
+        - responseTopic
+        - correlationData
+        - messageExpiryInterval
+        - contentType
+        - payloadFormat
+        - apiVersion
+        - requestDeadline
+      properties:
+        responseTopic:
+          type: string
+        correlationData:
+          type: string
+          contentEncoding: base64
+        messageExpiryInterval:
+          type: integer
+          minimum: 1
+        contentType:
+          const: application/json
+        payloadFormat:
+          const: 1
+        apiVersion:
+          const: "1"
+        requestDeadline:
+          type: string
+          format: date-time
+
+    responseHeaders:
+      type: object
+      required: [correlationData, messageExpiryInterval, contentType, payloadFormat, apiVersion]
+      properties:
+        correlationData:
+          type: string
+          contentEncoding: base64
+        messageExpiryInterval:
+          type: integer
+          minimum: 1
+        contentType:
+          const: application/json
+        payloadFormat:
+          const: 1
+        apiVersion:
+          const: "1"
+
+x-channel-invariants:
+  - The control and data channels are provisioned independently.
+  - A control channel is dedicated to exactly one Agent.
+  - Only the control plane publishes desired state and RPC requests.
+  - Only the Agent publishes reported state, telemetry, events, jobs and stream output.

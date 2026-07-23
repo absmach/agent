@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://absmach.github.io/agent/schemas/desired-state.schema.json",
+  "title": "Agent desired state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generation", "config"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "generation": { "type": "integer", "minimum": 1 },
+    "config": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://absmach.github.io/agent/schemas/presence.schema.json",
+  "title": "Agent presence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "agentId", "bootId", "status", "timestamp", "capabilities"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "agentId": { "type": "string", "minLength": 1 },
+    "bootId": { "type": "string", "format": "uuid" },
+    "status": { "enum": ["online", "offline"] },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "capabilities": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+  }
+}

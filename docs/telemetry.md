@@ -1,5 +1,9 @@
 # Telemetry
 
+> **Remote API cutover:** periodic telemetry publication is unchanged, but
+> SenML control commands on `/req` were removed. Use `runtimeConfig.list`,
+> `runtimeConfig.set`, or `system.snapshot.get` through the Agent Gateway.
+
 The telemetry subsystem publishes periodic gateway telemetry data to the Magistrala telemetry channel. In addition to uptime, the agent can collect and report CPU temperature, memory usage, load averages, disk usage, and wireless signal strength from the host. This is distinct from the self-heartbeat (see [heartbeat.md](heartbeat.md)), which includes richer device metadata.
 
 ## Overview
@@ -60,7 +64,7 @@ Uptime, memory, and disk usage are always included. CPU temperature, network RSS
 | `MG_AGENT_TELEMETRY_INCLUDE_NETWORK`     | `true`  | Include wireless RSSI reading from `/proc/net/wireless`                                                       |
 | `MG_AGENT_TELEMETRY_INCLUDE_LOAD`        | `true`  | Include 1/5/15-minute load averages from `/proc/loadavg`                                                      |
 
-### Runtime Config (MQTT set)
+### Runtime Config (remote JSON-RPC)
 
 Telemetry can be enabled or reconfigured at runtime:
 
@@ -79,6 +83,10 @@ Allowed range: `1s` – `1h`.
 | Agent → Cloud | `m/<tenant-id>/c/<data-chan>/gateway/telemetry` | Configurable | Periodic telemetry |
 
 ## MQTT Test Recipes
+
+The subscription example is current. The SenML `/req` configuration examples
+below are historical and do not execute in this version; use
+`runtimeConfig.set` via `POST /api/agents/{agentId}/rpc`.
 
 ### Subscribe to telemetry
 

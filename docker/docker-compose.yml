@@ -9,8 +9,25 @@ networks:
 
 volumes:
   nodered-data:
+  agent-data:
 
 services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: agent-mqtt
+    restart: on-failure
+    ports:
+      - "${MG_AGENT_LOCAL_MQTT_PORT:-1884}:1883"
+    networks:
+      - magistrala-agent-base-net
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-p", "1883", "-t", "_health", "-m", "ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   nodered:
     image: nodered/node-red:latest
     container_name: agent-nodered
@@ -23,6 +40,9 @@ services:
       - "1880:1880"
     networks:
       - magistrala-agent-base-net
+    depends_on:
+      mqtt:
+        condition: service_healthy
     volumes:
       - ../scripts:/seed/scripts:ro
       - ./nodered:/seed/nodered:ro
@@ -33,6 +53,9 @@ services:
       NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
       MG_AGENT_MQTT_URL: ${MG_AGENT_MQTT_URL}
       MG_AGENT_MQTT_SKIP_TLS: ${MG_AGENT_MQTT_SKIP_TLS}
+      MG_AGENT_CLIENT_ID: ${MG_AGENT_CLIENT_ID}
+      MG_AGENT_CLIENT_SECRET: ${MG_AGENT_CLIENT_SECRET}
+      MG_AGENT_DOMAIN_ID: ${MG_AGENT_DOMAIN_ID}
       MG_AGENT_BOOTSTRAP_URL: ${MG_AGENT_BOOTSTRAP_URL}
       MG_AGENT_BOOTSTRAP_EXTERNAL_ID: ${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}
       MG_AGENT_BOOTSTRAP_EXTERNAL_KEY: ${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY}
@@ -48,6 +71,14 @@ services:
 
   agent:
     image: ${MG_AGENT_IMAGE}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        SVC: agent
+        VERSION: ${VERSION:-dev}
+        COMMIT: ${COMMIT:-local}
+        TIME: ${TIME:-local}
     container_name: magistrala-agent
     restart: on-failure
     extra_hosts:
@@ -56,7 +87,10 @@ services:
       - "atom:host-gateway"
       - "rules:host-gateway"
     depends_on:
-      - nodered
+      mqtt:
+        condition: service_healthy
+      nodered:
+        condition: service_started
     ports:
       - "${MG_AGENT_HTTP_PORT}:${MG_AGENT_HTTP_PORT}"
     networks:
@@ -70,6 +104,15 @@ services:
       MG_AGENT_NODERED_URL: ${MG_AGENT_NODERED_URL}
       MG_AGENT_HEARTBEAT_INTERVAL: ${MG_AGENT_HEARTBEAT_INTERVAL}
       MG_AGENT_TERMINAL_SESSION_TIMEOUT: ${MG_AGENT_TERMINAL_SESSION_TIMEOUT}
+      MG_AGENT_REMOTE_ENABLED: ${MG_AGENT_REMOTE_ENABLED}
+      MG_AGENT_REMOTE_STORE_PATH: ${MG_AGENT_REMOTE_STORE_PATH}
+      MG_AGENT_REMOTE_SESSION_EXPIRY: ${MG_AGENT_REMOTE_SESSION_EXPIRY}
+      MG_AGENT_REMOTE_STREAM_LIFETIME: ${MG_AGENT_REMOTE_STREAM_LIFETIME}
+      MG_AGENT_REMOTE_STREAM_IDLE: ${MG_AGENT_REMOTE_STREAM_IDLE}
+      MG_AGENT_REMOTE_MAX_STREAM_BYTES: ${MG_AGENT_REMOTE_MAX_STREAM_BYTES}
+      MG_AGENT_REMOTE_MAX_STREAM_RATE: ${MG_AGENT_REMOTE_MAX_STREAM_RATE}
+      MG_AGENT_REMOTE_MAX_REQUEST_BYTES: ${MG_AGENT_REMOTE_MAX_REQUEST_BYTES}
+      MG_AGENT_REMOTE_MAX_REQUESTS: ${MG_AGENT_REMOTE_MAX_REQUESTS}
       MG_AGENT_BOOTSTRAP_URL: ${MG_AGENT_BOOTSTRAP_URL}
       MG_AGENT_BOOTSTRAP_EXTERNAL_ID: ${MG_AGENT_BOOTSTRAP_EXTERNAL_ID}
       MG_AGENT_BOOTSTRAP_EXTERNAL_KEY: ${MG_AGENT_BOOTSTRAP_EXTERNAL_KEY}
@@ -86,4 +129,59 @@ services:
       MG_AGENT_PROVISION_TOKEN: ${MG_PAT}
     volumes:
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
-      - ../build:/var/lib/agent
+      - agent-data:/var/lib/agent
+      - ./agent-config.json:/var/lib/agent/agent-config.json
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.gateway
+    container_name: agent-gateway
+    restart: on-failure
+    depends_on:
+      mqtt:
+        condition: service_healthy
+      agent:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - magistrala-agent-base-net
+    environment:
+      MG_AGENT_GATEWAY_ADDRESS: ":8080"
+      MG_AGENT_GATEWAY_MQTT_URL: ${MG_AGENT_MQTT_URL}
+      MG_AGENT_GATEWAY_MQTT_USERNAME: ${MG_AGENT_GATEWAY_MQTT_USERNAME}
+      MG_AGENT_GATEWAY_MQTT_PASSWORD: ${MG_AGENT_GATEWAY_MQTT_PASSWORD}
+      MG_AGENT_GATEWAY_MQTT_CLIENT_ID: "${MG_AGENT_GATEWAY_MQTT_USERNAME}-gateway"
+      MG_AGENT_GATEWAY_MQTT_SKIP_TLS: ${MG_AGENT_MQTT_SKIP_TLS}
+      MG_AGENT_GATEWAY_TOKEN: ${MG_AGENT_GATEWAY_TOKEN}
+      MG_AGENT_GATEWAY_AUTH_TOKENS: ${MG_AGENT_GATEWAY_AUTH_TOKENS:-}
+      MG_AGENT_GATEWAY_SESSION_EXPIRY: ${MG_AGENT_REMOTE_SESSION_EXPIRY}
+      MG_AGENT_GATEWAY_AGENTS: ${MG_AGENT_GATEWAY_AGENTS}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  agent-ui:
+    build:
+      context: ../ui
+      dockerfile: docker/Dockerfile
+    container_name: agent-ui
+    restart: on-failure
+    depends_on:
+      - gateway
+    ports:
+      - "3001:3000"
+    networks:
+      - magistrala-agent-base-net
+    environment:
+      AGENT_UI_GATEWAY_URL: /gateway
+      AGENT_UI_AGENT_ID: edge-agent-1
+      AGENT_UI_TOKEN: ${MG_AGENT_GATEWAY_TOKEN}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/ui/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5

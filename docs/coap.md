@@ -1,5 +1,10 @@
 # CoAP Transport Support
 
+> CoAP is a separate experimental legacy transport. Its SenML command profile
+> is not the MQTT 5 remote-management API and is not supported by the standalone
+> Agent Gateway. The authoritative remote contracts are
+> [OpenRPC](../api/openrpc.json) and [AsyncAPI](../api/asyncapi.yaml).
+
 ## Overview
 
 The Magistrala IoT Agent now supports CoAP (Constrained Application Protocol) as an alternative transport layer to MQTT. This implementation provides full feature parity with MQTT transport, including DTLS security, observe/notify pattern, and command handling.

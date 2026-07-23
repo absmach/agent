@@ -17,5 +17,8 @@ FROM nginx:1.27-alpine AS runner
 
 COPY --from=builder /app/dist /usr/share/nginx/html/ui
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/entrypoint.sh /usr/local/bin/agent-ui-entrypoint
+RUN chmod +x /usr/local/bin/agent-ui-entrypoint
 
 EXPOSE 3000
+ENTRYPOINT ["/usr/local/bin/agent-ui-entrypoint"]

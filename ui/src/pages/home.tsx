@@ -18,6 +18,7 @@ import { Module } from "@/components/ui/module";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toaster";
 import { useAgentStatus } from "@/lib/agent";
+import { remoteMode } from "@/lib/transport";
 import { cn, formatDuration } from "@/lib/utils";
 import { UI_BASE } from "@/routes";
 
@@ -210,13 +211,21 @@ export function HomePage() {
             </div>
             <p className="text-sm text-muted-foreground">
               {online
-                ? "The local HTTP control API is reachable."
+                ? remoteMode
+                  ? "The control API via MQTT is reachable."
+                  : "The local HTTP control API is reachable."
                 : status === "offline"
-                  ? "No response from the local control API."
-                  : "Probing the local control API."}
+                  ? remoteMode
+                    ? "No response from the agent via MQTT."
+                    : "No response from the local control API."
+                  : remoteMode
+                    ? "Probing the agent via MQTT."
+                    : "Probing the local control API."}
             </p>
             <div className="mt-auto flex flex-col gap-1 pt-2">
-              <span className="label-eyebrow">Endpoint</span>
+              <span className="label-eyebrow">
+                {remoteMode ? "Gateway endpoint" : "Endpoint"}
+              </span>
               <code className="w-fit max-w-full truncate rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
                 {typeof window !== "undefined" ? window.location.origin : "—"}
               </code>

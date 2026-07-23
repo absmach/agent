@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://absmach.github.io/agent/schemas/event.schema.json",
+  "title": "Agent change event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "type", "timestamp"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "type": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "data": {}
+  }
+}

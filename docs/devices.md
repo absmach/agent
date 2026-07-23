@@ -1,5 +1,10 @@
 # Device Manager — Downstream Device Provisioning and Management
 
+> **Remote API cutover:** SenML commands on the control channel `/req` are no
+> longer subscribed to. Any older SenML MQTT recipes in this document are
+> historical only. Remote callers must use the Agent Gateway and the OpenRPC
+> methods listed below; local callers may continue to use the HTTP API.
+
 The device manager subsystem allows the agent to provision, register, and manage downstream devices connected via physical interfaces (serial, I2C, Modbus RTU/TCP, USB). Each device is provisioned as an Atom resource with its own channel, and data from the device is forwarded to Atom over MQTT.
 
 ## Supported Interface Types
@@ -14,23 +19,19 @@ The device manager subsystem allows the agent to provision, register, and manage
 | `ble`        | —                  | Not yet implemented     |
 | `zigbee`     | —                  | Not yet implemented     |
 
-## Subcommands
+## Remote methods
 
-All device commands are sent via the `devices` dispatch name on the commands channel:
+| OpenRPC method | Purpose |
+| --- | --- |
+| `device.list`, `device.get` | Read the registry |
+| `device.register`, `device.remove` | Provision or remove a device |
+| `device.markSeen` | Update last-seen state |
+| `device.interface.open`, `device.interface.close` | Manage the physical interface |
+| `device.interface.read`, `device.interface.write` | Transfer device bytes |
+| `backup.create`, `backup.restore` | Export or restore the registry |
 
-| Subcommand | Format                                                                                                  | Description                                   |
-| ---------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `list`     | `devices,list`                                                                                          | Returns JSON array of all registered devices  |
-| `add`      | `devices,{"name":"...","external_id":"...","external_key":"...","iface_type":"...","iface_addr":"..."}` | Provision and register a new device           |
-| `remove`   | `devices,remove,<device_id>`                                                                            | Deregister and remove a device                |
-| `get`      | `devices,get,<device_id>`                                                                               | Returns JSON for one device                   |
-| `seen`     | `devices,seen,<device_id>`                                                                              | Mark device as active / update last-seen time |
-| `open`     | `devices,open,<device_id>`                                                                              | Open the physical interface for the device    |
-| `close`    | `devices,close,<device_id>`                                                                             | Close the physical interface                  |
-| `read`     | `devices,read,<device_id>,<n_bytes>`                                                                    | Read n bytes from device, reply as hex string |
-| `write`    | `devices,write,<device_id>,<hex_data>`                                                                  | Write hex-encoded bytes to the device         |
-
-> For a single write-then-read round trip to a device, the [`route`](control.md#route-to-downstream-device) command (`route,<device_id>,<hex_payload>[,<read_bytes>]`) opens the interface if needed, writes the payload, and returns the response in one command.
+Calls use `POST /api/agents/{agentId}/rpc` on the Agent Gateway. See
+[standalone-ui.md](standalone-ui.md) and [the OpenRPC contract](../api/openrpc.json).
 
 ## Provisioning Flow
 
@@ -155,6 +156,10 @@ Use an HTTPS endpoint for the webhook URL; the signature authenticates the paylo
 | Agent → Cloud | `m/<tenant-id>/c/<dev-chan>/msg`  | 0   | Device telemetry data  |
 
 ## MQTT Test Recipes
+
+> Removed protocol examples below are retained only to explain older captures.
+> They do not execute in this version. For live testing, POST the corresponding
+> `device.*` method to the Agent Gateway RPC endpoint.
 
 Subscribe to command responses before sending commands:
 

@@ -1,5 +1,9 @@
 # Bootstrap
 
+Bootstrap remains the local enrollment mechanism. After enrollment, remote
+configuration uses MQTT 5 JSON-RPC. SenML `/req` examples later in this
+document are historical and no longer execute.
+
 The bootstrap subsystem handles profile-based provisioning. At startup, the agent fetches a rendered bootstrap profile from the Magistrala Bootstrap service, which provides device identity, MQTT credentials, channel IDs, and provision configuration. The profile is cached locally so subsequent starts skip the HTTP fetch.
 
 ## Bootstrap Flow
@@ -121,6 +125,9 @@ make run_provision
 ```
 
 ## Test Recipes
+
+Use the HTTP example to test enrollment. To change `bs_valid` remotely, call
+`runtimeConfig.set` through the Agent Gateway; do not publish a SenML command.
 
 ### Fetch the bootstrap profile manually
 

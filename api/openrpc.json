@@ -1,0 +1,531 @@
+{
+  "$schema": "https://meta.open-rpc.org/",
+  "openrpc": "1.4.0",
+  "info": {
+    "title": "Magistrala Agent Remote API",
+    "version": "1.0.0",
+    "description": "JSON-RPC 2.0 methods transported over the Agent control channel. MQTT metadata, topics, state, events, jobs and streams are defined by api/asyncapi.yaml.",
+    "license": {
+      "name": "Apache-2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    }
+  },
+  "servers": [
+    {
+      "name": "agent-control-channel",
+      "url": "mqtts://{broker}/m/{domainId}/c/{controlChannel}/req",
+      "summary": "MQTT 5 request destination for one Agent",
+      "variables": {
+        "broker": { "default": "localhost:8883" },
+        "domainId": { "default": "domain-id" },
+        "controlChannel": { "default": "control-channel-id" }
+      }
+    }
+  ],
+  "methods": [
+    {
+      "name": "system.health.get",
+      "summary": "Read Agent health and build identity",
+      "params": [],
+      "result": { "name": "health", "schema": { "$ref": "#/components/schemas/Health" } },
+      "x-operation-class": "read",
+      "x-idempotency": "safe",
+      "x-required-role": "viewer",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "system.snapshot.get",
+      "summary": "Read the complete redacted UI snapshot",
+      "params": [],
+      "result": { "name": "snapshot", "schema": { "$ref": "#/components/schemas/Snapshot" } },
+      "x-operation-class": "read",
+      "x-idempotency": "safe",
+      "x-required-role": "viewer",
+      "x-default-expiry-seconds": 30
+    },
+    {
+      "name": "agent.pause",
+      "summary": "Pause background Agent activity",
+      "params": [],
+      "result": { "$ref": "#/components/contentDescriptors/StatusResult" },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "operator",
+      "x-default-expiry-seconds": 30
+    },
+    {
+      "name": "agent.resume",
+      "summary": "Resume background Agent activity",
+      "params": [],
+      "result": { "$ref": "#/components/contentDescriptors/StatusResult" },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "operator",
+      "x-default-expiry-seconds": 30
+    },
+    {
+      "name": "agent.reload",
+      "summary": "Reload persisted runtime configuration",
+      "params": [],
+      "result": { "$ref": "#/components/contentDescriptors/StatusResult" },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "operator",
+      "x-default-expiry-seconds": 30
+    },
+    {
+      "name": "agent.reset",
+      "summary": "Start a durable Agent reset job",
+      "params": [
+        { "name": "mode", "required": true, "schema": { "type": "string", "enum": ["graceful", "immediate", "watchdog", "now"] } }
+      ],
+      "result": { "$ref": "#/components/contentDescriptors/JobResult" },
+      "x-operation-class": "durable-job",
+      "x-idempotency": "request-id",
+      "x-required-role": "system-admin",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "config.get",
+      "summary": "Read the redacted active configuration",
+      "params": [],
+      "result": { "name": "config", "schema": { "type": "object" } },
+      "x-operation-class": "read",
+      "x-idempotency": "safe",
+      "x-required-role": "viewer",
+      "x-default-expiry-seconds": 30
+    },
+    {
+      "name": "config.apply",
+      "summary": "Start a full configuration apply job",
+      "params": [
+        { "name": "config", "required": true, "schema": { "type": "object" } },
+        { "$ref": "#/components/contentDescriptors/ExpectedRevision" }
+      ],
+      "result": { "$ref": "#/components/contentDescriptors/JobResult" },
+      "x-operation-class": "durable-job",
+      "x-idempotency": "request-id",
+      "x-required-role": "configuration-admin",
+      "x-default-expiry-seconds": 30
+    },
+    {
+      "name": "runtimeConfig.list",
+      "summary": "Read runtime-configurable values and revision",
+      "params": [],
+      "result": { "name": "runtimeConfig", "schema": { "type": "object" } },
+      "x-operation-class": "read",
+      "x-idempotency": "safe",
+      "x-required-role": "viewer",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "runtimeConfig.set",
+      "summary": "Set one runtime configuration value",
+      "params": [
+        { "name": "key", "required": true, "schema": { "type": "string" } },
+        { "name": "value", "required": true, "schema": { "type": "string" } },
+        { "$ref": "#/components/contentDescriptors/ExpectedRevision" }
+      ],
+      "result": { "name": "updatedConfig", "schema": { "type": "object" } },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "configuration-admin",
+      "x-default-expiry-seconds": 30
+    },
+    {
+      "name": "service.list",
+      "summary": "List local services",
+      "params": [],
+      "result": { "name": "services", "schema": { "type": "array", "items": { "type": "object" } } },
+      "x-operation-class": "read",
+      "x-idempotency": "safe",
+      "x-required-role": "viewer",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "service.register",
+      "summary": "Register a local service",
+      "params": [
+        { "name": "name", "required": true, "schema": { "type": "string" } },
+        { "name": "type", "required": false, "schema": { "type": "string" } }
+      ],
+      "result": { "$ref": "#/components/contentDescriptors/StatusResult" },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "service-admin",
+      "x-default-expiry-seconds": 30
+    },
+    {
+      "name": "service.remove",
+      "summary": "Remove a local service",
+      "params": [
+        { "name": "name", "required": true, "schema": { "type": "string" } }
+      ],
+      "result": { "$ref": "#/components/contentDescriptors/StatusResult" },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "service-admin",
+      "x-default-expiry-seconds": 30
+    },
+    {
+      "name": "device.list",
+      "summary": "List registered downstream devices",
+      "params": [],
+      "result": { "name": "devices", "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Device" } } },
+      "x-operation-class": "read",
+      "x-idempotency": "safe",
+      "x-required-role": "viewer",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "device.get",
+      "summary": "Read one downstream device",
+      "params": [{ "$ref": "#/components/contentDescriptors/DeviceId" }],
+      "result": { "name": "device", "schema": { "$ref": "#/components/schemas/Device" } },
+      "x-operation-class": "read",
+      "x-idempotency": "safe",
+      "x-required-role": "viewer",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "device.register",
+      "summary": "Provision and register a downstream device",
+      "params": [
+        { "name": "name", "required": true, "schema": { "type": "string" } },
+        { "name": "externalId", "required": true, "schema": { "type": "string" } },
+        { "name": "externalKey", "required": true, "schema": { "type": "string", "writeOnly": true } },
+        { "name": "interfaceType", "required": true, "schema": { "type": "string" } },
+        { "name": "interfaceAddress", "required": true, "schema": { "type": "string" } }
+      ],
+      "result": { "name": "device", "schema": { "$ref": "#/components/schemas/Device" } },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "device-admin",
+      "x-default-expiry-seconds": 30
+    },
+    {
+      "name": "device.remove",
+      "summary": "Remove a downstream device",
+      "params": [{ "$ref": "#/components/contentDescriptors/DeviceId" }],
+      "result": { "$ref": "#/components/contentDescriptors/StatusResult" },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "device-admin",
+      "x-default-expiry-seconds": 30
+    },
+    {
+      "name": "device.markSeen",
+      "summary": "Refresh downstream-device liveness",
+      "params": [{ "$ref": "#/components/contentDescriptors/DeviceId" }],
+      "result": { "$ref": "#/components/contentDescriptors/StatusResult" },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "device-operator",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "device.interface.open",
+      "summary": "Open a physical device interface",
+      "params": [{ "$ref": "#/components/contentDescriptors/DeviceId" }],
+      "result": { "$ref": "#/components/contentDescriptors/StatusResult" },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "device-operator",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "device.interface.close",
+      "summary": "Close a physical device interface",
+      "params": [{ "$ref": "#/components/contentDescriptors/DeviceId" }],
+      "result": { "$ref": "#/components/contentDescriptors/StatusResult" },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "device-operator",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "device.interface.read",
+      "summary": "Read bytes from a physical device interface",
+      "params": [
+        { "$ref": "#/components/contentDescriptors/DeviceId" },
+        { "name": "bytes", "required": true, "schema": { "type": "integer", "minimum": 1, "maximum": 65536 } }
+      ],
+      "result": { "name": "readResult", "schema": { "type": "object", "required": ["dataBase64", "bytesRead"], "properties": { "dataBase64": { "type": "string", "contentEncoding": "base64" }, "bytesRead": { "type": "integer" } } } },
+      "x-operation-class": "read",
+      "x-idempotency": "safe",
+      "x-required-role": "device-operator",
+      "x-default-expiry-seconds": 10
+    },
+    {
+      "name": "device.interface.write",
+      "summary": "Write bytes to a physical device interface",
+      "params": [
+        { "$ref": "#/components/contentDescriptors/DeviceId" },
+        { "name": "dataBase64", "required": true, "schema": { "type": "string", "contentEncoding": "base64" } }
+      ],
+      "result": { "name": "writeResult", "schema": { "type": "object", "properties": { "bytesWritten": { "type": "integer" } } } },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "device-operator",
+      "x-default-expiry-seconds": 10
+    },
+    {
+      "name": "backup.create",
+      "summary": "Start a downstream-device registry backup job",
+      "params": [],
+      "result": { "$ref": "#/components/contentDescriptors/JobResult" },
+      "x-operation-class": "durable-job",
+      "x-idempotency": "request-id",
+      "x-required-role": "backup-admin",
+      "x-default-expiry-seconds": 30
+    },
+    {
+      "name": "backup.restore",
+      "summary": "Start a downstream-device registry restore job",
+      "params": [
+        { "name": "backup", "required": true, "schema": { "type": "object" } },
+        { "name": "replace", "required": false, "schema": { "type": "boolean", "default": false } }
+      ],
+      "result": { "$ref": "#/components/contentDescriptors/JobResult" },
+      "x-operation-class": "durable-job",
+      "x-idempotency": "request-id",
+      "x-required-role": "backup-admin",
+      "x-default-expiry-seconds": 300
+    },
+    {
+      "name": "nodeRed.status.get",
+      "summary": "Read Node-RED runtime state",
+      "params": [],
+      "result": { "name": "state", "schema": {} },
+      "x-operation-class": "read",
+      "x-idempotency": "safe",
+      "x-required-role": "viewer",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "nodeRed.flows.get",
+      "summary": "Read Node-RED flows",
+      "params": [],
+      "result": { "name": "flows", "schema": {} },
+      "x-operation-class": "read",
+      "x-idempotency": "safe",
+      "x-required-role": "viewer",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "nodeRed.flows.deploy",
+      "summary": "Start a Node-RED flow deployment job",
+      "params": [{ "name": "flows", "required": true, "schema": {} }],
+      "result": { "$ref": "#/components/contentDescriptors/JobResult" },
+      "x-operation-class": "durable-job",
+      "x-idempotency": "request-id",
+      "x-required-role": "node-red-admin",
+      "x-default-expiry-seconds": 120
+    },
+    {
+      "name": "nodeRed.action.execute",
+      "summary": "Execute a bounded Node-RED action",
+      "params": [
+        { "name": "action", "required": true, "schema": { "type": "string", "enum": ["ping", "state", "flows", "addFlow"] } },
+        { "name": "flows", "required": false, "schema": {} }
+      ],
+      "result": { "name": "response", "schema": {} },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "node-red-admin",
+      "x-default-expiry-seconds": 30
+    },
+    {
+      "name": "firmware.update.start",
+      "summary": "Start an HTTPS artifact firmware update job",
+      "params": [
+        { "name": "url", "required": true, "schema": { "type": "string", "format": "uri", "pattern": "^https://" } },
+        { "name": "sha256", "required": true, "schema": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" } },
+        { "name": "size", "required": false, "schema": { "type": "integer", "minimum": 0 } }
+      ],
+      "result": { "$ref": "#/components/contentDescriptors/JobResult" },
+      "x-operation-class": "durable-job",
+      "x-idempotency": "request-id",
+      "x-required-role": "firmware-admin",
+      "x-default-expiry-seconds": 300
+    },
+    {
+      "name": "firmware.update.abort",
+      "summary": "Abort the active firmware operation",
+      "params": [],
+      "result": { "$ref": "#/components/contentDescriptors/StatusResult" },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "firmware-admin",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "firmware.update.status.get",
+      "summary": "Read firmware update status",
+      "params": [],
+      "result": { "name": "status", "schema": { "type": "object" } },
+      "x-operation-class": "read",
+      "x-idempotency": "safe",
+      "x-required-role": "viewer",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "job.get",
+      "summary": "Read a durable job",
+      "params": [{ "$ref": "#/components/contentDescriptors/JobId" }],
+      "result": { "$ref": "#/components/contentDescriptors/JobResult" },
+      "x-operation-class": "read",
+      "x-idempotency": "safe",
+      "x-required-role": "viewer",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "job.list",
+      "summary": "List durable jobs",
+      "params": [],
+      "result": { "name": "jobs", "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Job" } } },
+      "x-operation-class": "read",
+      "x-idempotency": "safe",
+      "x-required-role": "viewer",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "job.cancel",
+      "summary": "Cancel a running durable job",
+      "params": [{ "$ref": "#/components/contentDescriptors/JobId" }],
+      "result": { "$ref": "#/components/contentDescriptors/JobResult" },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "operator",
+      "x-default-expiry-seconds": 15
+    },
+    {
+      "name": "log.stream.open",
+      "summary": "Open a bounded live log stream",
+      "params": [{ "name": "backlog", "required": false, "schema": { "type": "boolean", "default": true } }],
+      "result": { "$ref": "#/components/contentDescriptors/StreamResult" },
+      "x-operation-class": "stream",
+      "x-idempotency": "request-id",
+      "x-required-role": "support",
+      "x-default-expiry-seconds": 10
+    },
+    {
+      "name": "terminal.open",
+      "summary": "Open a privileged bounded PTY stream",
+      "params": [
+        { "name": "columns", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 1000 } },
+        { "name": "rows", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 1000 } }
+      ],
+      "result": { "$ref": "#/components/contentDescriptors/StreamResult" },
+      "x-operation-class": "stream",
+      "x-idempotency": "request-id",
+      "x-required-role": "terminal-admin",
+      "x-default-expiry-seconds": 10
+    },
+    {
+      "name": "stream.close",
+      "summary": "Close a bounded stream session",
+      "params": [{ "$ref": "#/components/contentDescriptors/SessionId" }],
+      "result": { "$ref": "#/components/contentDescriptors/StatusResult" },
+      "x-operation-class": "mutation",
+      "x-idempotency": "request-id",
+      "x-required-role": "support",
+      "x-default-expiry-seconds": 10
+    }
+  ],
+  "components": {
+    "contentDescriptors": {
+      "DeviceId": { "name": "deviceId", "required": true, "schema": { "type": "string", "minLength": 1 } },
+      "JobId": { "name": "jobId", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "SessionId": { "name": "sessionId", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "ExpectedRevision": { "name": "expectedRevision", "required": false, "schema": { "type": "integer", "minimum": 1 } },
+      "StatusResult": { "name": "status", "schema": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string" } } } },
+      "JobResult": { "name": "job", "schema": { "$ref": "#/components/schemas/Job" } },
+      "StreamResult": { "name": "stream", "schema": { "$ref": "#/components/schemas/StreamDescriptor" } }
+    },
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "required": ["healthy", "status", "version", "commit", "build_time", "instance_id"],
+        "properties": {
+          "healthy": { "type": "boolean" },
+          "status": { "type": "string", "enum": ["pass", "fail"] },
+          "version": { "type": "string" },
+          "commit": { "type": "string" },
+          "build_time": { "type": "string" },
+          "instance_id": { "type": "string" }
+        }
+      },
+      "Snapshot": {
+        "type": "object",
+        "required": ["health", "config", "services", "devices", "telemetry", "ota", "revision"],
+        "properties": {
+          "health": { "$ref": "#/components/schemas/Health" },
+          "config": { "type": "object" },
+          "services": { "type": "array", "items": { "type": "object" } },
+          "devices": { "type": "array", "items": { "$ref": "#/components/schemas/Device" } },
+          "telemetry": { "type": "object" },
+          "ota": { "type": "object" },
+          "revision": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "Device": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "channel_id": { "type": "string" },
+          "interface_type": { "type": "string" },
+          "interface_address": { "type": "string" }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "required": ["id", "type", "state", "progress", "created_at", "updated_at"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "type": { "type": "string" },
+          "state": { "type": "string", "enum": ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] },
+          "phase": { "type": "string" },
+          "progress": { "type": "number", "minimum": 0, "maximum": 100 },
+          "result": {},
+          "error": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "StreamDescriptor": {
+        "type": "object",
+        "required": ["sessionId", "kind", "expiresAt", "controlTopic", "inputTopic", "outputTopic", "maxBytes"],
+        "properties": {
+          "sessionId": { "type": "string", "format": "uuid" },
+          "kind": { "type": "string", "enum": ["log", "terminal"] },
+          "expiresAt": { "type": "string", "format": "date-time" },
+          "controlTopic": { "type": "string" },
+          "inputTopic": { "type": "string" },
+          "outputTopic": { "type": "string" },
+          "maxBytes": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "errors": {
+      "RequestExpired": { "code": -32001, "message": "Request deadline expired" },
+      "RequestConflict": { "code": -32002, "message": "Request ID was reused with different content" },
+      "RequestRunning": { "code": -32003, "message": "Request is already running" },
+      "Unauthorized": { "code": -32004, "message": "Caller is not authorized for the method" },
+      "RevisionConflict": { "code": -32005, "message": "Configuration revision conflict" },
+      "JobNotFound": { "code": -32006, "message": "Job not found" },
+      "StreamNotFound": { "code": -32007, "message": "Stream not found" },
+      "ResourceLimit": { "code": -32008, "message": "Request or concurrency limit exceeded" }
+    }
+  },
+  "x-transport-contract": "api/asyncapi.yaml",
+  "x-json-rpc-profile": {
+    "batchRequests": false,
+    "notifications": false,
+    "nullIds": false,
+    "idFormat": "uuid",
+    "mqttCorrelationData": "raw 16-byte UUID"
+  }
+}

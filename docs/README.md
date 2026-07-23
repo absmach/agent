@@ -13,3 +13,6 @@ Per-feature documentation with configuration, MQTT topic maps, and copy-paste te
 | [nodered.md](nodered.md)     | Node-RED integration, flow deployment, provisioning, HTTP and MQTT management, test recipes                          |
 | [devices.md](devices.md)     | Downstream device provisioning, physical interfaces, device CRUD, telemetry scheduler, test recipes                  |
 | [health.md](health.md)       | Health supervisor, systemd watchdog integration, MQTT connection monitoring, health check endpoints                  |
+| [standalone-ui.md](standalone-ui.md) | Standalone UI, authenticated gateway, MQTT RPC, events, remote terminal, deployment and security boundaries |
+| [remote-protocol.md](remote-protocol.md) | MQTT 5, JSON-RPC, deduplication, desired/reported state, jobs and streams |
+| [mqtt-acl.md](mqtt-acl.md) | Agent and Agent Gateway topic permission matrix |
