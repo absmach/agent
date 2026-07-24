@@ -9,7 +9,6 @@ networks:
 
 volumes:
   nodered-data:
-  agent-data:
 
 services:
   nodered:
@@ -40,6 +39,12 @@ services:
       MG_AGENT_BOOTSTRAP_RETRIES: ${MG_AGENT_BOOTSTRAP_RETRIES}
       MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS: ${MG_AGENT_BOOTSTRAP_RETRY_DELAY_SECONDS}
       MG_AGENT_BOOTSTRAP_SKIP_TLS: ${MG_AGENT_BOOTSTRAP_SKIP_TLS}
+      MG_AGENT_GATEWAY_ID: ${MG_AGENT_GATEWAY_ID}
+      MG_AGENT_GATEWAY_SECRET: ${MG_AGENT_GATEWAY_SECRET}
+      MG_AGENT_TENANT_ID: ${MG_AGENT_TENANT_ID}
+      MG_AGENT_CHANNEL: ${MG_AGENT_CHANNEL}
+      MG_AGENT_CTRL_CHANNEL: ${MG_AGENT_CTRL_CHANNEL}
+      MG_AGENT_HEARTBEAT_INTERVAL: ${MG_AGENT_HEARTBEAT_INTERVAL}
 
   agent:
     image: ${MG_AGENT_IMAGE}
@@ -48,8 +53,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "bootstrap:host-gateway"
-      - "clients:host-gateway"
-      - "channels:host-gateway"
+      - "atom:host-gateway"
       - "rules:host-gateway"
     depends_on:
       - nodered
@@ -77,10 +81,9 @@ services:
       MG_AGENT_OTA_DOWNLOAD_DIR: ${MG_AGENT_OTA_DOWNLOAD_DIR}
       MG_AGENT_DEVICE_DB_PATH: ${MG_AGENT_DEVICE_DB_PATH}
       MG_AGENT_CONFIG_PATH: ${MG_AGENT_CONFIG_PATH}
-      MG_AGENT_CLIENTS_URL: ${MG_AGENT_CLIENTS_URL}
-      MG_AGENT_CHANNELS_URL: ${MG_AGENT_CHANNELS_URL}
+      MG_AGENT_ATOM_URL: ${MG_AGENT_ATOM_URL}
       MG_AGENT_RULES_ENGINE_URL: ${MG_AGENT_RULES_ENGINE_URL}
-      MG_PAT: ${MG_PAT}
+      MG_AGENT_PROVISION_TOKEN: ${MG_PAT}
     volumes:
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
-      - agent-data:/var/lib/agent
+      - ../build:/var/lib/agent

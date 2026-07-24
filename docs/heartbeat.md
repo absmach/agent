@@ -8,7 +8,7 @@ Two heartbeat paths exist:
 
 | Path                  | Transport             | Purpose                                                         |
 | --------------------- | --------------------- | --------------------------------------------------------------- |
-| **Self-heartbeat**    | MQTT → Magistrala     | Agent publishes its own status periodically                     |
+| **Self-heartbeat**    | MQTT → Atom           | Agent publishes its own status periodically                     |
 | **Service heartbeat** | FluxMQ (AMQP) → local | Co-located services register liveness via the local message bus |
 
 The agent also accepts an MQTT `ping` command that publishes an immediate heartbeat without waiting for the next interval.
@@ -19,7 +19,7 @@ On a graceful reset, the agent publishes a **goodbye heartbeat** with `heartbeat
 
 The agent publishes a SenML heartbeat to the telemetry channel on startup and at every interval:
 
-**Topic:** `m/<domain-id>/c/<telemetry-channel-id>/gateway/heartbeat`
+**Topic:** `m/<tenant-id>/c/<telemetry-channel-id>/gateway/heartbeat`
 
 **Payload schema:**
 
@@ -47,7 +47,7 @@ The agent publishes a SenML heartbeat to the telemetry channel on startup and at
 
 ## Service Heartbeat
 
-Co-located services publish a heartbeat message to the local FluxMQ broker. The agent subscribes to `m/<domain-id>/c/<commands-channel-id>/services/#` and extracts the service name and type from the topic path.
+Co-located services publish a heartbeat message to the local FluxMQ broker. The agent subscribes to `m/<tenant-id>/c/<commands-channel-id>/services/#` and extracts the service name and type from the topic path.
 
 **Topic format:** `heartbeat.<service-name>.<service-type>`
 
@@ -94,9 +94,9 @@ See [control.md](control.md) for the full `config set` recipe.
 
 | Direction       | Topic                                           | QoS          | Description                          |
 | --------------- | ----------------------------------------------- | ------------ | ------------------------------------ |
-| Agent → Cloud   | `m/<domain-id>/c/<data-chan>/gateway/heartbeat` | Configurable | Periodic self-heartbeat              |
+| Agent → Cloud   | `m/<tenant-id>/c/<data-chan>/gateway/heartbeat` | Configurable | Periodic self-heartbeat              |
 | Service → Agent | `heartbeat.<name>.<type>` (via AMQP)            | —            | Local service registration           |
-| Cloud → Agent   | `m/<domain-id>/c/<ctrl-chan>/req`               | 1            | `ping` command (on-demand heartbeat) |
+| Cloud → Agent   | `m/<tenant-id>/c/<ctrl-chan>/req`               | 1            | `ping` command (on-demand heartbeat) |
 
 ## MQTT Test Recipes
 
@@ -105,15 +105,15 @@ See [control.md](control.md) for the full `config set` recipe.
 ```bash
 mosquitto_sub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> \
-    -t "m/<domain-id>/c/<telemetry-channel-id>/gateway/heartbeat" \
+    -u <gateway-id> -P <gateway-secret> \
+    -t "m/<tenant-id>/c/<telemetry-channel-id>/gateway/heartbeat" \
     -v
 ```
 
 **Expected output (repeats every interval):**
 
 ```
-m/e9692c28-b730-4797-8a15-2e25c08f9641/c/b465a688-c1ca-417d-a36f-71f6f1be2409/gateway/heartbeat [{"bn":"agent:","n":"service_type","vs":"agent"},{"n":"heartbeat","vb":true},{"n":"fw_version","vs":"unknown"},{"n":"uptime","u":"s","v":4580.244433353},{"n":"heap_free","u":"By","v":417792},{"n":"devices","u":"count","v":0},{"n":"connected","vb":true}]
+m/<tenant-id>/c/<telemetry-channel-id>/gateway/heartbeat [{"bn":"agent:","n":"service_type","vs":"agent"},{"n":"heartbeat","vb":true},{"n":"fw_version","vs":"unknown"},{"n":"uptime","u":"s","v":4580.244433353},{"n":"heap_free","u":"By","v":417792},{"n":"devices","u":"count","v":0},{"n":"connected","vb":true}]
 ```
 
 ### Trigger an on-demand ping
@@ -121,8 +121,8 @@ m/e9692c28-b730-4797-8a15-2e25c08f9641/c/b465a688-c1ca-417d-a36f-71f6f1be2409/ga
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "ping-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "ping-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"ping", "vs":""}]'
 ```
 
@@ -159,8 +159,8 @@ go run ./examples/publish/main.go \
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "cfg-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "cfg-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:", "n":"config", "vs":"set,heartbeat_interval,30s"}]'
 ```
 

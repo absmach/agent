@@ -1,6 +1,6 @@
 # Device Manager — Downstream Device Provisioning and Management
 
-The device manager subsystem allows the agent to provision, register, and manage downstream devices connected via physical interfaces (serial, I2C, Modbus RTU/TCP, USB). Each device is provisioned as a Magistrala client with its own channel, and data from the device is forwarded to Magistrala over MQTT.
+The device manager subsystem allows the agent to provision, register, and manage downstream devices connected via physical interfaces (serial, I2C, Modbus RTU/TCP, USB). Each device is provisioned as an Atom resource with its own channel, and data from the device is forwarded to Atom over MQTT.
 
 ## Supported Interface Types
 
@@ -36,24 +36,24 @@ All device commands are sent via the `devices` dispatch name on the commands cha
 
 When `add` is called, the agent:
 
-1. Creates a Magistrala **Client** via the Clients API
-2. Creates a Magistrala **Channel** via the Channels API
-3. **Connects** the client to the channel (publish + subscribe)
+1. Creates an Atom **entity** with `kind: device` via the entities API
+2. Creates an Atom **resource** with `kind: channel` via the resources API
+3. **Connects** the gateway to the channel (publish + subscribe)
 4. Optionally creates a **save_senml rule** via the Rules Engine API (if `MG_AGENT_RULES_ENGINE_URL` is configured)
 5. Saves the device to the local **BoltDB store**
 
-If any step fails, the agent rolls back all previously created resources (client, channel) before returning the error.
+If any step fails, the agent rolls back all previously created resources (gateway, channel) before returning the error.
 
-The device's Magistrala credentials (client ID/key) and channel ID are persisted locally so the agent can reconnect on restart.
+The device's Atom credentials (entity ID/API key) and channel ID are persisted locally so the agent can reconnect on restart.
 
 ## Device Telemetry Scheduler
 
 When a device has a valid channel ID, the agent launches a background goroutine that:
 
-1. Creates a dedicated MQTT connection using the device's credentials (client ID as both MQTT client ID and username, device secret as password)
+1. Creates a dedicated MQTT connection using the device's credentials (gateway ID as both MQTT gateway ID and username, device secret as password)
 2. Opens the physical interface
 3. Reads data in a loop (4096-byte buffer)
-4. Publishes raw data to `m/<domain-id>/c/<device-channel-id>/msg`
+4. Publishes raw data to `m/<tenant-id>/c/<device-channel-id>/msg`
 
 Reconnection uses exponential backoff (1s to 30s). TLS settings are inherited from the gateway's MQTT configuration.
 
@@ -139,7 +139,7 @@ Use an HTTPS endpoint for the webhook URL; the signature authenticates the paylo
 | Variable                         | Default | Description                                                        |
 | -------------------------------- | ------- | ------------------------------------------------------------------ |
 | `MG_AGENT_DEVICE_DB_PATH`        |         | Path to the BoltDB database file                                   |
-| `MG_AGENT_PROVISION_URL`         |         | Base URL for Magistrala provisioning API                           |
+| `MG_AGENT_PROVISION_URL`         |         | Base URL for Atom provisioning API                                 |
 | `MG_AGENT_PROVISION_TOKEN`       |         | Token for provisioning API authentication                          |
 | `MG_AGENT_RULES_ENGINE_URL`      |         | URL for the Rules Engine (optional, for auto-rules)                |
 | `MG_AGENT_DEVICE_WEBHOOK_URL`    |         | Endpoint to receive device lifecycle events (empty disables)       |
@@ -150,9 +150,9 @@ Use an HTTPS endpoint for the webhook URL; the signature authenticates the paylo
 
 | Direction     | Topic                             | QoS | Description            |
 | ------------- | --------------------------------- | --- | ---------------------- |
-| Cloud → Agent | `m/<domain-id>/c/<ctrl-chan>/req` | 1   | Device command request |
-| Agent → Cloud | `m/<domain-id>/c/<ctrl-chan>/res` | 1   | Command response       |
-| Agent → Cloud | `m/<domain-id>/c/<dev-chan>/msg`  | 0   | Device telemetry data  |
+| Cloud → Agent | `m/<tenant-id>/c/<ctrl-chan>/req` | 1   | Device command request |
+| Agent → Cloud | `m/<tenant-id>/c/<ctrl-chan>/res` | 1   | Command response       |
+| Agent → Cloud | `m/<tenant-id>/c/<dev-chan>/msg`  | 0   | Device telemetry data  |
 
 ## MQTT Test Recipes
 
@@ -161,8 +161,8 @@ Subscribe to command responses before sending commands:
 ```bash
 mosquitto_sub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> \
-    -t "m/<domain-id>/c/<commands-channel-id>/res" \
+    -u <gateway-id> -P <gateway-secret> \
+    -t "m/<tenant-id>/c/<commands-channel-id>/res" \
     -v
 ```
 
@@ -171,8 +171,8 @@ mosquitto_sub \
 ```bash
 mosquitto_pub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "dev-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"devices","vs":"list"}]'
 ```
 
@@ -187,8 +187,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "dev-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"devices","vs":"add,{\"name\":\"temp-sensor\",\"external_id\":\"ext-001\",\"external_key\":\"ext-key-001\",\"iface_type\":\"serial\",\"iface_addr\":\"/dev/ttyS0\"}"}]'
 ```
 
@@ -200,7 +200,7 @@ mosquitto_pub \
     "bn": "req-1",
     "n": "add",
     "t": 1781259547.2528343,
-    "vs": "{\"id\":\"63bdb473-02e6-457b-bb9a-773a18ab40a7\",\"key\":\"ext-key-001\",\"channel_id\":\"e90c8f2d-8063-4762-971a-f3628460423f\",\"interface_type\":\"serial\",\"interface_addr\":\"/dev/ttyS0\",\"name\":\"temp-sensor\",\"active\":false,\"last_seen\":\"0001-01-01T00:00:00Z\"}"
+    "vs": "{\"id\":\"<device-id>\",\"key\":\"ext-key-001\",\"channel_id\":\"<device-channel-id>\",\"interface_type\":\"serial\",\"interface_addr\":\"/dev/ttyS0\",\"name\":\"temp-sensor\",\"active\":false,\"last_seen\":\"0001-01-01T00:00:00Z\"}"
   }
 ]
 ```
@@ -210,8 +210,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "dev-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"devices","vs":"get,<device-id>"}]'
 ```
 
@@ -220,8 +220,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "dev-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"devices","vs":"remove,<device-id>"}]'
 ```
 
@@ -230,8 +230,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "dev-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"devices","vs":"seen,<device-id>"}]'
 ```
 
@@ -240,8 +240,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "dev-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"devices","vs":"open,<device-id>"}]'
 ```
 
@@ -250,8 +250,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "dev-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"devices","vs":"close,<device-id>"}]'
 ```
 
@@ -260,8 +260,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "dev-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"devices","vs":"read,<device-id>,64"}]'
 ```
 
@@ -276,8 +276,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "dev-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"devices","vs":"write,<device-id>,48656c6c6f"}]'
 ```
 
@@ -292,8 +292,8 @@ mosquitto_pub \
 ```bash
 mosquitto_sub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> \
-    -t "m/<domain-id>/c/<device-channel-id>/msg" \
+    -u <gateway-id> -P <gateway-secret> \
+    -t "m/<tenant-id>/c/<device-channel-id>/msg" \
     -v
 ```
 
@@ -319,8 +319,8 @@ The agent connects to `/dev/ttyV0` and you interact with `/dev/ttyV1`.
 ```bash
 mosquitto_pub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "dev-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"devices","vs":"add,{\"name\":\"dummy-sensor\",\"external_id\":\"ext-dummy\",\"external_key\":\"ext-dummy-key\",\"iface_type\":\"serial\",\"iface_addr\":\"/dev/ttyV0\"}"}]'
 ```
 
@@ -335,8 +335,8 @@ echo "HELLO" > /dev/ttyV1
 ```bash
 mosquitto_pub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "dev-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"devices","vs":"open,<device-id>"}]'
 ```
 
@@ -345,8 +345,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "dev-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"devices","vs":"read,<device-id>,64"}]'
 ```
 
@@ -356,8 +356,8 @@ mosquitto_pub \
 # "HELLO" in hex = 48454c4c4f
 mosquitto_pub \
     -h localhost -p 1883 \
-    -u <client-id> -P <client-secret> --id "dev-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "dev-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"devices","vs":"write,<device-id>,48454c4c4f"}]'
 ```
 

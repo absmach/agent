@@ -84,15 +84,14 @@ func (s *webhookSink) types() []string {
 	return out
 }
 
-func newWebhookManager(t *testing.T, clientsURL, channelsURL string, cfg devicemgr.WebhookConfig) *devicemgr.Manager {
+func newWebhookManager(t *testing.T, atomURL string, cfg devicemgr.WebhookConfig) *devicemgr.Manager {
 	t.Helper()
 	m, err := devicemgr.New(
 		filepath.Join(t.TempDir(), "devices.db"),
 		devicemgr.ProvisionConfig{
-			ClientsURL:  clientsURL,
-			ChannelsURL: channelsURL,
-			Token:       "test-token",
-			DomainID:    "test-domain",
+			AtomURL:  atomURL,
+			Token:    "test-token",
+			TenantID: "test-tenant",
 		},
 		iface.Config{},
 		devicemgr.WithWebhook(cfg),
@@ -108,7 +107,7 @@ func TestManager_WebhookLifecycleEvents(t *testing.T) {
 	t.Cleanup(hookSrv.Close)
 
 	mgSrv := magistralaServer(t, nil)
-	m := newWebhookManager(t, mgSrv.URL, mgSrv.URL, devicemgr.WebhookConfig{
+	m := newWebhookManager(t, mgSrv.URL, devicemgr.WebhookConfig{
 		URL:    hookSrv.URL,
 		Secret: "s3cret",
 	})
@@ -152,7 +151,7 @@ func TestManager_WebhookHMACSignature(t *testing.T) {
 	t.Cleanup(hookSrv.Close)
 
 	mgSrv := magistralaServer(t, nil)
-	m := newWebhookManager(t, mgSrv.URL, mgSrv.URL, devicemgr.WebhookConfig{
+	m := newWebhookManager(t, mgSrv.URL, devicemgr.WebhookConfig{
 		URL:    hookSrv.URL,
 		Secret: secret,
 	})
@@ -177,7 +176,7 @@ func TestManager_WebhookEventOptIn(t *testing.T) {
 
 	mgSrv := magistralaServer(t, nil)
 	// Explicit allowlist that includes only device.seen.
-	m := newWebhookManager(t, mgSrv.URL, mgSrv.URL, devicemgr.WebhookConfig{
+	m := newWebhookManager(t, mgSrv.URL, devicemgr.WebhookConfig{
 		URL:    hookSrv.URL,
 		Events: []string{devicemgr.EventDeviceSeen},
 	})
@@ -212,7 +211,7 @@ func TestManager_WebhookRetry(t *testing.T) {
 	t.Cleanup(hookSrv.Close)
 
 	mgSrv := magistralaServer(t, nil)
-	m := newWebhookManager(t, mgSrv.URL, mgSrv.URL, devicemgr.WebhookConfig{
+	m := newWebhookManager(t, mgSrv.URL, devicemgr.WebhookConfig{
 		URL:     hookSrv.URL,
 		Retries: 2,
 	})
@@ -231,7 +230,7 @@ func TestManager_WebhookRetry(t *testing.T) {
 func TestManager_NoWebhookByDefault(t *testing.T) {
 	// A manager built without WithWebhook must not panic on lifecycle ops.
 	mgSrv := magistralaServer(t, nil)
-	m := newTestManager(t, mgSrv.URL, mgSrv.URL)
+	m := newTestManager(t, mgSrv.URL)
 
 	d, err := m.Add(context.Background(), "dev", "ext", "key", iface.InterfaceBLE, "addr")
 	require.NoError(t, err)
@@ -241,7 +240,7 @@ func TestManager_NoWebhookByDefault(t *testing.T) {
 
 func TestManager_WebhookDisabledWithEmptyURL(t *testing.T) {
 	mgSrv := magistralaServer(t, nil)
-	m := newWebhookManager(t, mgSrv.URL, mgSrv.URL, devicemgr.WebhookConfig{URL: ""})
+	m := newWebhookManager(t, mgSrv.URL, devicemgr.WebhookConfig{URL: ""})
 
 	d, err := m.Add(context.Background(), "dev", "ext", "key", iface.InterfaceBLE, "addr")
 	require.NoError(t, err)

@@ -32,15 +32,26 @@ The binary is written to `build/magistrala-agent`.
 
 ### 1. Provision Magistrala resources
 
+**Option A — With bootstrap (recommended):**
+
 ```bash
 export MG_AGENT_BOOTSTRAP_EXTERNAL_ID='<external-id>'
 export MG_AGENT_BOOTSTRAP_EXTERNAL_KEY='<external-key>'
-export MG_DOMAIN_ID='<domain-id>'
+export MG_TENANT_ID='<tenant-id>'
 export MG_PAT='<personal-access-token>'
 make run_provision
 ```
 
-The PAT must have scopes for `bootstrap:create`, `rules:create`, `clients:create`, `channels:create`, and connect permissions in the target domain. See [docs/bootstrap.md](docs/bootstrap.md) for details and cloud provisioning.
+The PAT must have scopes for `bootstrap:create`, `rules:create`, `gateways:create`, `channels:create`, and connect permissions in the target tenant. See [docs/bootstrap.md](docs/bootstrap.md) for details and cloud provisioning.
+
+**Option B — Without bootstrap (standalone Atom):**
+
+```bash
+export MG_PAT='<admin-jwt-token>'
+source <(bash scripts/setup-agent.sh)
+```
+
+The script creates a gateway entity, API key, telemetry and commands channels, and writes `agent-config.json` so the agent starts with valid credentials. Edit `docker/.env` with the exported values before starting the stack.
 
 ### 2. Build and start
 

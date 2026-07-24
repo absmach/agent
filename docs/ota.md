@@ -22,7 +22,7 @@ OTA can be triggered via two MQTT topics. Both use a multi-record SenML pack.
 
 ### Via commands channel (`req`)
 
-**Topic:** `m/<domain-id>/c/<commands-channel-id>/req`
+**Topic:** `m/<tenant-id>/c/<commands-channel-id>/req`
 
 The first record dispatches to the `ota` handler; subsequent records carry the trigger fields:
 
@@ -37,7 +37,7 @@ The first record dispatches to the `ota` handler; subsequent records carry the t
 
 ### Via OTA config topic
 
-**Topic:** `m/<domain-id>/c/<commands-channel-id>/ota/cfg`
+**Topic:** `m/<tenant-id>/c/<commands-channel-id>/ota/cfg`
 
 No dispatch record is needed; the entire pack is trigger fields:
 
@@ -68,7 +68,7 @@ For environments without outbound HTTP, firmware can be delivered over MQTT. Fir
 
 Then publish the raw binary to the **OTA data topic**:
 
-**Topic:** `m/<domain-id>/c/<commands-channel-id>/ota`
+**Topic:** `m/<tenant-id>/c/<commands-channel-id>/ota`
 
 The agent installs the payload only if it matches the primed `size` (when given) and SHA-256 `hash`. A `hash` is **required** for MQTT-delivered firmware (there is no sidecar fallback). The binary is sent as a single MQTT message, so it is bounded by the broker's maximum packet size. A `url`-bearing `ota/cfg` trigger cancels any pending priming.
 
@@ -76,7 +76,7 @@ The agent installs the payload only if it matches the primed `size` (when given)
 
 During the OTA operation, the agent publishes a **retained** SenML status message on each state transition and at 5% download increments to:
 
-**Topic:** `m/<domain-id>/c/<commands-channel-id>/ota/status`
+**Topic:** `m/<tenant-id>/c/<commands-channel-id>/ota/status`
 
 ```json
 [
@@ -122,10 +122,10 @@ If a hash is provided or the sidecar is found, the downloaded file's SHA-256 mus
 
 | Direction     | Topic                                    | QoS | Description                                               |
 | ------------- | ---------------------------------------- | --- | --------------------------------------------------------- |
-| Cloud → Agent | `m/<domain-id>/c/<ctrl-chan>/req`        | 1   | Trigger via commands channel (uses `ota` dispatch record) |
-| Cloud → Agent | `m/<domain-id>/c/<ctrl-chan>/ota/cfg`    | 0   | Direct OTA config trigger / MQTT-delivery priming         |
-| Cloud → Agent | `m/<domain-id>/c/<ctrl-chan>/ota`        | 0   | Firmware binary for MQTT delivery (after priming)         |
-| Agent → Cloud | `m/<domain-id>/c/<ctrl-chan>/ota/status` | QoS | Progress and state updates (retained)                     |
+| Cloud → Agent | `m/<tenant-id>/c/<ctrl-chan>/req`        | 1   | Trigger via commands channel (uses `ota` dispatch record) |
+| Cloud → Agent | `m/<tenant-id>/c/<ctrl-chan>/ota/cfg`    | 0   | Direct OTA config trigger / MQTT-delivery priming         |
+| Cloud → Agent | `m/<tenant-id>/c/<ctrl-chan>/ota`        | 0   | Firmware binary for MQTT delivery (after priming)         |
+| Agent → Cloud | `m/<tenant-id>/c/<ctrl-chan>/ota/status` | QoS | Progress and state updates (retained)                     |
 
 ## MQTT Test Recipes
 
@@ -134,8 +134,8 @@ If a hash is provided or the sidecar is found, the downloaded file's SHA-256 mus
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "ota-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"ota","vs":""},{"n":"url","vs":"https://example.com/agent-v2"},{"n":"hash","vs":"abcdef1234567890..."},{"n":"size","v":8388608}]'
 ```
 
@@ -144,8 +144,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/ota/cfg" \
+    -u <gateway-id> -P <gateway-secret> --id "ota-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/ota/cfg" \
     -m '[{"n":"url","vs":"https://example.com/agent-v2"},{"n":"hash","vs":"abcdef1234567890..."}]'
 ```
 
@@ -160,15 +160,15 @@ SIZE=$(stat -c%s agent-v2)
 # 1. Prime the agent
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/ota/cfg" \
+    -u <gateway-id> -P <gateway-secret> --id "ota-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/ota/cfg" \
     -m "[{\"n\":\"hash\",\"vs\":\"$HASH\"},{\"n\":\"size\",\"v\":$SIZE}]"
 
 # 2. Send the binary
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/ota" \
+    -u <gateway-id> -P <gateway-secret> --id "ota-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/ota" \
     -f agent-v2
 ```
 
@@ -177,8 +177,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "ota-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"ota","vs":"abort"}]'
 ```
 
@@ -189,8 +189,8 @@ Returns the current OTA state (`busy` and `last_error`) as a JSON response on th
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/req" \
+    -u <gateway-id> -P <gateway-secret> --id "ota-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/req" \
     -m '[{"bn":"req-1:","n":"ota","vs":"status"}]'
 ```
 
@@ -199,8 +199,8 @@ mosquitto_pub \
 ```bash
 mosquitto_pub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> --id "ota-$(date +%s)" \
-    -t "m/<domain-id>/c/<commands-channel-id>/ota/cfg" \
+    -u <gateway-id> -P <gateway-secret> --id "ota-$(date +%s)" \
+    -t "m/<tenant-id>/c/<commands-channel-id>/ota/cfg" \
     -m '[{"n":"url","vs":"https://example.com/agent-v2"},{"n":"hash","vs":"abcdef1234567890..."},{"n":"token","vs":"my-secret-token"}]'
 ```
 
@@ -209,8 +209,8 @@ mosquitto_pub \
 ```bash
 mosquitto_sub \
     -h <mqtt-host> -p 1883 \
-    -u <client-id> -P <client-secret> \
-    -t "m/<domain-id>/c/<commands-channel-id>/ota/status" \
+    -u <gateway-id> -P <gateway-secret> \
+    -t "m/<tenant-id>/c/<commands-channel-id>/ota/status" \
     -v
 ```
 
@@ -219,15 +219,15 @@ mosquitto_sub \
 Download progress is published on every 5% step (`5, 10, 15, … 95, 100`); the lines below are abbreviated with `...`:
 
 ```
-m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"triggered"},{"n":"bytes","u":"By","v":0},{"n":"total","u":"By","v":0},{"n":"progress","u":"%","v":0}]
-m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"downloading"},{"n":"bytes","u":"By","v":66237},{"n":"total","u":"By","v":1324740},{"n":"progress","u":"%","v":5}]
-m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"downloading"},{"n":"bytes","u":"By","v":132474},{"n":"total","u":"By","v":1324740},{"n":"progress","u":"%","v":10}]
+m/<tenant-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"triggered"},{"n":"bytes","u":"By","v":0},{"n":"total","u":"By","v":0},{"n":"progress","u":"%","v":0}]
+m/<tenant-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"downloading"},{"n":"bytes","u":"By","v":66237},{"n":"total","u":"By","v":1324740},{"n":"progress","u":"%","v":5}]
+m/<tenant-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"downloading"},{"n":"bytes","u":"By","v":132474},{"n":"total","u":"By","v":1324740},{"n":"progress","u":"%","v":10}]
 ...
-m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"downloading"},{"n":"bytes","u":"By","v":1258503},{"n":"total","u":"By","v":1324740},{"n":"progress","u":"%","v":95}]
-m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"downloading"},{"n":"bytes","u":"By","v":1324740},{"n":"total","u":"By","v":1324740},{"n":"progress","u":"%","v":100}]
-m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"verifying"},{"n":"bytes","u":"By","v":0},{"n":"total","u":"By","v":0},{"n":"progress","u":"%","v":100}]
-m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"ready"},{"n":"bytes","u":"By","v":0},{"n":"total","u":"By","v":0},{"n":"progress","u":"%","v":100}]
-m/<domain-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"restarting"},{"n":"bytes","u":"By","v":0},{"n":"total","u":"By","v":0},{"n":"progress","u":"%","v":100}]
+m/<tenant-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"downloading"},{"n":"bytes","u":"By","v":1258503},{"n":"total","u":"By","v":1324740},{"n":"progress","u":"%","v":95}]
+m/<tenant-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"downloading"},{"n":"bytes","u":"By","v":1324740},{"n":"total","u":"By","v":1324740},{"n":"progress","u":"%","v":100}]
+m/<tenant-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"verifying"},{"n":"bytes","u":"By","v":0},{"n":"total","u":"By","v":0},{"n":"progress","u":"%","v":100}]
+m/<tenant-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"ready"},{"n":"bytes","u":"By","v":0},{"n":"total","u":"By","v":0},{"n":"progress","u":"%","v":100}]
+m/<tenant-id>/c/<ctrl-chan>/ota/status [{"bn":"gw:","bt":...,"n":"state","vs":"restarting"},{"n":"bytes","u":"By","v":0},{"n":"total","u":"By","v":0},{"n":"progress","u":"%","v":100}]
 ```
 
 ### Check OTA status via HTTP
