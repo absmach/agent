@@ -62,6 +62,23 @@ Mutating requests are recorded in `/var/lib/agent/remote.db`.
 The database has no migration layer during development. Delete it when making
 an incompatible schema change.
 
+## Observe the MQTT exchange
+
+The local Compose broker is exposed on port `1884`. This MQTT 5 command shows
+topic, QoS, retain flag, Response Topic, Correlation Data, content type, user
+properties, and payload:
+
+```bash
+mosquitto_sub -V mqttv5 -h localhost -p 1884 -q 1 \
+  -t 'm/+/c/+/#' \
+  -F 'topic=%t qos=%q retain=%r response=%R correlation=%D content=%C properties=%P payload=%p'
+```
+
+Start the subscriber before using the standalone UI. A complete RPC exchange
+contains a publication on control `/req`, a publication on
+`/res/{requesterId}` with the same correlation data, and any resulting event or
+reported-state update on the data channel.
+
 ## State and events
 
 Telemetry and heartbeat are periodic. Presence is retained: the Agent publishes

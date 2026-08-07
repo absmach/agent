@@ -18,7 +18,6 @@ type Agent struct {
 	DomainID       string `json:"domain_id"`
 	ControlChannel string `json:"control_channel"`
 	DataChannel    string `json:"data_channel"`
-	CommandSecret  string `json:"command_secret,omitempty"`
 }
 
 // Config configures the standalone UI gateway.

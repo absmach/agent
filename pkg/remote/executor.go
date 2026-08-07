@@ -553,12 +553,12 @@ func (e *Executor) startConfigApply(ctx context.Context, raw json.RawMessage) (a
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if rpcErr := e.checkRevision(params.ExpectedRevision); rpcErr != nil {
-		return nil, rpcErr
-	}
 	job, err := e.jobs.Start(ctx, "config.apply", func(context.Context, func(string, float64)) (any, error) {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		if conflict := e.checkRevision(params.ExpectedRevision); conflict != nil {
+			return nil, conflict
+		}
 		current := e.svc.Config()
 		if params.Config.MQTT.Password == "" {
 			params.Config.MQTT.Password = current.MQTT.Password

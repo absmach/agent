@@ -37,4 +37,6 @@ FROM alpine:3.24
 # For debugging purposes, socat is installed to create virtual serial ports
 RUN apk add socat
 COPY --from=builder /exe /
-ENTRYPOINT ["/bin/sh", "-c", "socat -d -d pty,raw,echo=0,link=/dev/ttyV0 pty,raw,echo=0,link=/dev/ttyV1 & exec /exe"]
+COPY docker/agent-entrypoint.sh /usr/local/bin/agent-entrypoint
+RUN chmod +x /usr/local/bin/agent-entrypoint
+ENTRYPOINT ["/usr/local/bin/agent-entrypoint"]

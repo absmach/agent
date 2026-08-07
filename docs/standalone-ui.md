@@ -24,6 +24,10 @@ Provision two channels for every Agent:
 
 The IDs must be configured in both `docker/agent-config.json` and
 `MG_AGENT_GATEWAY_AGENTS`. Do not share one control channel between Agents.
+Compose mounts `docker/agent-config.json` as a read-only seed. On the first
+start, the Agent entrypoint copies it to
+`/var/lib/agent/agent-config.json` inside the separate `agent-data` volume.
+Later runtime changes update the volume copy and survive container recreation.
 
 The Agent identity needs the Agent permissions in [mqtt-acl.md](mqtt-acl.md).
 The Agent Gateway should use a different Magistrala identity with the inverse

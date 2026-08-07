@@ -164,7 +164,6 @@ func (b *Broker) subscribe(cm *autopaho.ConnectionManager) {
 func (b *Broker) Agents() []Agent {
 	out := make([]Agent, 0, len(b.agents))
 	for _, configured := range b.agents {
-		configured.CommandSecret = ""
 		out = append(out, configured)
 	}
 	return out

@@ -124,13 +124,19 @@ services:
       MG_AGENT_OTA_DOWNLOAD_DIR: ${MG_AGENT_OTA_DOWNLOAD_DIR}
       MG_AGENT_DEVICE_DB_PATH: ${MG_AGENT_DEVICE_DB_PATH}
       MG_AGENT_CONFIG_PATH: ${MG_AGENT_CONFIG_PATH}
+      MG_AGENT_CONFIG_SEED_PATH: /etc/agent/agent-config.json
       MG_AGENT_ATOM_URL: ${MG_AGENT_ATOM_URL}
       MG_AGENT_RULES_ENGINE_URL: ${MG_AGENT_RULES_ENGINE_URL}
       MG_AGENT_PROVISION_TOKEN: ${MG_PAT}
     volumes:
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
       - agent-data:/var/lib/agent
-      - ./agent-config.json:/var/lib/agent/agent-config.json
+      - ./agent-config.json:/etc/agent/agent-config.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:${MG_AGENT_HTTP_PORT}/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   gateway:
     build:
@@ -142,7 +148,7 @@ services:
       mqtt:
         condition: service_healthy
       agent:
-        condition: service_started
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -171,7 +177,8 @@ services:
     container_name: agent-ui
     restart: on-failure
     depends_on:
-      - gateway
+      gateway:
+        condition: service_healthy
     ports:
       - "3001:3000"
     networks:
@@ -181,7 +188,7 @@ services:
       AGENT_UI_AGENT_ID: edge-agent-1
       AGENT_UI_TOKEN: ${MG_AGENT_GATEWAY_TOKEN}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/ui/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/ui/"]
       interval: 10s
       timeout: 3s
       retries: 5

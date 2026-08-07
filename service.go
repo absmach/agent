@@ -1363,12 +1363,17 @@ func (a *agent) gatewayTelemetryPayload() []senml.Record {
 
 func (a *agent) UpdateLiveness(svcname, svctype string) error {
 	a.svcsMu.Lock()
-	defer a.svcsMu.Unlock()
+	created := false
 	if _, ok := a.svcs[svcname]; !ok {
 		svc := NewHeartbeat(svcname, svctype, a.Config().Heartbeat.Interval)
 		a.svcs[svcname] = svc
+		created = true
 	}
 	a.svcs[svcname].Update()
+	a.svcsMu.Unlock()
+	if created {
+		a.emitPushEvent("services")
+	}
 	return nil
 }
 

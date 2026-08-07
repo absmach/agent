@@ -497,15 +497,17 @@
       },
       "StreamDescriptor": {
         "type": "object",
-        "required": ["sessionId", "kind", "expiresAt", "controlTopic", "inputTopic", "outputTopic", "maxBytes"],
+        "required": ["sessionId", "kind", "expiresAt", "idleTimeout", "controlTopic", "inputTopic", "outputTopic", "maxBytes", "maxRate"],
         "properties": {
           "sessionId": { "type": "string", "format": "uuid" },
           "kind": { "type": "string", "enum": ["log", "terminal"] },
           "expiresAt": { "type": "string", "format": "date-time" },
+          "idleTimeout": { "type": "string" },
           "controlTopic": { "type": "string" },
           "inputTopic": { "type": "string" },
           "outputTopic": { "type": "string" },
-          "maxBytes": { "type": "integer", "minimum": 1 }
+          "maxBytes": { "type": "integer", "minimum": 1 },
+          "maxRate": { "type": "integer", "minimum": 1 }
         }
       }
     },

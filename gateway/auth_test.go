@@ -4,6 +4,11 @@
 package gateway
 
 import (
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/absmach/agent/pkg/remote"
@@ -28,4 +33,39 @@ func TestEveryOpenRPCMethodHasAnAuthorizationRole(t *testing.T) {
 	for _, method := range remote.SupportedMethods {
 		assert.NotEmptyf(t, methodRole(method), "method %q has no authorization role", method)
 	}
+}
+
+func TestGatewayHTTPAuthorization(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := NewHandler(
+		&Broker{agents: map[string]Agent{}},
+		map[string][]string{"viewer-token": {"viewer"}},
+		logger,
+	)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	assert.Equal(t, http.StatusUnauthorized, response.Code)
+
+	request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/agents/edge/rpc",
+		strings.NewReader(`{"method":"terminal.open","params":{}}`),
+	)
+	request.Header.Set("Authorization", "Bearer viewer-token")
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
+func TestWebSocketOriginMustMatchHost(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "http://agent.example/events", nil)
+	request.Host = "agent.example"
+	request.Header.Set("Origin", "https://attacker.example")
+	assert.False(t, wsUpgrader.CheckOrigin(request))
+
+	request.Header.Set("Origin", "https://agent.example")
+	assert.True(t, wsUpgrader.CheckOrigin(request))
 }

@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -493,13 +494,34 @@ func (s *MQTTServer) handleDesired(message *paho.Publish) {
 		_ = s.publishReportedState("desired-replayed")
 		return
 	}
-	for key, value := range desired.Config {
-		if err := s.svc.SetRuntimeConfig(s.ctx, key, value); err != nil {
+	keys := make([]string, 0, len(desired.Config))
+	for key := range desired.Config {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	previous := make(map[string]string, len(keys))
+	applied := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value := desired.Config[key]
+		oldValue, err := s.svc.GetRuntimeConfig(key)
+		if err != nil {
 			s.publishEvent("configuration.rejected", map[string]any{
 				"generation": desired.Generation, "key": key, "error": err.Error(),
 			})
 			return
 		}
+		previous[key] = oldValue
+		if err := s.svc.SetRuntimeConfig(s.ctx, key, value); err != nil {
+			for index := len(applied) - 1; index >= 0; index-- {
+				rollbackKey := applied[index]
+				_ = s.svc.SetRuntimeConfig(s.ctx, rollbackKey, previous[rollbackKey])
+			}
+			s.publishEvent("configuration.rejected", map[string]any{
+				"generation": desired.Generation, "key": key, "error": err.Error(),
+			})
+			return
+		}
+		applied = append(applied, key)
 	}
 	if err := s.store.SetDesiredGeneration(desired.Generation); err != nil {
 		s.publishEvent("configuration.rejected", map[string]any{
