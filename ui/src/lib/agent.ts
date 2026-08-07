@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useState } from "preact/hooks";
+import { gatewayWS } from "@/lib/transport";
 
 export type LinkStatus = "checking" | "online" | "offline";
 
@@ -32,9 +33,10 @@ function connectWS() {
   )
     return;
 
+  const remote = gatewayWS("events");
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const url = `${proto}//${location.host}/ws`;
-  wsRef = new WebSocket(url);
+  const url = remote?.url ?? `${proto}//${location.host}/ws`;
+  wsRef = new WebSocket(url, remote?.protocols);
 
   wsRef.onopen = () => {
     if (wsReconnectTimer) {
@@ -45,10 +47,28 @@ function connectWS() {
 
   wsRef.onmessage = (msg) => {
     try {
-      const event: WSEvent = JSON.parse(msg.data);
-      wsListeners.forEach((cb) => {
-        cb(event);
-      });
+      const raw = JSON.parse(msg.data);
+      const events: WSEvent[] = [raw];
+      if (raw.topic && raw.payload) {
+        const topic = String(raw.topic);
+        let type = "mqtt";
+        if (topic.includes("telemetry")) type = "telemetry";
+        else if (topic.includes("heartbeat")) type = "health";
+        else if (topic.endsWith("/gateway/presence")) type = "health";
+        else if (topic.endsWith("/gateway/events")) {
+          const remoteType = String(raw.payload?.type ?? "mqtt");
+          type = remoteType.replace(/\.changed$/, "");
+        } else if (topic.endsWith("/gateway/state/reported")) {
+          events.length = 0;
+          for (const stateType of ["config", "devices", "services", "ota"])
+            events.push({ type: stateType, data: raw });
+        }
+        if (events.length === 1) events[0] = { type, data: raw };
+      }
+      for (const event of events)
+        wsListeners.forEach((cb) => {
+          cb(event);
+        });
     } catch {
       // ignore malformed messages
     }

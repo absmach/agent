@@ -7,6 +7,7 @@ require (
 	github.com/absmach/senml v1.0.8
 	github.com/caarlos0/env/v9 v9.0.0
 	github.com/creack/pty v1.1.24
+	github.com/eclipse/paho.golang v0.23.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-kit/kit v0.13.0
@@ -21,6 +22,7 @@ require (
 	go.etcd.io/bbolt v1.5.0
 	golang.org/x/sync v0.21.0
 	golang.org/x/sys v0.46.0
+	gopkg.in/yaml.v3 v3.0.1
 	robpike.io/filter v0.0.0-20150108201509-2984852a2183
 )
 
@@ -29,7 +31,7 @@ require (
 	github.com/dgraph-io/ristretto/v2 v2.4.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-gorp/gorp/v3 v3.1.0 // indirect
-	github.com/gofrs/uuid/v5 v5.4.0 // indirect
+	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.10.0 // indirect
@@ -73,5 +75,4 @@ require (
 	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

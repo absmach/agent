@@ -68,6 +68,13 @@ func (s *Stream) unsubscribe(id uint64) {
 	delete(s.subs, id)
 }
 
+// Subscribe returns the current backlog followed by live log lines. It is used
+// by authenticated remote transports; callers must invoke cancel.
+func (s *Stream) Subscribe() (backlog []string, lines <-chan string, cancel func()) {
+	id, backlog, ch := s.subscribe()
+	return backlog, ch, func() { s.unsubscribe(id) }
+}
+
 // Handler wraps a slog.Handler and feeds formatted log lines into the stream.
 type Handler struct {
 	delegate slog.Handler

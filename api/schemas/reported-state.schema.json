@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://absmach.github.io/agent/schemas/reported-state.schema.json",
+  "title": "Agent reported state",
+  "type": "object",
+  "required": ["schemaVersion", "reportedAt", "reason", "agentId", "bootId", "capabilities", "appliedGeneration", "health", "config", "services", "devices", "ota"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "reportedAt": { "type": "string", "format": "date-time" },
+    "reason": { "type": "string" },
+    "agentId": { "type": "string", "minLength": 1 },
+    "bootId": { "type": "string", "format": "uuid" },
+    "capabilities": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "appliedGeneration": { "type": "integer", "minimum": 0 },
+    "health": { "type": "object" },
+    "config": { "type": "object" },
+    "services": { "type": "array", "items": { "type": "object" } },
+    "devices": { "type": "array", "items": { "type": "object" } },
+    "ota": { "type": "object" }
+  }
+}

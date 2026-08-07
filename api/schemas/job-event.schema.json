@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://absmach.github.io/agent/schemas/job-event.schema.json",
+  "title": "Agent durable job event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "timestamp", "job"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "job": {
+      "type": "object",
+      "required": ["id", "type", "state", "progress"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "type": { "type": "string" },
+        "state": { "enum": ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] },
+        "progress": { "type": "number", "minimum": 0, "maximum": 100 },
+        "phase": { "type": "string" },
+        "result": {},
+        "error": { "type": "string" }
+      }
+    }
+  }
+}

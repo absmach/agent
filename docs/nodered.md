@@ -1,5 +1,10 @@
 # Agent + Node-RED Integration
 
+> **Remote API cutover:** remote Node-RED control now uses
+> `nodeRed.status.get`, `nodeRed.flows.get`, `nodeRed.flows.deploy`, and
+> `nodeRed.action.execute` through the Agent Gateway. SenML `/req` examples in
+> older sections are historical and no longer execute.
+
 This guide explains how to run the Magistrala Agent with Node-RED support using a mock Linux device in Docker.
 
 ## Architecture
@@ -173,15 +178,11 @@ curl -s -X POST http://localhost:9999/nodered \
 
 ### Via MQTT (from Magistrala cloud)
 
-Send a SenML array to `m/<tenant-id>/c/<commands-channel-id>/req`:
-
-Supported commands:
-
-- `nodered-deploy,<base64-flow>` — **Replace all running flows** with the provided flow JSON
-- `nodered-add-flow,<base64-flow>` — **Add a new flow tab** alongside existing running flows
-- `nodered-flows` — Fetch current flows
-- `nodered-state` — Get runtime state
-- `nodered-ping` — Check Node-RED availability
+The browser calls the Agent Gateway. The Gateway creates a JSON-RPC request on
+the control channel and the Agent returns the correlated response. MQTT
+credentials never reach the browser. Refer to
+[remote-protocol.md](remote-protocol.md) for the transport and
+[openrpc.json](../api/openrpc.json) for parameters.
 
 ### Via Control command
 
@@ -286,6 +287,9 @@ Device identity, MQTT credentials, tenant ID, and telemetry/commands channel IDs
 | Node-RED → Cloud | `m/<tenant-id>/c/<telemetry-chan>/gateway/telemetry` | 0   | SenML telemetry published by deployed flows            |
 
 ## MQTT Test Recipes
+
+> The SenML command recipes in this historical section do not execute after the
+> breaking cutover. Use the Agent Gateway HTTP RPC endpoint or the standalone UI.
 
 All recipes use the **commands channel request topic**: `m/<tenant-id>/c/<commands-channel-id>/req`.
 

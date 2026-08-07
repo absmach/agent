@@ -1,5 +1,10 @@
 # Heartbeat
 
+> **Remote API cutover:** heartbeat and local service-heartbeat publications
+> remain active. The old `ping` and configuration SenML commands on `/req` were
+> removed. Use `system.health.get`, `service.list`, and `runtimeConfig.set`
+> through the Agent Gateway.
+
 The heartbeat subsystem tracks liveness of both the agent itself and services running on the same host.
 
 ## Overview
@@ -80,7 +85,7 @@ If no heartbeat arrives within the configured interval, the service is marked `o
 | `MG_AGENT_HEARTBEAT_INTERVAL` | `10s`                                | Period between self-heartbeat publishes and the timeout for marking services offline |
 | `MG_AGENT_BROKER_URL`         | `amqp://guest:guest@localhost:5682/` | FluxMQ (AMQP) broker URL for local service heartbeats                                |
 
-### Runtime Config (MQTT set)
+### Runtime Config (remote JSON-RPC)
 
 The heartbeat interval can be changed at runtime via the `config` subsystem:
 
@@ -99,6 +104,9 @@ See [control.md](control.md) for the full `config set` recipe.
 | Cloud → Agent   | `m/<tenant-id>/c/<ctrl-chan>/req`               | 1            | `ping` command (on-demand heartbeat) |
 
 ## MQTT Test Recipes
+
+The heartbeat subscription and local service publication examples remain
+valid. SenML command publications to `/req` are historical only.
 
 ### Subscribe to self-heartbeat
 

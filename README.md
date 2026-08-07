@@ -8,7 +8,7 @@ Magistrala IoT Agent is a communication, execution and software management agent
 
 ## Features
 
-- **MQTT command & control** — remote shell execution, config management, process reset over [SenML](https://tools.ietf.org/html/rfc8428) JSON via Magistrala MQTT
+- **MQTT 5 remote management** — OpenRPC-described JSON-RPC, durable deduplication, desired/reported state, events, jobs and bounded streams
 - **Node-RED integration** — deploy, fetch, and manage Node-RED flows over MQTT or HTTP
 - **Interactive terminal** — full PTY sessions tunneled over MQTT
 - **Periodic telemetry** — uptime, memory, CPU temperature, disk usage, load averages, wireless RSSI
@@ -102,6 +102,8 @@ Key variables:
 | `MG_AGENT_HEARTBEAT_INTERVAL`     | Heartbeat interval                   | `10s`                                |
 | `MG_AGENT_TELEMETRY_INTERVAL`     | Telemetry interval (`0s` to disable) | `30s`                                |
 | `MG_AGENT_LOG_LEVEL`              | Log level                            | `info`                               |
+| `MG_AGENT_REMOTE_ENABLED`         | Enable the MQTT 5 remote API         | `true`                               |
+| `MG_AGENT_REMOTE_STORE_PATH`      | Request and job database             | `/var/lib/agent/remote.db`           |
 | `MG_AGENT_BOOTSTRAP_URL`          | Bootstrap base URL                   |                                      |
 | `MG_AGENT_BOOTSTRAP_EXTERNAL_ID`  | Bootstrap external ID                |                                      |
 | `MG_AGENT_BOOTSTRAP_EXTERNAL_KEY` | Bootstrap external key               |                                      |
@@ -123,6 +125,14 @@ Per-feature documentation with configuration, MQTT topic maps, and copy-paste te
 | [bootstrap.md](docs/bootstrap.md) | Profile-based provisioning flow, environment variables, cache management, test recipes                                                  |
 | [ota.md](docs/ota.md)             | Over-the-air binary updates, trigger payload, download/verify/replace cycle, status reporting, test recipes                             |
 | [health.md](docs/health.md)       | Health supervisor, systemd watchdog integration, MQTT connection monitoring, health check endpoints                                     |
+| [standalone-ui.md](docs/standalone-ui.md) | Standalone remote UI and gateway over Magistrala MQTT, including terminal, events, OTA, and security boundaries |
+| [remote-protocol.md](docs/remote-protocol.md) | MQTT 5 JSON-RPC, state, events, jobs, streams, reliability and cutover contract |
+| [mqtt-acl.md](docs/mqtt-acl.md) | Least-privilege Agent and Agent Gateway MQTT topic permissions |
+
+Machine-readable contracts:
+
+- [OpenRPC](api/openrpc.json)
+- [AsyncAPI](api/asyncapi.yaml)
 
 ## License
 

@@ -329,7 +329,8 @@ type agent struct {
 	termMu              sync.Mutex
 	devices             *devicemgr.Manager
 	sched               *Scheduler
-	pushEvent           func(typeName string)
+	pushEvents          []func(typeName string)
+	pushEventsMu        sync.RWMutex
 	otaBusy             atomic.Bool
 	store               cfgstore.Store
 	heartbeatIntervalCh chan time.Duration
@@ -396,7 +397,21 @@ func New(ctx context.Context, mc paho.Client, cfg *Config, nc nodered.Client, lo
 }
 
 func (a *agent) SetPushEvent(fn func(string)) {
-	a.pushEvent = fn
+	if fn == nil {
+		return
+	}
+	a.pushEventsMu.Lock()
+	a.pushEvents = append(a.pushEvents, fn)
+	a.pushEventsMu.Unlock()
+}
+
+func (a *agent) emitPushEvent(typeName string) {
+	a.pushEventsMu.RLock()
+	callbacks := append([]func(string){}, a.pushEvents...)
+	a.pushEventsMu.RUnlock()
+	for _, callback := range callbacks {
+		callback(typeName)
+	}
 }
 
 func (a *agent) Health() bool {
@@ -702,7 +717,7 @@ func (a *agent) Terminal(uuid, cmdStr string) error {
 	if err != nil {
 		return errors.New(err.Error())
 	}
-	cmdArgs := strings.Split(string(b), ",")
+	cmdArgs := strings.SplitN(string(b), ",", 2)
 	if len(cmdArgs) < 1 {
 		return errInvalidCommand
 	}
@@ -726,6 +741,21 @@ func (a *agent) Terminal(uuid, cmdStr string) error {
 		if err := a.terminalClose(uuid); err != nil {
 			return err
 		}
+	case "resize":
+		if len(cmdArgs) < 2 {
+			return errInvalidCommand
+		}
+		var columns, rows uint16
+		if _, err := fmt.Sscanf(ch, "%d,%d", &columns, &rows); err != nil || columns == 0 || rows == 0 {
+			return errInvalidCommand
+		}
+		a.termMu.Lock()
+		term, ok := a.terminals[uuid]
+		a.termMu.Unlock()
+		if !ok {
+			return errNoSuchTerminalSession
+		}
+		return term.Resize(columns, rows)
 	}
 	return nil
 }
@@ -734,7 +764,7 @@ func (a *agent) terminalOpen(uuid string, timeout time.Duration) error {
 	a.termMu.Lock()
 	defer a.termMu.Unlock()
 	if _, ok := a.terminals[uuid]; !ok {
-		term, err := terminal.NewSession(uuid, timeout, a.Publish, a.logger)
+		term, err := terminal.NewSession(uuid, timeout, a.publishCmd, a.logger)
 		if err != nil {
 			return errors.Wrap(errors.Wrap(errFailedToCreateTerminalSession, fmt.Errorf(" for %s", uuid)), err)
 		}
@@ -755,6 +785,9 @@ func (a *agent) terminalClose(uuid string) error {
 	a.termMu.Lock()
 	defer a.termMu.Unlock()
 	if _, ok := a.terminals[uuid]; ok {
+		if a.terminals[uuid] != nil {
+			_ = a.terminals[uuid].Close()
+		}
 		delete(a.terminals, uuid)
 		return nil
 	}
@@ -1042,9 +1075,7 @@ func (a *agent) AddConfig(c Config) error {
 	a.cfgMu.Lock()
 	defer a.cfgMu.Unlock()
 	*a.config = c
-	if a.pushEvent != nil {
-		a.pushEvent("config")
-	}
+	a.emitPushEvent("config")
 	return nil
 }
 
@@ -1332,12 +1363,17 @@ func (a *agent) gatewayTelemetryPayload() []senml.Record {
 
 func (a *agent) UpdateLiveness(svcname, svctype string) error {
 	a.svcsMu.Lock()
-	defer a.svcsMu.Unlock()
+	created := false
 	if _, ok := a.svcs[svcname]; !ok {
 		svc := NewHeartbeat(svcname, svctype, a.Config().Heartbeat.Interval)
 		a.svcs[svcname] = svc
+		created = true
 	}
 	a.svcs[svcname].Update()
+	a.svcsMu.Unlock()
+	if created {
+		a.emitPushEvent("services")
+	}
 	return nil
 }
 
@@ -1346,12 +1382,13 @@ func (a *agent) RegisterService(svcname, svctype string) error {
 		return errors.New("service name is required")
 	}
 	a.svcsMu.Lock()
-	defer a.svcsMu.Unlock()
 	if _, ok := a.svcs[svcname]; !ok {
 		svc := NewHeartbeat(svcname, svctype, a.Config().Heartbeat.Interval)
 		a.svcs[svcname] = svc
 	}
 	a.svcs[svcname].Update()
+	a.svcsMu.Unlock()
+	a.emitPushEvent("services")
 	return nil
 }
 
@@ -1360,10 +1397,15 @@ func (a *agent) RemoveService(svcname string) error {
 		return errors.New("service name is required")
 	}
 	a.svcsMu.Lock()
-	defer a.svcsMu.Unlock()
+	removed := false
 	if svc, ok := a.svcs[svcname]; ok {
 		svc.Stop()
 		delete(a.svcs, svcname)
+		removed = true
+	}
+	a.svcsMu.Unlock()
+	if removed {
+		a.emitPushEvent("services")
 	}
 	return nil
 }
@@ -1554,9 +1596,7 @@ func (a *agent) publishOTAStatus(statusTopic string, qos byte, state ota.State, 
 
 	// Notify WS subscribers so the UI can refresh status in real time without
 	// relying solely on HTTP polling.
-	if a.pushEvent != nil {
-		a.pushEvent("ota")
-	}
+	a.emitPushEvent("ota")
 }
 
 func (a *agent) OTAAbort() error {
@@ -1572,9 +1612,7 @@ func (a *agent) OTAAbort() error {
 	a.otaAborted.Store(true)
 	cancel()
 	// Notify WS subscribers that the OTA state changed.
-	if a.pushEvent != nil {
-		a.pushEvent("ota")
-	}
+	a.emitPushEvent("ota")
 	return nil
 }
 
@@ -1616,9 +1654,7 @@ func (a *agent) AddDevice(ctx context.Context, name, extID, extKey, ifaceType, i
 	if a.sched != nil {
 		a.sched.StartDevice(context.WithoutCancel(ctx), d)
 	}
-	if a.pushEvent != nil {
-		a.pushEvent("devices")
-	}
+	a.emitPushEvent("devices")
 	return d, nil
 }
 
@@ -1630,8 +1666,8 @@ func (a *agent) RemoveDevice(id string) error {
 		a.sched.StopDevice(id)
 	}
 	err := a.devices.Remove(id)
-	if err == nil && a.pushEvent != nil {
-		a.pushEvent("devices")
+	if err == nil {
+		a.emitPushEvent("devices")
 	}
 	return err
 }
@@ -1641,8 +1677,8 @@ func (a *agent) MarkDeviceSeen(id string) error {
 		return errDeviceManagerDisabled
 	}
 	err := a.devices.MarkSeen(id)
-	if err == nil && a.pushEvent != nil {
-		a.pushEvent("devices")
+	if err == nil {
+		a.emitPushEvent("devices")
 	}
 	return err
 }
@@ -1659,8 +1695,8 @@ func (a *agent) RestoreDevices(b devicemgr.Backup, replace bool) (int, error) {
 		return 0, errDeviceManagerDisabled
 	}
 	n, err := a.devices.Restore(b, replace)
-	if err == nil && a.pushEvent != nil {
-		a.pushEvent("devices")
+	if err == nil {
+		a.emitPushEvent("devices")
 	}
 	return n, err
 }
@@ -1758,6 +1794,9 @@ func (a *agent) closeTerminals() {
 	a.termMu.Lock()
 	defer a.termMu.Unlock()
 	for uuid := range a.terminals {
+		if a.terminals[uuid] != nil {
+			_ = a.terminals[uuid].Close()
+		}
 		delete(a.terminals, uuid)
 	}
 }
@@ -2126,8 +2165,8 @@ func (a *agent) OpenDevice(ctx context.Context, id string) error {
 		return errDeviceManagerDisabled
 	}
 	err := a.devices.OpenIface(id)
-	if err == nil && a.pushEvent != nil {
-		a.pushEvent("devices")
+	if err == nil {
+		a.emitPushEvent("devices")
 	}
 	return err
 }
@@ -2137,8 +2176,8 @@ func (a *agent) CloseDevice(id string) error {
 		return errDeviceManagerDisabled
 	}
 	err := a.devices.CloseIface(id)
-	if err == nil && a.pushEvent != nil {
-		a.pushEvent("devices")
+	if err == nil {
+		a.emitPushEvent("devices")
 	}
 	return err
 }
@@ -2208,8 +2247,6 @@ func (a *agent) SetRuntimeConfig(ctx context.Context, key, value string) error {
 	ApplyConfigEntry(a.config, key, value)
 	a.cfgMu.Unlock()
 	a.applyLiveUpdate(key, value)
-	if a.pushEvent != nil {
-		a.pushEvent("runtime_config")
-	}
+	a.emitPushEvent("runtime_config")
 	return nil
 }

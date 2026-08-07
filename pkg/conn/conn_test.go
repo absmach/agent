@@ -8,56 +8,24 @@ import (
 
 	"github.com/absmach/agent/pkg/senml"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestAuthorizeCommand(t *testing.T) {
-	token := "my-secret-token"
-	validRecord := senml.Record{Name: "token", StringValue: &token}
-	otherRecord := senml.Record{Name: "config", StringValue: new("get,log_level")}
+func TestExtractHeartbeat(t *testing.T) {
+	serviceType := "node-red"
+	payload, err := senml.EncodeRecords([]senml.Record{
+		{Name: "service_type", StringValue: &serviceType},
+	})
+	require.NoError(t, err)
 
-	cases := []struct {
-		desc    string
-		records []senml.Record
-		secret  string
-		want    bool
-	}{
-		{
-			desc:    "valid token matches secret",
-			records: []senml.Record{otherRecord, validRecord},
-			secret:  "my-secret-token",
-			want:    true,
-		},
-		{
-			desc:    "invalid token does not match",
-			records: []senml.Record{otherRecord, {Name: "token", StringValue: new("wrong-token")}},
-			secret:  "my-secret-token",
-			want:    false,
-		},
-		{
-			desc:    "missing token record returns false",
-			records: []senml.Record{otherRecord},
-			secret:  "my-secret-token",
-			want:    false,
-		},
-		{
-			desc:    "token record with nil string value returns false",
-			records: []senml.Record{otherRecord, {Name: "token"}},
-			secret:  "my-secret-token",
-			want:    false,
-		},
+	name, gotType, ok := extractHeartbeat(
+		"m/domain/c/control/services/flows/heartbeat",
+		payload,
+	)
+	assert.True(t, ok)
+	assert.Equal(t, "flows", name)
+	assert.Equal(t, serviceType, gotType)
 
-		{
-			desc:    "empty token does not match non-empty secret",
-			records: []senml.Record{otherRecord, {Name: "token", StringValue: new("")}},
-			secret:  "my-secret-token",
-			want:    false,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.desc, func(t *testing.T) {
-			got := authorizeCommand(tc.records, tc.secret)
-			assert.Equal(t, tc.want, got)
-		})
-	}
+	_, _, ok = extractHeartbeat("m/domain/c/control/req", payload)
+	assert.False(t, ok)
 }

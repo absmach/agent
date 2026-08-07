@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://absmach.github.io/agent/schemas/stream-frame.schema.json",
+  "title": "Agent bounded stream frame",
+  "type": "object",
+  "required": ["sessionId", "sequence", "timestamp", "stream"],
+  "properties": {
+    "sessionId": { "type": "string", "format": "uuid" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "stream": { "enum": ["log", "pty"] },
+    "line": { "type": "string" },
+    "dataBase64": { "type": "string", "contentEncoding": "base64" }
+  },
+  "oneOf": [
+    { "required": ["line"] },
+    { "required": ["dataBase64"] }
+  ]
+}

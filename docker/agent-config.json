@@ -1,0 +1,8 @@
+{
+  "channels_ctrl_id": "a2be8ec1-c8f4-4dea-a713-84c70f5a7f8c",
+  "channels_data_id": "a0f1f5a5-77ba-4110-9405-af5ababde184",
+  "tenant_id": "95fc594c-ae91-46a2-929b-3bec0e333223",
+  "mqtt_password": "cli1",
+  "mqtt_username": "a264392a-34c1-4595-982e-eb0761e3c188",
+  "reset_reason": "graceful"
+}

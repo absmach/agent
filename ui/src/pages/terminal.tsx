@@ -9,6 +9,7 @@ import { ErrorAlert } from "@/components/error-alert";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { gatewayWS } from "@/lib/transport";
 
 export function TerminalPage() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -71,9 +72,11 @@ export function TerminalPage() {
       wsRef.current = null;
     }
     setError("");
+    const remote = gatewayWS("terminal");
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${window.location.host}/terminal/ws`;
-    const socket = new WebSocket(url);
+    const url =
+      remote?.url ?? `${protocol}//${window.location.host}/terminal/ws`;
+    const socket = new WebSocket(url, remote?.protocols);
     socket.binaryType = "arraybuffer";
 
     socket.onopen = () => {

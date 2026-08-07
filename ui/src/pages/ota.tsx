@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toaster";
 import { useWSEvent } from "@/lib/agent";
+import { remoteMode } from "@/lib/transport";
 import { formatBytes } from "@/lib/utils";
 
 interface OTAStatus {
@@ -530,10 +531,12 @@ export function OTAPage() {
                 <Download className="mr-1.5 size-3.5" />
                 Download from URL
               </TabsTrigger>
-              <TabsTrigger value="upload">
-                <FileUp className="mr-1.5 size-3.5" />
-                Upload binary
-              </TabsTrigger>
+              {!remoteMode && (
+                <TabsTrigger value="upload">
+                  <FileUp className="mr-1.5 size-3.5" />
+                  Upload binary
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="url">
@@ -557,10 +560,7 @@ export function OTAPage() {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="ota-sha256">
-                    SHA-256 checksum{" "}
-                    <span className="font-normal text-muted-foreground">
-                      (optional)
-                    </span>
+                    SHA-256 checksum
                   </Label>
                   <Input
                     id="ota-sha256"
@@ -569,6 +569,7 @@ export function OTAPage() {
                     onInput={(e) =>
                       setSha256((e.target as HTMLInputElement).value)
                     }
+                    required
                   />
                   <p className="text-xs text-muted-foreground">
                     Hex-encoded SHA-256 of the binary. The agent will abort if
@@ -593,7 +594,8 @@ export function OTAPage() {
               </form>
             </TabsContent>
 
-            <TabsContent value="upload">
+            {!remoteMode && (
+              <TabsContent value="upload">
               <form onSubmit={handleUpload} className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="ota-file">Firmware binary</Label>
@@ -673,7 +675,8 @@ export function OTAPage() {
                   </p>
                 )}
               </form>
-            </TabsContent>
+              </TabsContent>
+            )}
           </Tabs>
         </CardContent>
       </Card>
