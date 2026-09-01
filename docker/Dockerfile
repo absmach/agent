@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Stage 1: Build the UI on the native platform (where npm/native-addons work)
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS ui
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS ui
 ARG SVC
 WORKDIR /go/src/github.com/absmach/agent
 RUN apk update && apk add make nodejs npm
@@ -11,7 +11,7 @@ COPY ui/ ./ui/
 RUN make ui_prod
 
 # Stage 2: Build the Go binary for the target platform
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETPLATFORM
