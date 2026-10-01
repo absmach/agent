@@ -129,7 +129,7 @@ go_gc_gomemlimit_bytes 9.223372036854776e+18
 go_goroutines 24
 # HELP go_info Information about the Go environment.
 # TYPE go_info gauge
-go_info{version="go1.26.4-X:nodwarf5"} 1
+go_info{version="go1.27.1-X:nodwarf5"} 1
 # HELP go_memstats_alloc_bytes Number of bytes allocated in heap and currently in use. Equals to /memory/classes/heap/objects:bytes.
 # TYPE go_memstats_alloc_bytes gauge
 go_memstats_alloc_bytes 1.961496e+06
